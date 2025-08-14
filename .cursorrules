@@ -1,0 +1,116 @@
+# Cursor Rules for MealScanner Mobile App
+
+## TypeScript & Code Quality
+- Always use explicit TypeScript types, avoid `any`
+- Use strict TypeScript settings and enable all strict checks
+- Prefer interface over type for object shapes
+- Use const assertions for immutable data: `as const`
+- Always destructure props in functional components
+- Use proper return types for functions, especially async functions
+
+## React Native & Expo Specific
+- Use StyleSheet.create for styles instead of inline style objects
+- Prefer functional components with hooks over class components
+- Follow expo-router file-based routing conventions
+- Import React Native components explicitly: `import { View, Text } from 'react-native'`
+- Use expo-router's `useRouter()` and `useLocalSearchParams()` for navigation
+- Always consider safe area insets using `useSafeAreaInsets()`
+- Use proper Expo conventions for app.json configuration
+
+## Import Organization
+Group imports in this order:
+1. React and React Native core
+2. Expo libraries  
+3. Third-party libraries
+4. Local components and utilities
+5. Types and interfaces
+6. Relative imports
+
+Example:
+```typescript
+import React from 'react';
+import { View, Text, StyleSheet } from 'react-native';
+import { useRouter } from 'expo-router';
+import { SomeThirdPartyLib } from 'third-party';
+import { ThemedView } from '@/components/ThemedView';
+import { Colors } from '@/constants/Colors';
+import type { UserType } from './types';
+```
+
+## Component Structure
+- Keep components focused and under 200 lines
+- Extract complex logic into custom hooks
+- Use TypeScript interfaces for all component props
+- Include proper error boundaries for screen components
+- Use meaningful component and file names that describe their purpose
+- Prefer named exports over default exports for utilities and hooks
+
+## Styling & UI Guidelines
+- Use TailwindCSS classes primarily for styling
+- Fall back to StyleSheet.create for complex styles or animations
+- Use icons instead of emojis throughout the UI
+- Maintain consistent green theme across all components
+- Follow mobile-first responsive design principles
+- Ensure touch targets are minimum 44px for accessibility
+
+## Mobile UX Best Practices
+- Always test and handle keyboard avoidance for input screens
+- Use proper accessibility labels with `accessibilityLabel` and `accessibilityHint`
+- Consider loading states and error states for all async operations
+- Implement proper pull-to-refresh patterns where appropriate
+- Use haptic feedback appropriately with HapticTab component
+
+## State Management & Data Flow
+- Use React hooks (useState, useEffect, useContext) for local state
+- Keep state as close to where it's used as possible
+- Use custom hooks to share stateful logic between components
+- Prefer derived state over storing computed values
+- Handle async operations with proper loading and error states
+
+## Navigation & Routing
+- Follow the (tabs) folder structure for tab-based navigation
+- Use proper TypeScript types for route parameters
+- Implement proper deep linking support
+- Handle navigation edge cases (back button, tab switching)
+
+## Performance Guidelines
+- Use React.memo() for expensive components that re-render frequently
+- Implement proper list virtualization for long lists (FlatList/VirtualizedList)
+- Optimize images with proper resizing and caching
+- Use lazy loading for non-critical components
+- Profile and measure performance improvements
+
+## Error Handling
+- Implement error boundaries for each major screen/section
+- Provide meaningful error messages to users
+- Log errors appropriately for debugging
+- Handle network errors gracefully with retry mechanisms
+- Validate user inputs with proper feedback
+
+## Code Organization
+- Group related files in feature-based folders when appropriate
+- Use index files to create clean import paths
+- Keep utility functions in separate files with clear naming
+- Use constants for magic numbers and strings
+- Implement proper environment configuration
+
+## Testing Guidelines
+- Write unit tests for utility functions and custom hooks
+- Test component rendering and user interactions
+- Mock external dependencies and API calls
+- Test error scenarios and edge cases
+- Use proper test naming conventions
+
+## Security & Privacy
+- Never commit sensitive data or API keys
+- Use environment variables for configuration
+- Implement proper input validation and sanitization
+- Follow secure coding practices for data handling
+- Consider user privacy in data collection and storage
+
+## Git & Version Control
+- Use meaningful commit messages with conventional commits format
+- Keep commits focused and atomic
+- Use proper branch naming conventions
+- Review and test changes before committing
+- Use .gitignore to exclude generated and sensitive files 

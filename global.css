@@ -1,0 +1,27 @@
+/* Google Fonts for Web */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Base font configuration for web */
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  
+  /* Simple approach: just ensure icons show as lime green */
+  :root {
+    --tint-color: #32D74B; /* Lime green for icons */
+  }
+  
+  /* Ensure tint color icons show as lime green */
+  [style*="color: rgb(50, 215, 75)"],
+  [style*="color: #32D74B"],
+  [style*="color: #32d74b"] {
+    color: var(--tint-color) !important;
+  }
+} 

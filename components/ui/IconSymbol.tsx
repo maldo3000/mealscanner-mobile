@@ -1,11 +1,11 @@
 // Fallback for using MaterialIcons on Android and web.
 
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { SymbolWeight, SymbolViewProps } from 'expo-symbols';
+import { SymbolWeight } from 'expo-symbols';
 import { ComponentProps } from 'react';
 import { OpaqueColorValue, type StyleProp, type TextStyle } from 'react-native';
 
-type IconMapping = Record<SymbolViewProps['name'], ComponentProps<typeof MaterialIcons>['name']>;
+type IconMapping = Record<string, ComponentProps<typeof MaterialIcons>['name']>;
 type IconSymbolName = keyof typeof MAPPING;
 
 /**
@@ -14,10 +14,55 @@ type IconSymbolName = keyof typeof MAPPING;
  * - see SF Symbols in the [SF Symbols](https://developer.apple.com/sf-symbols/) app.
  */
 const MAPPING = {
+  // Navigation
+  'house': 'home',
   'house.fill': 'home',
+  'camera': 'camera-alt',
+  'camera.fill': 'camera-alt',
+  'book': 'book',
+  'book.fill': 'book',
+  'gear': 'settings',
+  
+  // Actions
+  'plus': 'add',
+  'magnifyingglass': 'search',
+  'square.and.arrow.up': 'upload',
+  'cloud.download': 'cloud-download',
+  'trash': 'delete',
+  'pencil': 'edit',
+  'checkmark': 'check',
+  'checkmark.circle': 'check-circle',
+  'checkmark.seal': 'verified',
+  'xmark': 'close',
+  
+  // Interface
+  'chevron.right': 'chevron-right',
+  'chevron.left': 'chevron-left',
+  'chevron.down': 'keyboard-arrow-down',
+  'line.3.horizontal.decrease': 'filter-list',
+  'target': 'gps-fixed',
+  'arrow.triangle.2.circlepath.camera': 'flip-camera-ios',
+  'grid': 'grid-view',
+  'list.bullet': 'view-list',
+  
+  // User & Info
+  'person': 'person',
+  'person.fill': 'person',
+  'bell.fill': 'notifications',
+  'info.circle': 'info',
+  'lock.doc': 'privacy-tip',
+  'chart.bar.fill': 'bar-chart',
+  'clock': 'access-time',
+  'hourglass': 'hourglass-empty',
+  
+  // App-specific
+  'fork.knife': 'restaurant',
+  'brain.head.profile': 'psychology',
+  'mic': 'mic',
+  
+  // Legacy
   'paperplane.fill': 'send',
   'chevron.left.forwardslash.chevron.right': 'code',
-  'chevron.right': 'chevron-right',
 } as IconMapping;
 
 /**
