@@ -7,16 +7,18 @@ import { deleteRecipe, getCurrentUser, getUserRecipes, searchRecipes } from '@/l
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-    Alert,
-    FlatList,
-    RefreshControl,
-    SafeAreaView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  Alert,
+  FlatList,
+  Platform,
+  RefreshControl,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Recipe = {
@@ -45,11 +47,29 @@ interface RecipeCardProps {
   recipe: Recipe;
   onPress: () => void;
   onDelete: (recipeId: string) => void;
+  viewMode: 'grid' | 'list';
 }
 
-function RecipeCard({ recipe, onPress, onDelete }: RecipeCardProps) {
+function RecipeCard({ recipe, onPress, onDelete, viewMode }: RecipeCardProps) {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
+  
+  // Animation for delete button
+  const deleteOpacity = useSharedValue(1);
+  
+  const deleteAnimatedStyle = useAnimatedStyle(() => {
+    return {
+      opacity: deleteOpacity.value,
+    };
+  });
+  
+  const handleDeletePressIn = () => {
+    deleteOpacity.value = withTiming(0.5, { duration: 150 });
+  };
+  
+  const handleDeletePressOut = () => {
+    deleteOpacity.value = withTiming(1, { duration: 150 });
+  };
 
   const handleLongPress = () => {
     Alert.alert(
@@ -70,6 +90,7 @@ function RecipeCard({ recipe, onPress, onDelete }: RecipeCardProps) {
   };
 
   const handleDelete = () => {
+    console.log('🗑️ RecipeCard: Delete button pressed for recipe:', recipe.name, 'ID:', recipe.id);
     Alert.alert(
       'Delete Recipe',
       `Are you sure you want to delete "${recipe.name}"? This action cannot be undone.`,
@@ -81,7 +102,10 @@ function RecipeCard({ recipe, onPress, onDelete }: RecipeCardProps) {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: () => onDelete(recipe.id),
+          onPress: () => {
+            console.log('🗑️ RecipeCard: User confirmed delete for recipe ID:', recipe.id);
+            onDelete(recipe.id);
+          },
         },
       ]
     );
@@ -89,58 +113,94 @@ function RecipeCard({ recipe, onPress, onDelete }: RecipeCardProps) {
 
   return (
     <TouchableOpacity 
-      style={[styles.recipeCard, { backgroundColor: colors.surface }]} 
+      style={[
+        viewMode === 'list' ? styles.recipeCardList : styles.recipeCardGrid,
+        Platform.OS === 'web' && viewMode === 'grid' && styles.recipeCardGridWeb,
+        { backgroundColor: colors.surface }
+      ]} 
       onPress={onPress}
       onLongPress={handleLongPress}
       delayLongPress={500}
     >
+      {/* Square thumbnail */}
       {recipe.image_url ? (
-        <ThumbnailImage source={{ uri: recipe.image_url }} style={styles.recipeImage} />
+        <ThumbnailImage 
+          source={{ uri: recipe.image_url }} 
+          style={viewMode === 'list' ? styles.recipeImageList : styles.recipeImageGrid}
+        />
       ) : (
-        <View style={[styles.recipeImage, styles.placeholderImage, { backgroundColor: colors.border }]}>
-          <IconSymbol name="fork.knife" size={32} color={colors.icon} />
+        <View style={[
+          viewMode === 'list' ? styles.recipeImageList : styles.recipeImageGrid, 
+          styles.placeholderImage, 
+          { backgroundColor: colors.border }
+        ]}>
+          <IconSymbol name="fork.knife" size={viewMode === 'list' ? 24 : 32} color={colors.icon} />
         </View>
       )}
-      <View style={styles.recipeContent}>
+      
+      <View style={[
+        styles.recipeContent, 
+        viewMode === 'grid' && styles.recipeContentGrid,
+        Platform.OS === 'web' && viewMode === 'grid' && styles.recipeContentGridWeb
+      ]}>
         <Text style={[TextStyles.h4, { color: colors.text }]} numberOfLines={2}>
           {recipe.name}
         </Text>
-        <View style={styles.recipeMetaRow}>
-          {recipe.prep_time && (
-            <View style={styles.recipeMeta}>
-              <IconSymbol name="clock" size={14} color={colors.icon} />
-              <Text style={[TextStyles.caption, { color: colors.icon }]}>
-                {recipe.prep_time}
-              </Text>
-            </View>
-          )}
-          {recipe.servings && (
-            <View style={styles.recipeMeta}>
-              <IconSymbol name="person.2" size={14} color={colors.icon} />
-              <Text style={[TextStyles.caption, { color: colors.icon }]}>
-                {recipe.servings} servings
+        {recipe.description && viewMode === 'list' && (
+          <Text style={[TextStyles.body, { color: colors.icon, marginTop: 4 }]} numberOfLines={2}>
+            {recipe.description}
+          </Text>
+        )}
+        <View style={[
+          styles.recipeMetaRow, 
+          viewMode === 'grid' && styles.recipeMetaRowGrid,
+          Platform.OS === 'web' && viewMode === 'grid' && styles.recipeMetaRowGridWeb
+        ]}>
+          <View style={[
+            styles.recipeMetaLeft,
+            Platform.OS === 'web' && viewMode === 'grid' && styles.recipeMetaLeftWeb
+          ]}>
+            {recipe.prep_time && (
+              <View style={styles.recipeMeta}>
+                <IconSymbol name="clock" size={14} color={colors.icon} />
+                <Text style={[TextStyles.caption, { color: colors.icon }]}>
+                  {recipe.prep_time}
+                </Text>
+              </View>
+            )}
+            {recipe.servings && (
+              <View style={styles.recipeMeta}>
+                <IconSymbol name="person.2" size={14} color={colors.icon} />
+                <Text style={[TextStyles.caption, { color: colors.icon }]}>
+                  {recipe.servings} servings
+                </Text>
+              </View>
+            )}
+          </View>
+          {recipe.difficulty && (
+            <View style={[styles.difficultyBadge, { backgroundColor: getDifficultyColor(recipe.difficulty) }]}>
+              <Text style={[TextStyles.caption, { color: 'white', fontWeight: '600' }]}>
+                {recipe.difficulty}
               </Text>
             </View>
           )}
         </View>
-        {recipe.difficulty && (
-          <View style={[styles.difficultyBadge, { backgroundColor: getDifficultyColor(recipe.difficulty) }]}>
-            <Text style={[TextStyles.caption, { color: 'white', fontWeight: '600' }]}>
-              {recipe.difficulty}
-            </Text>
-          </View>
-        )}
       </View>
       
       {/* Delete button overlay */}
       <TouchableOpacity
-        style={[styles.deleteButton, { backgroundColor: colors.background + 'E6' }]}
+        style={styles.deleteButton}
         onPress={(e) => {
           e.stopPropagation();
           handleDelete();
         }}
+        onPressIn={handleDeletePressIn}
+        onPressOut={handleDeletePressOut}
+        activeOpacity={1}
       >
-        <IconSymbol name="trash" size={16} color="#EF4444" />
+        <Animated.View style={deleteAnimatedStyle}>
+          <IconSymbol name="trash" size={18} color="#EF4444" />
+        </Animated.View>
       </TouchableOpacity>
     </TouchableOpacity>
   );
@@ -250,21 +310,22 @@ export default function RecipesScreen() {
 
   const handleDeleteRecipe = async (recipeId: string) => {
     try {
-      console.log('🗑️ Deleting recipe with ID:', recipeId);
+      console.log('🗑️ Recipes: handleDeleteRecipe called with ID:', recipeId);
       const { error } = await deleteRecipe(recipeId);
       
       if (error) {
-        console.error('Error deleting recipe:', error);
+        console.error('🗑️ Recipes: Delete error:', error);
         Alert.alert('Error', 'Failed to delete recipe. Please try again.');
         return;
       }
       
+      console.log('🗑️ Recipes: Delete successful, updating UI...');
       // Remove the recipe from the local state
       setRecipes(prevRecipes => prevRecipes.filter(recipe => recipe.id !== recipeId));
       
-      console.log('✅ Recipe deleted successfully');
+      console.log('✅ Recipes: Recipe deleted successfully, UI updated');
     } catch (error) {
-      console.error('Error deleting recipe:', error);
+      console.error('🗑️ Recipes: Delete exception:', error);
       Alert.alert('Error', 'Failed to delete recipe. Please try again.');
     }
   };
@@ -274,6 +335,7 @@ export default function RecipesScreen() {
       recipe={item} 
       onPress={() => handleRecipePress(item)}
       onDelete={handleDeleteRecipe}
+      viewMode={viewMode}
     />
   );
 
@@ -367,7 +429,7 @@ export default function RecipesScreen() {
           data={filteredRecipes}
           renderItem={renderRecipe}
           keyExtractor={(item) => item.id}
-          numColumns={viewMode === 'grid' ? 2 : 1}
+          numColumns={viewMode === 'grid' ? (Platform.OS === 'web' ? 4 : 2) : 1}
           key={viewMode} // Force re-render when view mode changes
           contentContainerStyle={styles.recipesList}
           showsVerticalScrollIndicator={false}
@@ -440,9 +502,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingBottom: 24,
   },
-  recipeCard: {
+  recipeCardGrid: {
     flex: 1,
-    margin: 6,
+    margin: 4,
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  recipeCardGridWeb: {
+    margin: 3,
+    borderRadius: 10,
+    shadowRadius: 4,
+  },
+  recipeCardList: {
+    flexDirection: 'row',
+    marginHorizontal: 6,
+    marginVertical: 8,
     borderRadius: 16,
     overflow: 'hidden',
     shadowColor: '#000',
@@ -451,23 +530,54 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
-  recipeImage: {
+  recipeImageGrid: {
     width: '100%',
-    height: 120,
+    aspectRatio: 1,
     backgroundColor: '#f0f0f0',
+  },
+  recipeImageList: {
+    width: 100,
+    height: 100,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 12,
+    margin: 12,
   },
   placeholderImage: {
     justifyContent: 'center',
     alignItems: 'center',
   },
   recipeContent: {
+    flex: 1,
     padding: 16,
+  },
+  recipeContentGrid: {
+    padding: 10,
+  },
+  recipeContentGridWeb: {
+    padding: 8,
   },
   recipeMetaRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
     marginTop: 8,
-    marginBottom: 12,
+    marginBottom: 8,
+  },
+  recipeMetaRowGrid: {
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  recipeMetaRowGridWeb: {
+    marginTop: 2,
+    marginBottom: 2,
+  },
+  recipeMetaLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  recipeMetaLeftWeb: {
+    gap: 8,
   },
   recipeMeta: {
     flexDirection: 'row',
@@ -475,20 +585,18 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   difficultyBadge: {
-    alignSelf: 'flex-start',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
   },
   deleteButton: {
     position: 'absolute',
-    top: 0,
-    right: 0,
+    top: 8,
+    right: 8,
     width: 40,
     height: 40,
-    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 1,
+    zIndex: 10,
   },
 }); 

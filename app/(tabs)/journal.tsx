@@ -120,6 +120,7 @@ export default function JournalScreen() {
   }, [user]);
 
   const handleDeleteMeal = async (mealId: string) => {
+    console.log('🗑️ Journal: Delete button pressed for meal ID:', mealId);
     Alert.alert(
       'Delete Meal',
       'Are you sure you want to delete this meal?',
@@ -129,14 +130,20 @@ export default function JournalScreen() {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
+            console.log('🗑️ Journal: User confirmed delete for meal ID:', mealId);
             try {
+              console.log('🗑️ Journal: Calling deleteMeal function...');
               const { error } = await deleteMeal(mealId);
               if (error) {
+                console.error('🗑️ Journal: Delete error:', error);
                 Alert.alert('Error', 'Failed to delete meal');
                 return;
               }
+              console.log('🗑️ Journal: Delete successful, updating UI...');
               setMeals(meals.filter(meal => meal.id !== mealId));
+              console.log('🗑️ Journal: UI updated');
             } catch (error) {
+              console.error('🗑️ Journal: Delete exception:', error);
               Alert.alert('Error', 'Failed to delete meal');
             }
           }
@@ -263,7 +270,13 @@ export default function JournalScreen() {
         </View>
         <TouchableOpacity 
           style={styles.deleteButton}
-          onPress={() => handleDeleteMeal(meal.id)}
+          onPress={(e) => {
+            console.log('🚨 DELETE BUTTON CLICKED! Event:', e);
+            e.stopPropagation();
+            console.log('🚨 About to call handleDeleteMeal with ID:', meal.id);
+            handleDeleteMeal(meal.id);
+          }}
+          activeOpacity={0.6}
         >
           <IconSymbol name="trash" size={20} color="#EF4444" />
         </TouchableOpacity>
@@ -612,6 +625,13 @@ const styles = StyleSheet.create({
   },
   deleteButton: {
     padding: 8,
+    minWidth: 40,
+    minHeight: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+    borderRadius: 20,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
   },
   mealImage: {
     width: '100%',
