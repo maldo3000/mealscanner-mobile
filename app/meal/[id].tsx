@@ -1,21 +1,29 @@
-import { ThemedView } from '@/components/ThemedView';
+import { ContentContainer } from '@/components/layout/ContentContainer';
+import { PageContainer } from '@/components/layout/PageContainer';
+import { AnimatedCard } from '@/components/ui/AnimatedCard';
 import { IconSymbol } from '@/components/ui/IconSymbol';
-import { HeroImage } from '@/components/ui/OptimizedImage';
-import { Colors } from '@/constants/Colors';
+import { IngredientTags } from '@/components/ui/IngredientTags';
+import { NutritionCard } from '@/components/ui/NutritionCard';
+import { ParallaxImage } from '@/components/ui/ParallaxImage';
+import { Colors, neonGreen } from '@/constants/Colors';
+import { Shadows } from '@/constants/Layout';
+import { PageSpacing, Spacing } from '@/constants/Spacing';
 import { TextStyles } from '@/constants/Typography';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { useNutritionGoals } from '@/hooks/useNutritionGoals';
 import { deleteMeal, getMealById } from '@/lib/supabase';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-    Alert,
-    Dimensions,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  Alert,
+  Dimensions,
+  Platform,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface Meal {
   id: string;
@@ -46,6 +54,8 @@ export default function MealDetailScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
+  const insets = useSafeAreaInsets();
+  const { activeGoal } = useNutritionGoals();
   
   const [meal, setMeal] = useState<Meal | null>(null);
   const [loading, setLoading] = useState(true);
@@ -157,244 +167,299 @@ export default function MealDetailScreen() {
 
   if (loading) {
     return (
-      <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={styles.loadingContainer}>
-          <IconSymbol name="hourglass" size={32} color={colors.icon} />
-                  <Text style={[TextStyles.body, { color: colors.icon }]}>
-          Loading meal details...
-        </Text>
+      <PageContainer noPadding>
+        {/* Skeleton Header */}
+        <View style={[styles.floatingHeader, { paddingTop: insets.top + Spacing.base }]}>
+          <View style={styles.headerContent}>
+            <View style={[styles.iconContainer, { opacity: 0.3 }]}>
+              <View style={styles.iconBackground} />
+            </View>
+            <View style={styles.headerActions}>
+              <View style={[styles.iconContainer, { opacity: 0.3 }]}>
+                <View style={styles.iconBackground} />
+              </View>
+              <View style={[styles.iconContainer, { opacity: 0.3 }]}>
+                <View style={styles.iconBackground} />
+              </View>
+            </View>
+          </View>
         </View>
-      </ThemedView>
+
+        <ContentContainer>
+          {/* Skeleton Hero Image */}
+          <View style={[styles.skeletonImage, { height: 380, backgroundColor: colors.border, opacity: 0.3 }]} />
+
+          {/* Skeleton Title Card */}
+          <AnimatedCard delay={0} style={styles.titleCard}>
+            <View style={styles.titleHeader}>
+              <View style={[styles.skeletonText, { width: '70%', height: 32, backgroundColor: colors.border, opacity: 0.3, borderRadius: 8 }]} />
+              <View style={[styles.skeletonBadge, { width: 120, height: 28, backgroundColor: colors.border, opacity: 0.3, borderRadius: 16 }]} />
+            </View>
+            <View style={styles.metaContainer}>
+              <View style={[styles.skeletonBadge, { width: 80, height: 24, backgroundColor: colors.border, opacity: 0.3, borderRadius: 16 }]} />
+              <View style={[styles.skeletonText, { width: 150, height: 16, backgroundColor: colors.border, opacity: 0.3, borderRadius: 4 }]} />
+            </View>
+          </AnimatedCard>
+
+          {/* Skeleton Nutrition Card */}
+          <AnimatedCard delay={0}>
+            <View style={styles.sectionHeader}>
+              <View style={[styles.skeletonIcon, { width: 24, height: 24, backgroundColor: colors.border, opacity: 0.3, borderRadius: 4 }]} />
+              <View style={[styles.skeletonText, { width: 150, height: 20, backgroundColor: colors.border, opacity: 0.3, borderRadius: 4 }]} />
+            </View>
+            <View style={[styles.skeletonCard, { height: 120, backgroundColor: colors.border, opacity: 0.3, borderRadius: 12, marginBottom: Spacing.lg }]} />
+            <View style={styles.macrosGrid}>
+              {[1, 2, 3, 4].map((i) => (
+                <View key={i} style={styles.macroCardWrapper}>
+                  <View style={[styles.skeletonCard, { height: 100, backgroundColor: colors.border, opacity: 0.3, borderRadius: 12 }]} />
+                </View>
+              ))}
+            </View>
+          </AnimatedCard>
+        </ContentContainer>
+      </PageContainer>
     );
   }
 
   if (!meal) {
     return (
-      <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={styles.errorContainer}>
-          <IconSymbol name="exclamationmark.triangle" size={32} color={colors.icon} />
-          <Text style={[TextStyles.body, { color: colors.icon }]}>
-            Meal not found
-          </Text>
-        </View>
-      </ThemedView>
+      <PageContainer>
+        <ContentContainer scrollable={false}>
+          <View style={styles.errorContainer}>
+            <IconSymbol name="exclamationmark.triangle" size={32} color={colors.icon} />
+            <Text style={[TextStyles.body, { color: colors.icon }]}>
+              Meal not found
+            </Text>
+          </View>
+        </ContentContainer>
+      </PageContainer>
     );
   }
 
+  // Calculate daily percentages based on active nutrition goal (fallback to defaults)
+  const dailyCalories = activeGoal?.dailyTargets.calories ?? 2000;
+  const dailyProtein = activeGoal?.dailyTargets.proteinGrams ?? 150;
+  const dailyFat = activeGoal?.dailyTargets.fatGrams ?? 65;
+  const dailyCarbs = activeGoal?.dailyTargets.carbGrams ?? 250;
+
+  const calorieProgress = meal.calories ? Math.min(meal.calories / dailyCalories, 1) : 0;
+  const proteinProgress = meal.macros?.protein ? Math.min(meal.macros.protein / dailyProtein, 1) : 0;
+  const fatProgress = meal.macros?.fat ? Math.min(meal.macros.fat / dailyFat, 1) : 0;
+  const carbsProgress = meal.macros?.carbs ? Math.min(meal.macros.carbs / dailyCarbs, 1) : 0;
+
   return (
-    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: colors.background }]}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <IconSymbol name="chevron.left" size={24} color={colors.text} />
-        </TouchableOpacity>
-        
-        <Text style={[TextStyles.h2, { color: colors.text }]}>
-          Meal Details
-        </Text>
-        
-        <View style={styles.headerActions}>
+    <PageContainer noPadding>
+      {/* Floating Header - Actions only, no title */}
+      <View style={[styles.floatingHeader, { paddingTop: insets.top + Spacing.base }]}>
+        <View style={styles.headerContent}>
           <TouchableOpacity 
-            style={[styles.actionButton, { backgroundColor: colors.surface }]}
-            onPress={() => Alert.alert('Edit', 'Edit functionality coming soon!')}
+            style={styles.headerButton}
+            onPress={() => router.back()}
+            activeOpacity={0.8}
           >
-            <IconSymbol name="pencil" size={20} color={colors.text} />
+            <View style={styles.iconContainer}>
+              <View style={styles.iconBackground} />
+              <View style={styles.iconGlow}>
+                <IconSymbol name="chevron.left" size={22} color={neonGreen} style={styles.iconThick} />
+              </View>
+            </View>
           </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.deleteButton, { backgroundColor: '#EF4444' }]}
-            onPress={handleDelete}
-          >
-            <IconSymbol name="trash" size={20} color="white" />
-          </TouchableOpacity>
+          
+          <View style={styles.headerActions}>
+            <TouchableOpacity 
+              style={styles.headerButtonEdit}
+              onPress={() => Alert.alert('Edit', 'Edit functionality coming soon!')}
+              activeOpacity={0.8}
+            >
+              <View style={styles.iconContainer}>
+                <View style={styles.iconBackground} />
+                <View style={styles.iconGlow}>
+                  <IconSymbol name="pencil" size={18} color={neonGreen} style={styles.iconThick} />
+                </View>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.headerButtonDelete}
+              onPress={handleDelete}
+              activeOpacity={0.8}
+            >
+              <View style={styles.iconContainer}>
+                <View style={styles.iconBackground} />
+                <View style={styles.iconGlow}>
+                  <IconSymbol name="trash" size={18} color={neonGreen} style={styles.iconThick} />
+                </View>
+              </View>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
-      <ScrollView 
-        style={styles.content} 
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
-        {/* Meal Image */}
+      <ContentContainer>
+        {/* Hero Image with Parallax */}
         {meal.image_url && (
-          <View style={styles.imageContainer}>
-            <HeroImage source={{ uri: meal.image_url }} style={styles.mealImage} />
-            <View style={styles.imageOverlay}>
-              <View style={[styles.healthBadge, getHealthScoreStyle(meal.health_score)]}>
-                <IconSymbol name="checkmark.seal" size={16} color="white" />
-                <Text style={[TextStyles.caption, { color: 'white' }]}>
-                  {getHealthScoreText(meal.health_score)}
-                </Text>
-              </View>
-            </View>
-          </View>
+          <ParallaxImage source={{ uri: meal.image_url }} height={380} />
         )}
 
-        {/* Meal Title and Meta */}
-        <View style={[styles.titleSection, { backgroundColor: colors.surface }]}>
-          <Text style={[TextStyles.h3, { color: colors.text }]}>
-            {meal.description}
-          </Text>
-          
-          <View style={styles.metaRow}>
-            <View style={styles.mealTypeContainer}>
-              <View style={[styles.mealTypeBadge, { backgroundColor: colors.tint }]}>
-                <Text style={TextStyles.caption}>{getMealType(meal.created_at)}</Text>
-              </View>
-            </View>
-            
-            <View style={styles.dateTimeContainer}>
-              <IconSymbol name="calendar" size={16} color={colors.icon} />
-              <Text style={[TextStyles.bodySmall, { color: colors.icon }]}>
-                {formatDate(meal.created_at)}
-              </Text>
-            </View>
-          </View>
-          
-          <View style={styles.timeRow}>
-            <IconSymbol name="clock" size={16} color={colors.icon} />
-            <Text style={[TextStyles.bodySmall, { color: colors.icon }]}>
-              {formatTime(meal.created_at)}
+        {/* Title Card - Elevated */}
+        <AnimatedCard delay={100} style={styles.titleCard}>
+          <View style={styles.titleHeader}>
+            <Text style={[TextStyles.h3, { color: colors.text, flex: 1 }]}>
+              {meal.description}
             </Text>
-          </View>
-        </View>
-
-        {/* Nutrition Overview */}
-        {meal.calories && (
-          <View style={[styles.section, styles.nutritionSection, { backgroundColor: colors.surface }]}>
-            <View style={styles.sectionHeader}>
-              <IconSymbol name="chart.bar" size={20} color={colors.tint} />
-              <Text style={[TextStyles.h4, { color: colors.text }]}>
-                Nutrition Overview
-              </Text>
-            </View>
-            
-            <View style={styles.nutritionGrid}>
-              <View style={[styles.nutritionCard, { backgroundColor: colors.background }]}>
-                <Text style={[TextStyles.bodyMedium, { color: colors.tint }]}>
-                  {meal.calories}
-                </Text>
-                <Text style={[TextStyles.caption, { color: colors.icon }]}>
-                  Calories
-                </Text>
-              </View>
-              
-              {meal.macros && (
-                <>
-                  <View style={[styles.nutritionCard, { backgroundColor: colors.background }]}>
-                    <Text style={[TextStyles.bodyMedium, { color: '#10B981' }]}>
-                      {meal.macros.protein || 0}g
-                    </Text>
-                    <Text style={[TextStyles.caption, { color: colors.icon }]}>
-                      Protein
-                    </Text>
-                  </View>
-                  
-                  <View style={[styles.nutritionCard, { backgroundColor: colors.background }]}>
-                    <Text style={[TextStyles.bodyMedium, { color: '#F59E0B' }]}>
-                      {meal.macros.fat || 0}g
-                    </Text>
-                    <Text style={[TextStyles.caption, { color: colors.icon }]}>
-                      Fat
-                    </Text>
-                  </View>
-                  
-                  <View style={[styles.nutritionCard, { backgroundColor: colors.background }]}>
-                    <Text style={[TextStyles.bodyMedium, { color: '#3B82F6' }]}>
-                      {meal.macros.carbs || 0}g
-                    </Text>
-                    <Text style={[TextStyles.caption, { color: colors.icon }]}>
-                      Carbs
-                    </Text>
-                  </View>
-                  
-                  {meal.macros.fiber && (
-                    <View style={[styles.nutritionCard, { backgroundColor: colors.background }]}>
-                      <Text style={[TextStyles.bodyMedium, { color: '#8B5CF6' }]}>
-                        {meal.macros.fiber}g
-                      </Text>
-                      <Text style={[TextStyles.caption, { color: colors.icon }]}>
-                        Fiber
-                      </Text>
-                    </View>
-                  )}
-                </>
-              )}
-            </View>
-            
-            {meal.nutrition_confidence && (
-              <View style={styles.confidenceRow}>
-                <IconSymbol name="checkmark.seal" size={14} color={colors.tint} />
-                <Text style={[TextStyles.caption, { color: colors.icon }]}>
-                  {Math.round(meal.nutrition_confidence * 100)}% confidence in nutrition analysis
+            {meal.health_score && (
+              <View style={[styles.healthBadge, getHealthScoreStyle(meal.health_score)]}>
+                <IconSymbol name="checkmark.seal" size={16} color="white" />
+                <Text style={[TextStyles.bodySmall, { color: 'white', fontWeight: '600' }]}>
+                  {getHealthScoreText(meal.health_score)}
                 </Text>
               </View>
             )}
           </View>
+          
+          <View style={styles.metaContainer}>
+            <View style={[styles.mealTypeBadge, { backgroundColor: neonGreen }]}>
+              <Text style={[TextStyles.bodySmall, { color: '#000000', fontWeight: '600' }]}>
+                {getMealType(meal.created_at)}
+              </Text>
+            </View>
+            
+            <View style={styles.dateTimeRow}>
+              <IconSymbol name="calendar" size={16} color={colors.icon} />
+              <Text style={[TextStyles.bodySmall, { color: colors.icon, marginLeft: Spacing.xs }]}>
+                {formatDate(meal.created_at)} • {formatTime(meal.created_at)}
+              </Text>
+            </View>
+          </View>
+        </AnimatedCard>
+
+        {/* Nutrition Overview - Enhanced Cards */}
+        {meal.calories && (
+          <AnimatedCard delay={200}>
+            <View style={styles.sectionHeader}>
+              <IconSymbol name="chart.bar" size={24} color={colors.tint} />
+              <View style={{ flex: 1 }}>
+                <Text style={[TextStyles.h4, { color: colors.text }]}>
+                  Nutrition Overview
+                </Text>
+                {activeGoal && (
+                  <Text style={[TextStyles.bodySmall, { color: colors.icon }]}>
+                    Based on your {activeGoal.name.toLowerCase()} goal of{' '}
+                    {Math.round(activeGoal.dailyTargets.calories)} kcal / day
+                  </Text>
+                )}
+              </View>
+            </View>
+            
+            {/* Calories Hero Card */}
+            <View style={styles.caloriesHero}>
+              <NutritionCard
+                value={meal.calories}
+                label="Calories"
+                unit="cal"
+                size="large"
+                progressText={calorieProgress > 0 ? `${Math.round(calorieProgress * 100)}% of daily goal` : undefined}
+                delay={250}
+                style={styles.caloriesCard}
+              />
+            </View>
+
+            {/* Macros Grid - 2x2 layout */}
+            {meal.macros && (
+              <View style={styles.macrosGrid}>
+                <View style={styles.macroCardWrapper}>
+                  <NutritionCard
+                    value={meal.macros.protein || 0}
+                    label="Protein"
+                    unit="g"
+                    delay={300}
+                    style={styles.macroCard}
+                  />
+                </View>
+                <View style={styles.macroCardWrapper}>
+                  <NutritionCard
+                    value={meal.macros.fat || 0}
+                    label="Fat"
+                    unit="g"
+                    delay={350}
+                    style={styles.macroCard}
+                  />
+                </View>
+                <View style={styles.macroCardWrapper}>
+                  <NutritionCard
+                    value={meal.macros.carbs || 0}
+                    label="Carbs"
+                    unit="g"
+                    delay={400}
+                    style={styles.macroCard}
+                  />
+                </View>
+                {meal.macros.fiber && (
+                  <View style={styles.macroCardWrapper}>
+                    <NutritionCard
+                      value={meal.macros.fiber}
+                      label="Fiber"
+                      unit="g"
+                      delay={450}
+                      style={styles.macroCard}
+                    />
+                  </View>
+                )}
+              </View>
+            )}
+          </AnimatedCard>
         )}
 
-        {/* Ingredients */}
+        {/* Health Assessment - Quote Style */}
+        {meal.qualitative_feedback && (
+          <AnimatedCard delay={450} style={styles.quoteCard}>
+            <View style={styles.quoteHeader}>
+              <IconSymbol name="brain.head.profile" size={24} color={colors.tint} />
+              <Text style={[TextStyles.h4, { color: colors.text }]}>
+                Health Assessment
+              </Text>
+            </View>
+            <View style={styles.quoteContent}>
+              <IconSymbol name="quote.opening" size={20} color={colors.tint} style={styles.quoteIcon} />
+              <Text style={[TextStyles.body, { color: colors.text, lineHeight: 24, fontStyle: 'italic' }]}>
+                {meal.qualitative_feedback}
+              </Text>
+            </View>
+          </AnimatedCard>
+        )}
+
+        {/* Ingredients - Tag Style */}
         {meal.ingredients && meal.ingredients.length > 0 && (
-          <View style={[styles.section, { backgroundColor: colors.surface }]}>
+          <AnimatedCard delay={500}>
             <View style={styles.sectionHeader}>
-              <IconSymbol name="list.bullet" size={20} color={colors.tint} />
+              <IconSymbol name="list.bullet" size={24} color={colors.tint} />
               <Text style={[TextStyles.h4, { color: colors.text }]}>
                 Ingredients
               </Text>
             </View>
-            
-            <View style={styles.ingredientsList}>
-              {meal.ingredients.map((ingredient, index) => (
-                <View key={index} style={styles.ingredientItem}>
-                  <View style={[styles.ingredientDot, { backgroundColor: colors.tint }]} />
-                  <Text style={[TextStyles.body, { color: colors.text }]}>
-                    {ingredient}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          </View>
+            <IngredientTags ingredients={meal.ingredients} maxVisible={8} />
+          </AnimatedCard>
         )}
 
         {/* Serving Size */}
         {meal.serving_estimate && (
-          <View style={[styles.section, { backgroundColor: colors.surface }]}>
+          <AnimatedCard delay={550}>
             <View style={styles.sectionHeader}>
-              <IconSymbol name="scalemass" size={20} color={colors.tint} />
+              <IconSymbol name="scalemass" size={24} color={colors.tint} />
               <Text style={[TextStyles.h4, { color: colors.text }]}>
                 Serving Size
               </Text>
             </View>
-            
             <Text style={[TextStyles.body, { color: colors.text }]}>
               {meal.serving_estimate}
             </Text>
-          </View>
-        )}
-
-        {/* AI Feedback */}
-        {meal.qualitative_feedback && (
-          <View style={[styles.section, { backgroundColor: colors.surface }]}>
-            <View style={styles.sectionHeader}>
-              <IconSymbol name="brain.head.profile" size={20} color={colors.tint} />
-              <Text style={[TextStyles.h4, { color: colors.text }]}>
-                AI Health Assessment
-              </Text>
-            </View>
-            
-            <Text style={[TextStyles.body, { color: colors.text }]}>
-              {meal.qualitative_feedback}
-            </Text>
-          </View>
+          </AnimatedCard>
         )}
 
         {/* Recommendations */}
         {meal.ai_analysis?.recommendations && meal.ai_analysis.recommendations.length > 0 && (
-          <View style={[styles.section, { backgroundColor: colors.surface }]}>
+          <AnimatedCard delay={600}>
             <View style={styles.sectionHeader}>
-              <IconSymbol name="lightbulb" size={20} color={colors.tint} />
+              <IconSymbol name="lightbulb" size={24} color={colors.tint} />
               <Text style={[TextStyles.h4, { color: colors.text }]}>
                 Recommendations
               </Text>
@@ -402,7 +467,18 @@ export default function MealDetailScreen() {
             
             <View style={styles.recommendationsList}>
               {meal.ai_analysis.recommendations.map((rec: any, index: number) => (
-                <View key={index} style={[styles.recommendationItem, { backgroundColor: colors.background }]}>
+                <View 
+                  key={index} 
+                  style={[
+                    styles.recommendationItem, 
+                    { 
+                      backgroundColor: colors.background,
+                      borderLeftWidth: 3,
+                      borderLeftColor: rec.priority === 3 ? '#EF4444' : 
+                                      rec.priority === 2 ? '#F59E0B' : '#10B981',
+                    }
+                  ]}
+                >
                   <View style={styles.recommendationHeader}>
                     <View style={[
                       styles.priorityBadge, 
@@ -411,31 +487,31 @@ export default function MealDetailScreen() {
                                         rec.priority === 2 ? '#F59E0B' : '#10B981' 
                       }
                     ]}>
-                      <Text style={TextStyles.caption}>
+                      <Text style={[TextStyles.caption, { color: 'white', fontWeight: '600' }]}>
                         {rec.priority === 3 ? 'High' : rec.priority === 2 ? 'Med' : 'Low'}
                       </Text>
                     </View>
-                    <Text style={[TextStyles.caption, { color: colors.icon }]}>
+                    <Text style={[TextStyles.bodySmall, { color: colors.icon }]}>
                       {rec.type?.charAt(0).toUpperCase() + rec.type?.slice(1) || 'General'}
                     </Text>
                   </View>
-                  <Text style={[TextStyles.body, { color: colors.text }]}>
+                  <Text style={[TextStyles.body, { color: colors.text, marginTop: Spacing.sm }]}>
                     {rec.content}
                   </Text>
                 </View>
               ))}
             </View>
-          </View>
+          </AnimatedCard>
         )}
 
         {/* Processing Status */}
         {meal.processing_status && meal.processing_status !== 'completed' && (
-          <View style={[styles.section, { backgroundColor: colors.surface }]}>
+          <AnimatedCard delay={650}>
             <View style={styles.sectionHeader}>
               <IconSymbol 
                 name={meal.processing_status === 'processing' ? 'hourglass' : 
                      meal.processing_status === 'failed' ? 'exclamationmark.triangle' : 'checkmark.circle'} 
-                size={20} 
+                size={24} 
                 color={meal.processing_status === 'processing' ? '#F59E0B' : 
                        meal.processing_status === 'failed' ? '#EF4444' : colors.tint} 
               />
@@ -449,222 +525,216 @@ export default function MealDetailScreen() {
                meal.processing_status === 'failed' ? 'Analysis failed - please try again' :
                'Analysis pending'}
             </Text>
-          </View>
+          </AnimatedCard>
         )}
-      </ScrollView>
-    </ThemedView>
+      </ContentContainer>
+    </PageContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  floatingHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+    backgroundColor: 'transparent',
+    paddingHorizontal: PageSpacing.containerPadding,
   },
-  header: {
+  headerContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 60,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
   },
-  backButton: {
-    padding: 8,
+  headerButton: {
+    padding: Spacing.sm,
   },
-  headerTitle: {
+  headerButtonEdit: {
+    padding: Spacing.sm,
+  },
+  headerButtonDelete: {
+    padding: Spacing.sm,
   },
   headerActions: {
     flexDirection: 'row',
-    gap: 8,
+    gap: Spacing.sm,
   },
-  actionButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  iconContainer: {
+    position: 'relative',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  deleteButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
+  iconBackground: {
+    position: 'absolute',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    ...(Platform.OS === 'web' && {
+      filter: 'blur(8px)',
+    }),
+    ...(Platform.OS !== 'web' && {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 0.8,
+      shadowRadius: 12,
+    }),
   },
-  content: {
-    flex: 1,
+  iconThick: {
+    fontWeight: '900',
+    ...(Platform.OS === 'web' && {
+      textShadow: '0 0 2px rgba(74, 222, 128, 0.8)',
+    }),
   },
-  scrollContent: {
-    paddingBottom: 100,
+  iconGlow: {
+    shadowColor: neonGreen,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 20,
+    elevation: 20,
+    // Additional glow layers for web
+    ...(Platform.OS === 'web' && {
+      filter: 'drop-shadow(0 0 8px rgba(74, 222, 128, 1)) drop-shadow(0 0 16px rgba(74, 222, 128, 0.8))',
+    }),
   },
   loadingContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 16,
-  },
-  loadingText: {
+    gap: Spacing.base,
   },
   errorContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 16,
+    gap: Spacing.base,
   },
-  errorText: {
+  titleCard: {
+    marginTop: -20,
+    marginBottom: PageSpacing.sectionGap,
+    paddingTop: Spacing.xl,
   },
-  imageContainer: {
-    position: 'relative',
-  },
-  mealImage: {
-    width: width,
-    height: 300,
-    resizeMode: 'cover',
-  },
-  imageOverlay: {
-    position: 'absolute',
-    top: 20,
-    left: 20,
+  titleHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.lg,
+    gap: Spacing.md,
   },
   healthBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    gap: 6,
+    paddingHorizontal: Spacing.base,
+    paddingVertical: Spacing.sm,
+    borderRadius: 16,
+    gap: Spacing.xs,
+    ...Shadows.md,
+    alignSelf: 'flex-start',
   },
-  healthBadgeText: {
-  },
-  titleSection: {
-    padding: 20,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    marginTop: -20,
-  },
-  mealTitle: {
-    marginBottom: 16,
-  },
-  metaRow: {
+  metaContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  mealTypeContainer: {
-    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.md,
   },
   mealTypeBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: Spacing.base,
+    paddingVertical: Spacing.sm,
     borderRadius: 16,
   },
-  mealTypeText: {
-    color: 'white',
-  },
-  dateTimeContainer: {
+  dateTimeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-  },
-  dateText: {
-  },
-  timeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  timeText: {
-  },
-  section: {
-    margin: 20,
-    marginTop: 24,
-    padding: 20,
-    borderRadius: 16,
-  },
-  nutritionSection: {
-    marginTop: 32,
+    gap: Spacing.xs,
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    marginBottom: 16,
+    gap: Spacing.md,
+    marginBottom: Spacing.lg,
   },
-  sectionTitle: {
+  caloriesHero: {
+    marginBottom: Spacing.lg,
   },
-  nutritionGrid: {
+  caloriesCard: {
+    width: '100%',
+  },
+  macrosGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 16,
+    gap: Spacing.md,
+    marginBottom: Spacing.base,
   },
-  nutritionCard: {
-    flex: 1,
-    minWidth: 80,
-    padding: 16,
-    borderRadius: 12,
+  macroCardWrapper: {
+    width: '48%', // 2 columns with gap
     alignItems: 'center',
   },
-  nutritionValue: {
-    marginBottom: 4,
-  },
-  nutritionLabel: {
+  macroCard: {
+    width: '100%',
   },
   confidenceRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: Spacing.xs,
+    marginTop: Spacing.base,
+    paddingTop: Spacing.base,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
   },
-  confidenceText: {
+  quoteCard: {
+    borderLeftWidth: 4,
+    borderLeftColor: neonGreen,
   },
-  ingredientsList: {
-    gap: 8,
-  },
-  ingredientItem: {
+  quoteHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: Spacing.md,
+    marginBottom: Spacing.lg,
   },
-  ingredientDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+  quoteContent: {
+    position: 'relative',
+    paddingLeft: Spacing.xl,
   },
-  ingredientText: {
-  },
-  servingText: {
-  },
-  feedbackText: {
-    lineHeight: 24,
+  quoteIcon: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    opacity: 0.3,
   },
   recommendationsList: {
-    gap: 12,
+    gap: Spacing.base,
   },
   recommendationItem: {
-    padding: 16,
+    padding: Spacing.lg,
     borderRadius: 12,
+    paddingLeft: Spacing.lg + 3,
   },
   recommendationHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
+    gap: Spacing.sm,
   },
   priorityBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
     borderRadius: 8,
   },
-  priorityText: {
-    color: 'white',
+  skeletonImage: {
+    width: '100%',
+    borderRadius: 0,
   },
-  recommendationType: {
-    textTransform: 'capitalize',
+  skeletonText: {
+    borderRadius: 4,
   },
-  recommendationContent: {
-    lineHeight: 20,
+  skeletonBadge: {
+    borderRadius: 16,
   },
-  statusText: {
+  skeletonIcon: {
+    borderRadius: 4,
+  },
+  skeletonCard: {
+    borderRadius: 12,
   },
 }); 

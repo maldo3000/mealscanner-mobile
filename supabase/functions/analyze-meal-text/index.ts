@@ -235,8 +235,42 @@ Provide specific, actionable recommendations based on the user's goals. Consider
       console.error('Database error saving analysis:', analysisError)
     }
 
-    // Update meal record with analysis if mealId provided
-    if (mealId && analysisResult.nutrition) {
+    // Create or update meal record with analysis
+    let finalMealId = mealId
+    if (!finalMealId && analysisResult.nutrition) {
+      // Create new meal record if mealId not provided
+      const { data: newMeal, error: createError } = await supabase
+        .from('meals')
+        .insert({
+          user_id: userId,
+          description: description,
+          calories: Math.round(analysisResult.nutrition.calories),
+          macros: {
+            protein: Math.round(analysisResult.nutrition.protein * 10) / 10,
+            carbs: Math.round(analysisResult.nutrition.carbs * 10) / 10,
+            fat: Math.round(analysisResult.nutrition.fat * 10) / 10,
+            fiber: Math.round(analysisResult.nutrition.fiber * 10) / 10
+          },
+          ingredients: analysisResult.ingredients,
+          serving_estimate: analysisResult.serving_size,
+          health_score: analysisResult.health_score > 7 ? 'healthy' : 
+                       analysisResult.health_score > 4 ? 'moderately_healthy' : 'unhealthy',
+          qualitative_feedback: analysisResult.feedback,
+          ai_analysis: analysisResult,
+          analysis_version: '1.0',
+          processing_status: 'completed'
+        })
+        .select()
+        .single()
+
+      if (createError) {
+        console.error('Error creating meal:', createError)
+      } else {
+        finalMealId = newMeal?.id
+        console.log('Created meal with ID:', finalMealId)
+      }
+    } else if (finalMealId && analysisResult.nutrition) {
+      // Update existing meal record
       const { error: updateError } = await supabase
         .from('meals')
         .update({
@@ -256,18 +290,26 @@ Provide specific, actionable recommendations based on the user's goals. Consider
           analysis_version: '1.0',
           processing_status: 'completed'
         })
-        .eq('id', mealId)
+        .eq('id', finalMealId)
 
       if (updateError) {
         console.error('Error updating meal:', updateError)
       }
     }
 
+    // Update analysis record with meal_id if we created/updated a meal
+    if (finalMealId && analysisRecord) {
+      await supabase
+        .from('analysis_results')
+        .update({ meal_id: finalMealId })
+        .eq('id', analysisRecord.id)
+    }
+
     // Generate personalized recommendations
     if (analysisResult.recommendations && analysisResult.recommendations.length > 0) {
       const recommendationsToInsert = analysisResult.recommendations.map(rec => ({
         user_id: userId,
-        meal_id: mealId,
+        meal_id: finalMealId,
         recommendation_type: rec.type,
         content: rec.content,
         priority: rec.priority || 1
@@ -287,6 +329,7 @@ Provide specific, actionable recommendations based on the user's goals. Consider
         success: true,
         analysis: analysisResult,
         analysis_id: analysisRecord?.id,
+        meal_id: finalMealId,
         processing_time_ms: processingTime
       }),
       {

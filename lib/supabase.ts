@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import * as FileSystemLegacy from 'expo-file-system/legacy'
 import { Platform } from 'react-native'
 
 // Only import AsyncStorage on native platforms
@@ -155,6 +156,16 @@ export const getUserMeals = async (userId: string, limit = 20) => {
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .limit(limit)
+  
+  return { data, error }
+}
+
+export const getAllUserMeals = async (userId: string) => {
+  const { data, error } = await supabase
+    .from('meals')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
   
   return { data, error }
 }
@@ -602,4 +613,296 @@ export const getFavoriteRecipes = async (userId: string) => {
     .order('created_at', { ascending: false })
   
   return { data, error }
+}
+
+// Audio upload helper function
+export const uploadAudioFile = async (uri: string, fileName: string, userId: string) => {
+  try {
+    // Use the same FormData approach as image upload
+    // For React Native, we pass the file URI directly
+    const formData = new FormData()
+    formData.append('file', {
+      uri: uri,
+      type: 'audio/m4a',
+      name: fileName,
+    } as any)
+    
+    const { data, error } = await supabase.storage
+      .from('audio-recordings')
+      .upload(`${userId}/${fileName}`, formData, {
+        contentType: 'audio/m4a',
+        upsert: false
+      })
+    
+    if (error) {
+      console.error('Audio upload error:', error)
+      // Log more details for debugging
+      console.error('Upload error details:', {
+        message: error.message,
+        statusCode: (error as any).statusCode,
+        error: (error as any).error
+      })
+      return { data: null, error }
+    }
+    
+    // Get public URL
+    const { data: { publicUrl } } = supabase.storage
+      .from('audio-recordings')
+      .getPublicUrl(`${userId}/${fileName}`)
+    
+    return { data: { ...data, publicUrl }, error: null }
+  } catch (error) {
+    console.error('Audio upload error:', error)
+    return { data: null, error }
+  }
+}
+
+// Speech-to-text function (via storage URL)
+export const transcribeAudio = async (audioUrl: string, userId: string, language?: string) => {
+  try {
+    console.log('🎤 Starting speech-to-text for:', { audioUrl: audioUrl.substring(0, 50) + '...', userId })
+    
+    const { data, error } = await supabase.functions.invoke('speech-to-text', {
+      body: {
+        audio_url: audioUrl,
+        user_id: userId,
+        language: language || 'en'
+      }
+    })
+
+    if (error) {
+      console.error('Speech-to-text error:', error)
+      throw error
+    }
+    
+    console.log('🎤 Speech-to-text success:', data?.transcript?.substring(0, 50) + '...')
+    return { data, error: null }
+  } catch (error) {
+    console.error('Speech-to-text error:', error)
+    return { data: null, error }
+  }
+}
+
+// Direct transcription function (bypasses storage, sends base64 directly)
+export const transcribeAudioDirect = async (audioUri: string, userId: string, language?: string) => {
+  try {
+    console.log('🎤 Starting direct speech-to-text for:', { audioUri: audioUri.substring(0, 50) + '...', userId })
+    
+    // Read audio file as base64 using legacy API (for compatibility)
+    const base64Audio = await FileSystemLegacy.readAsStringAsync(audioUri, {
+      encoding: FileSystemLegacy.EncodingType.Base64,
+    })
+
+    console.log('🎤 Audio file read, size:', base64Audio.length, 'characters')
+
+    // Create a data URL
+    const dataUrl = `data:audio/m4a;base64,${base64Audio}`
+    
+    console.log('🎤 Invoking speech-to-text-direct edge function...')
+    console.log('🎤 Request payload size:', dataUrl.length, 'characters')
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('speech-to-text-direct', {
+        body: {
+          audio_data: dataUrl,
+          user_id: userId,
+          language: language || 'en'
+        }
+      })
+
+      // When edge function returns non-2xx, Supabase puts error response in data field
+      // Check data first for error messages (this happens when function returns 500 with JSON body)
+      if (data && typeof data === 'object') {
+        if ('error' in data) {
+          const errorFromData = (data as any).error
+          console.error('Edge function returned error in data:', errorFromData)
+          // Check if it's a deployment issue
+          if (typeof errorFromData === 'string' && (errorFromData.includes('not found') || errorFromData.includes('404'))) {
+            throw new Error('speech-to-text-direct edge function not deployed. Please run: supabase functions deploy speech-to-text-direct')
+          }
+          if (typeof errorFromData === 'string' && errorFromData.includes('OpenAI API key')) {
+            throw new Error('OpenAI API key not configured in Supabase. Please set it: supabase secrets set OPENAI_API_KEY=your-key')
+          }
+          throw new Error(errorFromData)
+        }
+        // Some functions return { success: false, error: ... }
+        if ('success' in data && data.success === false && 'error' in data) {
+          const errorFromData = (data as any).error
+          console.error('Edge function returned failure in data:', errorFromData)
+          throw new Error(errorFromData)
+        }
+      }
+
+      if (error) {
+        console.error('Direct speech-to-text error:', error)
+        console.error('Full error object:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2))
+        
+        // Try to extract error message from various possible locations
+        let errorMessage = error.message || 'Unknown error'
+        const errorObj = error as any
+        
+        // Check error context/response - Supabase puts response details here including status code
+        let statusCode = errorObj.statusCode || errorObj.status
+        if (errorObj.context) {
+          try {
+            const contextData = typeof errorObj.context === 'string' 
+              ? JSON.parse(errorObj.context) 
+              : errorObj.context
+            console.log('Error context data:', contextData)
+            
+            // Extract status code from context (response object has status property)
+            // The status is directly in contextData.status
+            if (contextData && typeof contextData === 'object') {
+              if ('status' in contextData && contextData.status !== undefined) {
+                statusCode = Number(contextData.status) || contextData.status
+                console.log('Found status code in context:', statusCode)
+              }
+              // Also check URL for function name to confirm it's a 404
+              if (contextData.url && contextData.url.includes('speech-to-text-direct') && !statusCode) {
+                statusCode = 404
+                console.log('Detected 404 from URL context')
+              }
+            }
+            
+            if (contextData?.error) {
+              errorMessage = contextData.error
+            } else if (contextData?.message) {
+              errorMessage = contextData.message
+            } else if (typeof contextData === 'string') {
+              errorMessage = contextData
+            }
+          } catch (e) {
+            console.warn('Could not parse error context:', e)
+          }
+        }
+        
+        // Check status codes - 404 means function not deployed
+        console.log('Final error status code:', statusCode)
+        
+        if (statusCode === 404 || statusCode === '404' || errorMessage.includes('404') || errorMessage.includes('not found') || errorMessage.includes('Function not found')) {
+          throw new Error('speech-to-text-direct edge function not deployed. Please run: supabase functions deploy speech-to-text-direct')
+        }
+        
+        if (statusCode === 500 || statusCode === 502 || statusCode === 503 || errorMessage.includes('500')) {
+          if (errorMessage.includes('OpenAI API key') || errorMessage.includes('not configured')) {
+            throw new Error('OpenAI API key not configured in Supabase. Please set it: supabase secrets set OPENAI_API_KEY=your-key')
+          }
+          throw new Error(`Edge function server error (${statusCode || 'unknown'}): ${errorMessage}. Check Supabase function logs: supabase functions logs speech-to-text-direct`)
+        }
+        
+        // If we have data but also error, data might contain the actual error message
+        if (data && typeof data === 'object') {
+          if ('error' in data) {
+            errorMessage = (data as any).error
+          } else if ('message' in data) {
+            errorMessage = (data as any).message
+          }
+        }
+        
+        throw new Error(`Edge function error (${statusCode || 'unknown'}): ${errorMessage}`)
+      }
+      
+      if (!data || !data.transcript) {
+        console.error('Invalid response data:', data)
+        throw new Error('Edge function returned invalid response: missing transcript')
+      }
+      
+      console.log('🎤 Direct speech-to-text success:', data?.transcript?.substring(0, 50) + '...')
+      return { data, error: null }
+    } catch (invokeError) {
+      // Catch any errors from the invoke call itself
+      console.error('Function invoke error:', invokeError)
+      const err = invokeError instanceof Error ? invokeError : new Error(String(invokeError))
+      return { data: null, error: err }
+    }
+  } catch (error) {
+    console.error('Direct speech-to-text error:', error)
+    return { data: null, error }
+  }
+}
+
+// Recipe Generator Functions
+export const generateRecipeSuggestions = async (
+  userInput: string,
+  userId: string,
+  nutritionGoals?: {
+    dailyTargets: {
+      calories: number;
+      proteinGrams: number;
+      carbGrams: number;
+      fatGrams: number;
+      fibreGrams: number;
+    };
+    focusAreas?: string[];
+    goalType?: string;
+  }
+) => {
+  try {
+    console.log('🔍 Starting recipe suggestions generation for:', { userInput: userInput.substring(0, 50) + '...', userId });
+    
+    const { data, error } = await supabase.functions.invoke('generate-recipe-suggestions', {
+      body: {
+        user_input: userInput,
+        user_id: userId,
+        nutrition_goals: nutritionGoals,
+      }
+    })
+
+    if (error) {
+      console.error('Recipe suggestions generation error:', error)
+      throw error
+    }
+    
+    console.log('🔍 Recipe suggestions generation success:', data)
+    return { data, error: null }
+  } catch (error) {
+    console.error('Recipe suggestions generation error:', error)
+    return { data: null, error }
+  }
+}
+
+export const generateRecipeFromSuggestion = async (
+  suggestion: {
+    name: string;
+    description: string;
+    estimated_calories?: number;
+    estimated_protein?: number;
+    tags?: string[];
+    cuisine_type?: string;
+    difficulty?: 'Easy' | 'Medium' | 'Hard';
+  },
+  userId: string,
+  nutritionGoals?: {
+    dailyTargets: {
+      calories: number;
+      proteinGrams: number;
+      carbGrams: number;
+      fatGrams: number;
+      fibreGrams: number;
+    };
+    focusAreas?: string[];
+  }
+) => {
+  try {
+    console.log('🔍 Starting full recipe generation for:', { recipeName: suggestion.name, userId });
+    
+    const { data, error } = await supabase.functions.invoke('generate-recipe-from-suggestion', {
+      body: {
+        suggestion,
+        user_id: userId,
+        nutrition_goals: nutritionGoals,
+      }
+    })
+
+    if (error) {
+      console.error('Full recipe generation error:', error)
+      throw error
+    }
+    
+    console.log('🔍 Full recipe generation success:', data)
+    return { data, error: null }
+  } catch (error) {
+    console.error('Full recipe generation error:', error)
+    return { data: null, error }
+  }
 } 

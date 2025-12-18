@@ -1,121 +1,193 @@
-import { ThemedView } from '@/components/ThemedView';
-import { Colors } from '@/constants/Colors';
+import { ContentContainer } from '@/components/layout/ContentContainer';
+import { PageContainer } from '@/components/layout/PageContainer';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { Section } from '@/components/layout/Section';
+import { Card } from '@/components/ui/Card';
+import { IconSymbol } from '@/components/ui/IconSymbol';
+import { Colors, neonGreen, glassBorder } from '@/constants/Colors';
+import { PageSpacing, Spacing } from '@/constants/Spacing';
 import { TextStyles } from '@/constants/Typography';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { useNutritionGoals } from '@/hooks/useNutritionGoals';
+import { useRouter } from 'expo-router';
 import React from 'react';
 import { StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 
 export default function SettingsScreen() {
   const [showMetrics, setShowMetrics] = React.useState(true);
+  const router = useRouter();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
+  const { activeGoal } = useNutritionGoals();
+
+  const goalSubtitle = activeGoal
+    ? `${activeGoal.name} • ${Math.round(activeGoal.dailyTargets.calories)} kcal`
+    : 'Not set yet';
   
   return (
-    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
-        <Text style={[TextStyles.h2, { color: colors.text }]}>Settings</Text>
-      </View>
+    <PageContainer>
+      <PageHeader title="Settings" />
       
-      <View style={styles.content}>
+      <ContentContainer>
         {/* Profile Section */}
-        <View style={styles.section}>
-          <Text style={[TextStyles.h4, { color: colors.text, marginBottom: 12 }]}>Profile</Text>
-          <TouchableOpacity style={[styles.settingItem, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[TextStyles.body, { color: colors.text }]}>👤 Edit Profile</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.settingItem, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[TextStyles.body, { color: colors.text }]}>🎯 Nutrition Goals</Text>
-          </TouchableOpacity>
-        </View>
+        <Section title="Profile">
+          <Card variant="glass" padding="none" style={styles.settingItem}>
+            <TouchableOpacity style={styles.settingItemContent}>
+              <View style={styles.settingItemLeft}>
+                <View style={[styles.iconContainer, { backgroundColor: `${neonGreen}20`, borderColor: `${neonGreen}40`, borderWidth: 1 }]}>
+                  <IconSymbol name="person" size={20} color={neonGreen} />
+                </View>
+                <Text style={[TextStyles.body, { color: colors.text }]}>Edit Profile</Text>
+              </View>
+              <IconSymbol name="chevron.right" size={16} color={colors.icon} />
+            </TouchableOpacity>
+          </Card>
+          <Card variant="glass" padding="none" style={styles.settingItem}>
+            <TouchableOpacity
+              style={styles.settingItemContent}
+              onPress={() => router.push('/settings/nutrition-goals')}
+              accessibilityLabel="Set nutrition goals"
+              accessibilityHint="Opens the nutrition goals setup screen"
+            >
+              <View style={styles.settingItemLeft}>
+                <View style={[styles.iconContainer, { backgroundColor: `${neonGreen}20`, borderColor: `${neonGreen}40`, borderWidth: 1 }]}>
+                  <IconSymbol name="target" size={20} color={neonGreen} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[TextStyles.body, { color: colors.text }]}>
+                    Nutrition Goals
+                  </Text>
+                  <Text style={[TextStyles.bodySmall, { color: colors.icon }]}>
+                    {goalSubtitle}
+                  </Text>
+                </View>
+              </View>
+              <IconSymbol name="chevron.right" size={16} color={colors.icon} />
+            </TouchableOpacity>
+          </Card>
+        </Section>
 
         {/* Preferences Section */}
-        <View style={styles.section}>
-          <Text style={[TextStyles.h4, { color: colors.text, marginBottom: 12 }]}>Preferences</Text>
+        <Section title="Preferences">
+          <Card variant="glass" padding="none" style={styles.settingItem}>
+            <View style={styles.settingItemContent}>
+              <View style={styles.settingItemLeft}>
+                <View style={[styles.iconContainer, { backgroundColor: `${neonGreen}20`, borderColor: `${neonGreen}40`, borderWidth: 1 }]}>
+                  <IconSymbol name="chart.bar" size={20} color={neonGreen} />
+                </View>
+                <Text style={[TextStyles.body, { color: colors.text }]}>Show Nutrition Metrics</Text>
+              </View>
+              <Switch
+                value={showMetrics}
+                onValueChange={setShowMetrics}
+                trackColor={{ false: glassBorder, true: neonGreen }}
+                thumbColor={showMetrics ? '#000000' : colors.icon}
+              />
+            </View>
+          </Card>
           
-          <View style={[styles.settingItemWithSwitch, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[TextStyles.body, { color: colors.text }]}>📊 Show Nutrition Metrics</Text>
-            <Switch
-              value={showMetrics}
-              onValueChange={setShowMetrics}
-              trackColor={{ false: colors.border, true: colors.primary }}
-              thumbColor={showMetrics ? colors.background : colors.icon}
-            />
-          </View>
+          <Card variant="glass" padding="none" style={styles.settingItem}>
+            <TouchableOpacity style={styles.settingItemContent}>
+              <View style={styles.settingItemLeft}>
+                <View style={[styles.iconContainer, { backgroundColor: `${neonGreen}20`, borderColor: `${neonGreen}40`, borderWidth: 1 }]}>
+                  <IconSymbol name="bell" size={20} color={neonGreen} />
+                </View>
+                <Text style={[TextStyles.body, { color: colors.text }]}>Notifications</Text>
+              </View>
+              <IconSymbol name="chevron.right" size={16} color={colors.icon} />
+            </TouchableOpacity>
+          </Card>
           
-          <TouchableOpacity style={[styles.settingItem, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[TextStyles.body, { color: colors.text }]}>🔔 Notifications</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={[styles.settingItem, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[TextStyles.body, { color: colors.text }]}>📱 Units & Display</Text>
-          </TouchableOpacity>
-        </View>
+          <Card variant="glass" padding="none" style={styles.settingItem}>
+            <TouchableOpacity style={styles.settingItemContent}>
+              <View style={styles.settingItemLeft}>
+                <View style={[styles.iconContainer, { backgroundColor: `${neonGreen}20`, borderColor: `${neonGreen}40`, borderWidth: 1 }]}>
+                  <IconSymbol name="iphone" size={20} color={neonGreen} />
+                </View>
+                <Text style={[TextStyles.body, { color: colors.text }]}>Units & Display</Text>
+              </View>
+              <IconSymbol name="chevron.right" size={16} color={colors.icon} />
+            </TouchableOpacity>
+          </Card>
+        </Section>
 
         {/* Data Section */}
-        <View style={styles.section}>
-          <Text style={[TextStyles.h4, { color: colors.text, marginBottom: 12 }]}>Data</Text>
-          <TouchableOpacity style={[styles.settingItem, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[TextStyles.body, { color: colors.text }]}>📤 Export Data</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.settingItem, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[TextStyles.body, { color: colors.text }]}>🗑️ Clear History</Text>
-          </TouchableOpacity>
-        </View>
+        <Section title="Data">
+          <Card variant="glass" padding="none" style={styles.settingItem}>
+            <TouchableOpacity style={styles.settingItemContent}>
+              <View style={styles.settingItemLeft}>
+                <View style={[styles.iconContainer, { backgroundColor: `${neonGreen}20`, borderColor: `${neonGreen}40`, borderWidth: 1 }]}>
+                  <IconSymbol name="square.and.arrow.up" size={20} color={neonGreen} />
+                </View>
+                <Text style={[TextStyles.body, { color: colors.text }]}>Export Data</Text>
+              </View>
+              <IconSymbol name="chevron.right" size={16} color={colors.icon} />
+            </TouchableOpacity>
+          </Card>
+          <Card variant="glass" padding="none" style={styles.settingItem}>
+            <TouchableOpacity style={styles.settingItemContent}>
+              <View style={styles.settingItemLeft}>
+                <View style={[styles.iconContainer, { backgroundColor: `${neonGreen}20`, borderColor: `${neonGreen}40`, borderWidth: 1 }]}>
+                  <IconSymbol name="trash" size={20} color={neonGreen} />
+                </View>
+                <Text style={[TextStyles.body, { color: colors.text }]}>Clear History</Text>
+              </View>
+              <IconSymbol name="chevron.right" size={16} color={colors.icon} />
+            </TouchableOpacity>
+          </Card>
+        </Section>
 
         {/* About Section */}
-        <View style={styles.section}>
-          <TouchableOpacity style={[styles.settingItem, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[TextStyles.body, { color: colors.text }]}>ℹ️ About MealScanner</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.settingItem, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[TextStyles.body, { color: colors.text }]}>📋 Privacy Policy</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </ThemedView>
+        <Section>
+          <Card variant="glass" padding="none" style={styles.settingItem}>
+            <TouchableOpacity style={styles.settingItemContent}>
+              <View style={styles.settingItemLeft}>
+                <View style={[styles.iconContainer, { backgroundColor: `${neonGreen}20`, borderColor: `${neonGreen}40`, borderWidth: 1 }]}>
+                  <IconSymbol name="info.circle" size={20} color={neonGreen} />
+                </View>
+                <Text style={[TextStyles.body, { color: colors.text }]}>About MealScanner</Text>
+              </View>
+              <IconSymbol name="chevron.right" size={16} color={colors.icon} />
+            </TouchableOpacity>
+          </Card>
+          <Card variant="glass" padding="none" style={styles.settingItem}>
+            <TouchableOpacity style={styles.settingItemContent}>
+              <View style={styles.settingItemLeft}>
+                <View style={[styles.iconContainer, { backgroundColor: `${neonGreen}20`, borderColor: `${neonGreen}40`, borderWidth: 1 }]}>
+                  <IconSymbol name="doc.text" size={20} color={neonGreen} />
+                </View>
+                <Text style={[TextStyles.body, { color: colors.text }]}>Privacy Policy</Text>
+              </View>
+              <IconSymbol name="chevron.right" size={16} color={colors.icon} />
+            </TouchableOpacity>
+          </Card>
+        </Section>
+      </ContentContainer>
+    </PageContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  header: {
-    paddingTop: 60,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-    borderBottomWidth: 1,
-  },
-  content: {
-    flex: 1,
-    padding: 20,
-  },
-  section: {
-    marginBottom: 24,
-  },
   settingItem: {
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-    borderWidth: 1,
+    marginBottom: PageSpacing.cardGap,
   },
-  settingItemWithSwitch: {
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-    borderWidth: 1,
+  settingItemContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: Spacing.base,
+  },
+  settingItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    flex: 1,
+  },
+  iconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    justifyContent: 'center',
     alignItems: 'center',
   },
 }); 

@@ -1,38 +1,27 @@
 import type { TextStyle } from 'react-native';
 import { Platform } from 'react-native';
 
+import { Colors, textMuted, textWhite } from './Colors';
+
 /**
  * MealScanner Typography System
- * Space Grotesk for headers, Inter for body text
+ * Modern, Clean, Sans-Serif (Inter)
  */
 
 // Font families
 export const FontFamilies = {
-  // Headers - Space Grotesk Regular for all headings
-  heading: 'SpaceGrotesk_400Regular',
-  headingLight: 'SpaceGrotesk_300Light',
-  headingMedium: 'SpaceGrotesk_500Medium',
-  headingSemiBold: 'SpaceGrotesk_600SemiBold',
-  headingBold: 'SpaceGrotesk_700Bold',
-  
-  // Body text - Inter
+  heading: 'Inter_600SemiBold',
   body: 'Inter_400Regular',
   bodyMedium: 'Inter_500Medium',
-  bodySemiBold: 'Inter_600SemiBold',
   bodyBold: 'Inter_700Bold',
-  
-  // Monospace for code/numbers
   mono: 'SpaceMono',
 };
 
-// Web font family names (these match the CSS @import names)
 const WebFontFamilies = {
-  spaceGrotesk: "'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-  inter: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+  sans: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
   mono: "'Space Mono', 'Courier New', monospace",
 };
 
-// Typography scale
 export const FontSizes = {
   xs: 12,
   sm: 14,
@@ -45,7 +34,6 @@ export const FontSizes = {
   '5xl': 48,
 };
 
-// Line heights
 export const LineHeights = {
   xs: 16,
   sm: 20,
@@ -53,127 +41,94 @@ export const LineHeights = {
   lg: 28,
   xl: 32,
   '2xl': 36,
-  '3xl': 42,
+  '3xl': 40,
   '4xl': 48,
-  '5xl': 64,
+  '5xl': 60,
 };
 
-// Pre-defined text styles
 export const TextStyles: Record<string, TextStyle> = {
-  // Headers - All using Space Grotesk Regular
   h1: {
-    fontFamily: Platform.OS === 'web' ? WebFontFamilies.spaceGrotesk : FontFamilies.headingBold,
+    fontFamily: Platform.OS === 'web' ? WebFontFamilies.sans : FontFamilies.heading,
     fontSize: FontSizes['4xl'],
     lineHeight: LineHeights['4xl'],
-    fontWeight: Platform.OS === 'web' ? '700' : 'normal',
-  } as TextStyle,
+    fontWeight: '600',
+    letterSpacing: -0.5,
+    color: '#FFFFFF',
+  },
   h2: {
-    fontFamily: Platform.OS === 'web' ? WebFontFamilies.spaceGrotesk : FontFamilies.heading,
+    fontFamily: Platform.OS === 'web' ? WebFontFamilies.sans : FontFamilies.heading,
     fontSize: FontSizes['3xl'],
     lineHeight: LineHeights['3xl'],
-    fontWeight: Platform.OS === 'web' ? '400' : 'normal',
-  } as TextStyle,
+    fontWeight: '600',
+    letterSpacing: -0.5,
+    color: '#FFFFFF',
+  },
   h3: {
-    fontFamily: Platform.OS === 'web' ? WebFontFamilies.spaceGrotesk : FontFamilies.heading,
+    fontFamily: Platform.OS === 'web' ? WebFontFamilies.sans : FontFamilies.heading,
     fontSize: FontSizes['2xl'],
     lineHeight: LineHeights['2xl'],
-    fontWeight: Platform.OS === 'web' ? '400' : 'normal',
-  } as TextStyle,
+    fontWeight: '600',
+    letterSpacing: -0.25,
+    color: '#FFFFFF',
+  },
   h4: {
-    fontFamily: Platform.OS === 'web' ? WebFontFamilies.spaceGrotesk : FontFamilies.heading,
+    fontFamily: Platform.OS === 'web' ? WebFontFamilies.sans : FontFamilies.heading,
     fontSize: FontSizes.xl,
     lineHeight: LineHeights.xl,
-    fontWeight: Platform.OS === 'web' ? '400' : 'normal',
-  } as TextStyle,
-  
-  // Body text - All using Inter
+    fontWeight: '600',
+    letterSpacing: 0,
+    color: '#FFFFFF',
+  },
   body: {
-    fontFamily: Platform.OS === 'web' ? WebFontFamilies.inter : FontFamilies.body,
+    fontFamily: Platform.OS === 'web' ? WebFontFamilies.sans : FontFamilies.body,
     fontSize: FontSizes.base,
     lineHeight: LineHeights.base,
-    fontWeight: Platform.OS === 'web' ? '400' : 'normal',
-  } as TextStyle,
-  bodyLarge: {
-    fontFamily: Platform.OS === 'web' ? WebFontFamilies.inter : FontFamilies.body,
-    fontSize: FontSizes.lg,
-    lineHeight: LineHeights.lg,
-    fontWeight: Platform.OS === 'web' ? '400' : 'normal',
-  } as TextStyle,
+    fontWeight: '400',
+    color: '#FFFFFF',
+  },
   bodySmall: {
-    fontFamily: Platform.OS === 'web' ? WebFontFamilies.inter : FontFamilies.body,
+    fontFamily: Platform.OS === 'web' ? WebFontFamilies.sans : FontFamilies.body,
     fontSize: FontSizes.sm,
     lineHeight: LineHeights.sm,
-    fontWeight: Platform.OS === 'web' ? '400' : 'normal',
-  } as TextStyle,
-  bodyMedium: {
-    fontFamily: Platform.OS === 'web' ? WebFontFamilies.inter : FontFamilies.bodyMedium,
-    fontSize: FontSizes.base,
-    lineHeight: LineHeights.base,
-    fontWeight: Platform.OS === 'web' ? '500' : 'normal',
-  } as TextStyle,
-  bodySemiBold: {
-    fontFamily: Platform.OS === 'web' ? WebFontFamilies.inter : FontFamilies.bodySemiBold,
-    fontSize: FontSizes.base,
-    lineHeight: LineHeights.base,
-    fontWeight: Platform.OS === 'web' ? '600' : 'normal',
-  } as TextStyle,
-  bodyBold: {
-    fontFamily: Platform.OS === 'web' ? WebFontFamilies.inter : FontFamilies.bodyBold,
-    fontSize: FontSizes.base,
-    lineHeight: LineHeights.base,
-    fontWeight: Platform.OS === 'web' ? '700' : 'normal',
-  } as TextStyle,
-  
-  // UI elements
-  button: {
-    fontFamily: Platform.OS === 'web' ? WebFontFamilies.spaceGrotesk : FontFamilies.heading,
-    fontSize: FontSizes.base,
-    lineHeight: LineHeights.base,
-    fontWeight: Platform.OS === 'web' ? '400' : 'normal',
-  } as TextStyle,
+    fontWeight: '400',
+    color: 'rgba(255, 255, 255, 0.7)',
+  },
   caption: {
-    fontFamily: Platform.OS === 'web' ? WebFontFamilies.inter : FontFamilies.body,
+    fontFamily: Platform.OS === 'web' ? WebFontFamilies.sans : FontFamilies.body,
     fontSize: FontSizes.xs,
     lineHeight: LineHeights.xs,
-    fontWeight: Platform.OS === 'web' ? '400' : 'normal',
-  } as TextStyle,
-  
-  // Special
-  subtitle: {
-    fontFamily: Platform.OS === 'web' ? WebFontFamilies.inter : FontFamilies.bodySemiBold,
-    fontSize: FontSizes.lg,
-    lineHeight: LineHeights.lg,
-    fontWeight: Platform.OS === 'web' ? '600' : 'normal',
-  } as TextStyle,
-  mono: {
-    fontFamily: Platform.OS === 'web' ? WebFontFamilies.mono : FontFamilies.mono,
+    fontWeight: '400',
+    color: 'rgba(255, 255, 255, 0.5)',
+  },
+  button: {
+    fontFamily: Platform.OS === 'web' ? WebFontFamilies.sans : FontFamilies.bodyMedium,
     fontSize: FontSizes.base,
     lineHeight: LineHeights.base,
-    fontWeight: Platform.OS === 'web' ? '400' : 'normal',
-  } as TextStyle,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+  },
+  subtitle: {
+    fontFamily: Platform.OS === 'web' ? WebFontFamilies.sans : FontFamilies.bodyMedium,
+    fontSize: FontSizes.lg,
+    lineHeight: LineHeights.lg,
+    fontWeight: '500',
+    color: textWhite,
+  },
 };
 
-// Helper function to get font family with fallbacks
-export const getFontFamily = (fontFamily: string) => {
-  if (Platform.OS === 'web') {
-    // Web fallbacks
-    switch (fontFamily) {
-      case FontFamilies.heading:
-      case FontFamilies.headingLight:
-      case FontFamilies.headingMedium:
-      case FontFamilies.headingSemiBold:
-      case FontFamilies.headingBold:
-        return WebFontFamilies.spaceGrotesk;
-      case FontFamilies.body:
-      case FontFamilies.bodyMedium:
-      case FontFamilies.bodySemiBold:
-      case FontFamilies.bodyBold:
-        return WebFontFamilies.inter;
-      case FontFamilies.mono:
-        return WebFontFamilies.mono;
-      default:
-        return WebFontFamilies.inter;
-    }
-  }
-  return fontFamily;
-}; 
+// Text color variants for consistent usage
+export const TextColors = {
+  primary: textWhite,
+  secondary: textMuted,
+  muted: 'rgba(255, 255, 255, 0.5)',
+  disabled: 'rgba(255, 255, 255, 0.3)',
+} as const;
+
+// Helper function to get text style with color variant
+export const getTextStyleWithColor = (
+  baseStyle: TextStyle,
+  colorVariant: keyof typeof TextColors = 'primary'
+): TextStyle => ({
+  ...baseStyle,
+  color: TextColors[colorVariant],
+});

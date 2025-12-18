@@ -64,6 +64,15 @@ else
     exit 1
 fi
 
+# Deploy speech-to-text-direct function
+echo "🎤 Deploying speech-to-text-direct function..."
+if supabase functions deploy speech-to-text-direct; then
+    echo "✅ speech-to-text-direct deployed successfully"
+else
+    echo "❌ Failed to deploy speech-to-text-direct function"
+    exit 1
+fi
+
 # List deployed functions
 echo "📋 Listing deployed functions..."
 supabase functions list

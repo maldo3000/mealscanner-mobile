@@ -1,6 +1,11 @@
+import { ContentContainer } from '@/components/layout/ContentContainer';
+import { PageContainer } from '@/components/layout/PageContainer';
+import { AnimatedCard } from '@/components/ui/AnimatedCard';
 import { IconSymbol } from '@/components/ui/IconSymbol';
-import { HeroImage } from '@/components/ui/OptimizedImage';
-import { Colors } from '@/constants/Colors';
+import { ParallaxImage } from '@/components/ui/ParallaxImage';
+import { Colors, neonGreen } from '@/constants/Colors';
+import { Shadows } from '@/constants/Layout';
+import { PageSpacing, Spacing } from '@/constants/Spacing';
 import { TextStyles } from '@/constants/Typography';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { deleteRecipe, getRecipeWithDetails } from '@/lib/supabase';
@@ -8,9 +13,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
     Alert,
-    Dimensions,
-    SafeAreaView,
-    ScrollView,
+    Platform,
     StyleSheet,
     Text,
     TouchableOpacity,
@@ -18,7 +21,6 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const { width } = Dimensions.get('window');
 
 // Mock recipe data - this will be replaced with Supabase data later
 const mockRecipeDetails = {
@@ -197,7 +199,7 @@ export default function RecipeDetailScreen() {
               }
               
               // Navigate back to recipes list
-              router.replace('/(tabs)/recipes');
+              router.replace('/(tabs)/journal/recipes');
               
               // Show success message
               Alert.alert('Success', 'Recipe deleted successfully.');
@@ -242,135 +244,233 @@ export default function RecipeDetailScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={styles.errorContainer}>
-          <IconSymbol name="hourglass" size={64} color={colors.icon} />
-          <Text style={[TextStyles.h3, { color: colors.text, marginTop: 16 }]}>
-            Loading Recipe...
-          </Text>
+      <PageContainer noPadding>
+        {/* Skeleton Header */}
+        <View style={[styles.floatingHeader, { paddingTop: insets.top + Spacing.sm }]}>
+          <View style={styles.headerContent}>
+            <View style={[styles.iconContainer, { opacity: 0.3 }]}>
+              <View style={styles.iconBackground} />
+            </View>
+            <View style={styles.headerActions}>
+              <View style={[styles.iconContainer, { opacity: 0.3 }]}>
+                <View style={styles.iconBackground} />
+              </View>
+            </View>
+          </View>
         </View>
-      </SafeAreaView>
+
+        <ContentContainer>
+          {/* Skeleton Hero Image */}
+          <View style={[styles.skeletonImage, { height: 380, backgroundColor: colors.border, opacity: 0.3 }]} />
+
+          {/* Skeleton Title Card */}
+          <AnimatedCard delay={0} style={styles.titleCard}>
+            <View style={styles.titleHeader}>
+              <View style={[styles.skeletonText, { width: '70%', height: 32, backgroundColor: colors.border, opacity: 0.3, borderRadius: 8 }]} />
+              <View style={[styles.skeletonBadge, { width: 80, height: 28, backgroundColor: colors.border, opacity: 0.3, borderRadius: 16 }]} />
+            </View>
+            <View style={styles.metaContainer}>
+              {[1, 2, 3].map((i) => (
+                <View key={i} style={styles.metaItem}>
+                  <View style={[styles.skeletonIcon, { width: 20, height: 20, backgroundColor: colors.border, opacity: 0.3, borderRadius: 4 }]} />
+                  <View>
+                    <View style={[styles.skeletonText, { width: 40, height: 12, backgroundColor: colors.border, opacity: 0.3, borderRadius: 4, marginBottom: 4 }]} />
+                    <View style={[styles.skeletonText, { width: 60, height: 16, backgroundColor: colors.border, opacity: 0.3, borderRadius: 4 }]} />
+                  </View>
+                </View>
+              ))}
+            </View>
+          </AnimatedCard>
+
+          {/* Skeleton Nutrition Card */}
+          <AnimatedCard delay={0}>
+            <View style={styles.sectionHeader}>
+              <View style={[styles.skeletonIcon, { width: 24, height: 24, backgroundColor: colors.border, opacity: 0.3, borderRadius: 4 }]} />
+              <View style={[styles.skeletonText, { width: 180, height: 20, backgroundColor: colors.border, opacity: 0.3, borderRadius: 4 }]} />
+            </View>
+            <View style={styles.nutritionRow}>
+              {[1, 2, 3, 4].map((i) => (
+                <View key={i} style={styles.nutritionItem}>
+                  <View style={[styles.skeletonText, { width: 40, height: 24, backgroundColor: colors.border, opacity: 0.3, borderRadius: 4, marginBottom: 4 }]} />
+                  <View style={[styles.skeletonText, { width: 50, height: 12, backgroundColor: colors.border, opacity: 0.3, borderRadius: 4 }]} />
+                </View>
+              ))}
+            </View>
+          </AnimatedCard>
+
+          {/* Skeleton Tab Selector */}
+          <AnimatedCard delay={0}>
+            <View style={[styles.skeletonCard, { height: 50, backgroundColor: colors.border, opacity: 0.3, borderRadius: 12 }]} />
+          </AnimatedCard>
+
+          {/* Skeleton Content */}
+          <AnimatedCard delay={0}>
+            {[1, 2, 3, 4, 5].map((i) => (
+              <View key={i} style={[styles.skeletonText, { width: '100%', height: 20, backgroundColor: colors.border, opacity: 0.3, borderRadius: 4, marginBottom: Spacing.md }]} />
+            ))}
+          </AnimatedCard>
+        </ContentContainer>
+      </PageContainer>
     );
   }
 
   if (!recipe) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={styles.errorContainer}>
-          <IconSymbol name="exclamationmark.triangle" size={64} color={colors.icon} />
-          <Text style={[TextStyles.h3, { color: colors.text, marginTop: 16 }]}>
-            Recipe Not Found
-          </Text>
-          <TouchableOpacity
-            style={[styles.backButton, { backgroundColor: colors.tint }]}
-            onPress={() => router.back()}
-          >
-            <Text style={[TextStyles.button, { color: 'white' }]}>Go Back</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
+      <PageContainer>
+        <ContentContainer scrollable={false}>
+          <View style={styles.errorContainer}>
+            <IconSymbol name="exclamationmark.triangle" size={64} color={colors.icon} />
+            <Text style={[TextStyles.h3, { color: colors.text, marginTop: Spacing.base }]}>
+              Recipe Not Found
+            </Text>
+            <TouchableOpacity
+              style={[styles.backButton, { backgroundColor: colors.tint }]}
+              onPress={() => router.back()}
+            >
+              <Text style={[TextStyles.button, { color: 'white' }]}>Go Back</Text>
+            </TouchableOpacity>
+          </View>
+        </ContentContainer>
+      </PageContainer>
     );
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Header Image */}
-        <View style={styles.imageContainer}>
-          <HeroImage source={{ uri: recipe.image_url }} style={styles.heroImage} />
-          <TouchableOpacity
-            style={[styles.backButtonOverlay, { backgroundColor: colors.background + 'E6' }]}
+    <PageContainer noPadding>
+      {/* Floating Header - Actions only, no title */}
+      <View style={[styles.floatingHeader, { paddingTop: insets.top + Spacing.sm }]}>
+        <View style={styles.headerContent}>
+          <TouchableOpacity 
+            style={styles.headerButton}
             onPress={() => router.back()}
+            activeOpacity={0.8}
           >
-            <IconSymbol name="chevron.left" size={24} color={colors.text} />
+            <View style={styles.iconContainer}>
+              <View style={styles.iconBackground} />
+              <View style={styles.iconGlow}>
+                <IconSymbol name="chevron.left" size={22} color={neonGreen} style={styles.iconThick} />
+              </View>
+            </View>
           </TouchableOpacity>
           
-          {/* Delete Button */}
-          <TouchableOpacity
-            style={[styles.deleteButtonOverlay, { backgroundColor: colors.background + 'E6' }]}
-            onPress={handleDeleteRecipe}
-            disabled={deleting}
-          >
-            <IconSymbol name="trash" size={24} color={deleting ? colors.icon : '#EF4444'} />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity 
+              style={styles.headerButtonDelete}
+              onPress={handleDeleteRecipe}
+              disabled={deleting}
+              activeOpacity={0.8}
+            >
+              <View style={styles.iconContainer}>
+                <View style={styles.iconBackground} />
+                <View style={styles.iconGlow}>
+                  <IconSymbol name="trash" size={18} color={neonGreen} style={styles.iconThick} />
+                </View>
+              </View>
+            </TouchableOpacity>
+          </View>
         </View>
+      </View>
 
-        {/* Recipe Info */}
-        <View style={styles.content}>
-          <Text style={[TextStyles.h2, { color: colors.text }]}>{recipe.name}</Text>
+      <ContentContainer>
+        {/* Hero Image with Parallax */}
+        {recipe.image_url && (
+          <ParallaxImage source={{ uri: recipe.image_url }} height={380} />
+        )}
+
+        {/* Title Card - Elevated */}
+        <AnimatedCard delay={100} style={styles.titleCard}>
+          <View style={styles.titleHeader}>
+            <Text style={[TextStyles.h1, { color: colors.text, flex: 1 }]}>
+              {recipe.name}
+            </Text>
+            {recipe.difficulty && (
+              <View style={[styles.difficultyBadge, { backgroundColor: getDifficultyColor(recipe.difficulty) }]}>
+                <Text style={[TextStyles.bodySmall, { color: 'white', fontWeight: '600' }]}>
+                  {recipe.difficulty}
+                </Text>
+              </View>
+            )}
+          </View>
           
           {/* Meta Info */}
           <View style={styles.metaContainer}>
             <View style={styles.metaRow}>
-              <View style={styles.metaItem}>
-                <IconSymbol name="clock" size={20} color={colors.icon} />
-                <View>
-                  <Text style={[TextStyles.caption, { color: colors.icon }]}>Prep</Text>
-                  <Text style={[TextStyles.bodyMedium, { color: colors.text }]}>{recipe.prep_time}</Text>
+              {recipe.prep_time && (
+                <View style={styles.metaItem}>
+                  <IconSymbol name="clock" size={20} color={colors.icon} />
+                  <View>
+                    <Text style={[TextStyles.caption, { color: colors.icon }]}>Prep</Text>
+                    <Text style={[TextStyles.bodyMedium, { color: colors.text }]}>{recipe.prep_time}</Text>
+                  </View>
                 </View>
-              </View>
+              )}
               
-              <View style={styles.metaItem}>
-                <IconSymbol name="flame" size={20} color={colors.icon} />
-                <View>
-                  <Text style={[TextStyles.caption, { color: colors.icon }]}>Cook</Text>
-                  <Text style={[TextStyles.bodyMedium, { color: colors.text }]}>{recipe.cook_time}</Text>
+              {recipe.cook_time && (
+                <View style={styles.metaItem}>
+                  <IconSymbol name="flame" size={20} color={colors.icon} />
+                  <View>
+                    <Text style={[TextStyles.caption, { color: colors.icon }]}>Cook</Text>
+                    <Text style={[TextStyles.bodyMedium, { color: colors.text }]}>{recipe.cook_time}</Text>
+                  </View>
                 </View>
-              </View>
+              )}
               
-              <View style={styles.metaItem}>
-                <IconSymbol name="person.2" size={20} color={colors.icon} />
-                <View>
-                  <Text style={[TextStyles.caption, { color: colors.icon }]}>Servings</Text>
-                  <Text style={[TextStyles.bodyMedium, { color: colors.text }]}>{recipe.servings}</Text>
+              {recipe.servings && (
+                <View style={styles.metaItem}>
+                  <IconSymbol name="person.2" size={20} color={colors.icon} />
+                  <View>
+                    <Text style={[TextStyles.caption, { color: colors.icon }]}>Servings</Text>
+                    <Text style={[TextStyles.bodyMedium, { color: colors.text }]}>{recipe.servings}</Text>
+                  </View>
                 </View>
-              </View>
-            </View>
-            
-            <View style={[styles.difficultyBadge, { backgroundColor: getDifficultyColor(recipe.difficulty) }]}>
-              <Text style={[TextStyles.bodyMedium, { color: 'white', fontWeight: '600' }]}>
-                {recipe.difficulty}
-              </Text>
+              )}
             </View>
           </View>
+        </AnimatedCard>
 
-          {/* Nutrition Info */}
-          {recipe.nutrition && (
-            <View style={[styles.nutritionContainer, { backgroundColor: colors.surface }]}>
-              <Text style={[TextStyles.subtitle, { color: colors.text, marginBottom: 12 }]}>Nutrition per serving</Text>
-              <View style={styles.nutritionRow}>
-                <View style={styles.nutritionItem}>
-                  <Text style={[TextStyles.h3, { color: colors.tint }]}>{recipe.nutrition.calories}</Text>
-                  <Text style={[TextStyles.caption, { color: colors.icon }]}>Calories</Text>
-                </View>
-                <View style={styles.nutritionItem}>
-                  <Text style={[TextStyles.h3, { color: colors.tint }]}>{recipe.nutrition.protein}g</Text>
-                  <Text style={[TextStyles.caption, { color: colors.icon }]}>Protein</Text>
-                </View>
-                <View style={styles.nutritionItem}>
-                  <Text style={[TextStyles.h3, { color: colors.tint }]}>{recipe.nutrition.carbs}g</Text>
-                  <Text style={[TextStyles.caption, { color: colors.icon }]}>Carbs</Text>
-                </View>
-                <View style={styles.nutritionItem}>
-                  <Text style={[TextStyles.h3, { color: colors.tint }]}>{recipe.nutrition.fat}g</Text>
-                  <Text style={[TextStyles.caption, { color: colors.icon }]}>Fat</Text>
-                </View>
+        {/* Nutrition Info */}
+        {recipe.nutrition && (
+          <AnimatedCard delay={200}>
+            <View style={styles.sectionHeader}>
+              <IconSymbol name="chart.bar" size={24} color={colors.tint} />
+              <Text style={[TextStyles.h4, { color: colors.text }]}>
+                Nutrition per serving
+              </Text>
+            </View>
+            <View style={styles.nutritionRow}>
+              <View style={styles.nutritionItem}>
+                <Text style={[TextStyles.h3, { color: colors.tint }]}>{recipe.nutrition.calories}</Text>
+                <Text style={[TextStyles.caption, { color: colors.icon }]}>Calories</Text>
+              </View>
+              <View style={styles.nutritionItem}>
+                <Text style={[TextStyles.h3, { color: colors.tint }]}>{recipe.nutrition.protein}g</Text>
+                <Text style={[TextStyles.caption, { color: colors.icon }]}>Protein</Text>
+              </View>
+              <View style={styles.nutritionItem}>
+                <Text style={[TextStyles.h3, { color: colors.tint }]}>{recipe.nutrition.carbs}g</Text>
+                <Text style={[TextStyles.caption, { color: colors.icon }]}>Carbs</Text>
+              </View>
+              <View style={styles.nutritionItem}>
+                <Text style={[TextStyles.h3, { color: colors.tint }]}>{recipe.nutrition.fat}g</Text>
+                <Text style={[TextStyles.caption, { color: colors.icon }]}>Fat</Text>
               </View>
             </View>
-          )}
+          </AnimatedCard>
+        )}
 
-          {/* Tab Selector */}
-          <View style={[styles.tabContainer, { backgroundColor: colors.surface }]}>
+        {/* Tab Selector */}
+        <AnimatedCard delay={300}>
+          <View style={styles.tabContainer}>
             <TouchableOpacity
               style={[
                 styles.tab,
-                activeTab === 'ingredients' && { backgroundColor: colors.tint }
+                activeTab === 'ingredients' && { backgroundColor: neonGreen }
               ]}
               onPress={() => setActiveTab('ingredients')}
             >
               <Text style={[
                 TextStyles.button,
-                { color: activeTab === 'ingredients' ? 'white' : colors.text }
+                { color: activeTab === 'ingredients' ? '#000000' : colors.text }
               ]}>
                 Ingredients ({getIngredients().length})
               </Text>
@@ -378,20 +478,22 @@ export default function RecipeDetailScreen() {
             <TouchableOpacity
               style={[
                 styles.tab,
-                activeTab === 'instructions' && { backgroundColor: colors.tint }
+                activeTab === 'instructions' && { backgroundColor: neonGreen }
               ]}
               onPress={() => setActiveTab('instructions')}
             >
               <Text style={[
                 TextStyles.button,
-                { color: activeTab === 'instructions' ? 'white' : colors.text }
+                { color: activeTab === 'instructions' ? '#000000' : colors.text }
               ]}>
                 Instructions ({getInstructions().length})
               </Text>
             </TouchableOpacity>
           </View>
+        </AnimatedCard>
 
-          {/* Tab Content */}
+        {/* Tab Content */}
+        <AnimatedCard delay={400}>
           {activeTab === 'ingredients' ? (
             <View style={styles.ingredientsContainer}>
               {getIngredients().map((ingredient, index) => (
@@ -411,8 +513,8 @@ export default function RecipeDetailScreen() {
             <View style={styles.instructionsContainer}>
               {getInstructions().map((instruction, index) => (
                 <View key={index} style={styles.instructionItem}>
-                  <View style={[styles.stepNumber, { backgroundColor: colors.tint }]}>
-                    <Text style={[TextStyles.bodyMedium, { color: 'white', fontWeight: '600' }]}>
+                  <View style={[styles.stepNumber, { backgroundColor: neonGreen }]}>
+                    <Text style={[TextStyles.bodyMedium, { color: '#000000', fontWeight: '600' }]}>
                       {index + 1}
                     </Text>
                   </View>
@@ -423,85 +525,130 @@ export default function RecipeDetailScreen() {
               ))}
             </View>
           )}
+        </AnimatedCard>
 
-          {/* Tags */}
-          {recipe.tags && recipe.tags.length > 0 && (
-            <View style={styles.tagsContainer}>
-              <Text style={[TextStyles.subtitle, { color: colors.text, marginBottom: 12 }]}>Tags</Text>
-              <View style={styles.tagsRow}>
-                {recipe.tags.map((tag, index) => (
-                  <View key={index} style={[styles.tag, { backgroundColor: colors.surface }]}>
-                    <Text style={[TextStyles.caption, { color: colors.text }]}>{tag}</Text>
-                  </View>
-                ))}
-              </View>
+        {/* Tags */}
+        {recipe.tags && recipe.tags.length > 0 && (
+          <AnimatedCard delay={500}>
+            <View style={styles.sectionHeader}>
+              <IconSymbol name="tag" size={24} color={colors.tint} />
+              <Text style={[TextStyles.h4, { color: colors.text }]}>
+                Tags
+              </Text>
             </View>
-          )}
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+            <View style={styles.tagsRow}>
+              {recipe.tags.map((tag, index) => (
+                <View key={index} style={[styles.tag, { backgroundColor: colors.surface }]}>
+                  <Text style={[TextStyles.caption, { color: colors.text }]}>{tag}</Text>
+                </View>
+              ))}
+            </View>
+          </AnimatedCard>
+        )}
+      </ContentContainer>
+    </PageContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  floatingHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+    backgroundColor: 'transparent',
+    paddingHorizontal: PageSpacing.containerPadding,
   },
-  imageContainer: {
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  headerButton: {
+    padding: Spacing.sm,
+  },
+  headerButtonDelete: {
+    padding: Spacing.sm,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  iconContainer: {
     position: 'relative',
-  },
-  heroImage: {
-    width: width,
-    height: 300,
-    backgroundColor: '#f0f0f0',
-  },
-  backButtonOverlay: {
-    position: 'absolute',
-    top: 50,
-    left: 16,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
     alignItems: 'center',
-  },
-  deleteButtonOverlay: {
-    position: 'absolute',
-    top: 50,
-    right: 16,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
     justifyContent: 'center',
-    alignItems: 'center',
   },
-  content: {
-    padding: 24,
+  iconBackground: {
+    position: 'absolute',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    ...(Platform.OS === 'web' && {
+      filter: 'blur(8px)',
+    }),
+    ...(Platform.OS !== 'web' && {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 0.8,
+      shadowRadius: 12,
+    }),
+  },
+  iconThick: {
+    fontWeight: '900',
+    ...(Platform.OS === 'web' && {
+      textShadow: '0 0 2px rgba(74, 222, 128, 0.8)',
+    }),
+  },
+  iconGlow: {
+    shadowColor: neonGreen,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 20,
+    elevation: 20,
+    // Additional glow layers for web
+    ...(Platform.OS === 'web' && {
+      filter: 'drop-shadow(0 0 8px rgba(74, 222, 128, 1)) drop-shadow(0 0 16px rgba(74, 222, 128, 0.8))',
+    }),
+  },
+  titleCard: {
+    marginTop: -20,
+    marginBottom: PageSpacing.sectionGap,
+    paddingTop: Spacing.xl,
+  },
+  titleHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.lg,
+    gap: Spacing.md,
+  },
+  difficultyBadge: {
+    paddingHorizontal: Spacing.base,
+    paddingVertical: Spacing.sm,
+    borderRadius: 16,
+    alignSelf: 'flex-start',
   },
   metaContainer: {
-    marginTop: 16,
-    marginBottom: 24,
+    marginTop: Spacing.base,
   },
   metaRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 16,
+    gap: Spacing.lg,
+    flexWrap: 'wrap',
   },
   metaItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: Spacing.sm,
   },
-  difficultyBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  nutritionContainer: {
-    padding: 16,
-    borderRadius: 16,
-    marginBottom: 24,
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    marginBottom: Spacing.lg,
   },
   nutritionRow: {
     flexDirection: 'row',
@@ -514,7 +661,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     borderRadius: 12,
     padding: 4,
-    marginBottom: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
   },
   tab: {
     flex: 1,
@@ -524,10 +671,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   ingredientsContainer: {
-    marginBottom: 24,
+    gap: Spacing.sm,
   },
   ingredientItem: {
-    paddingVertical: 12,
+    paddingVertical: Spacing.md,
     borderBottomWidth: 1,
   },
   ingredientContent: {
@@ -536,12 +683,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   instructionsContainer: {
-    marginBottom: 24,
+    gap: Spacing.base,
   },
   instructionItem: {
     flexDirection: 'row',
-    marginBottom: 16,
-    gap: 12,
+    gap: Spacing.md,
   },
   stepNumber: {
     width: 28,
@@ -551,17 +697,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 2,
   },
-  tagsContainer: {
-    marginBottom: 24,
-  },
   tagsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: Spacing.sm,
   },
   tag: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: Spacing.base,
+    paddingVertical: Spacing.sm,
     borderRadius: 16,
   },
   errorContainer: {
@@ -575,5 +718,21 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 12,
     marginTop: 24,
+  },
+  skeletonImage: {
+    width: '100%',
+    borderRadius: 0,
+  },
+  skeletonText: {
+    borderRadius: 4,
+  },
+  skeletonBadge: {
+    borderRadius: 16,
+  },
+  skeletonIcon: {
+    borderRadius: 4,
+  },
+  skeletonCard: {
+    borderRadius: 12,
   },
 }); 

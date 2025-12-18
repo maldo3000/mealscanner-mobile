@@ -1,6 +1,5 @@
 /* Google Fonts for Web */
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -11,17 +10,59 @@
   html {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    background-color: #022c22; /* Deep Green */
   }
   
-  /* Simple approach: just ensure icons show as lime green */
+  /* Glassmorphic color tokens */
   :root {
-    --tint-color: #32D74B; /* Lime green for icons */
+    --bg-primary: #022c22;
+    --glass-surface: rgba(255, 255, 255, 0.05);
+    --glass-border: rgba(255, 255, 255, 0.1);
+    --neon-green: #4ade80;
+    --text-white: #FFFFFF;
+    --text-muted: rgba(255, 255, 255, 0.6);
   }
   
-  /* Ensure tint color icons show as lime green */
-  [style*="color: rgb(50, 215, 75)"],
-  [style*="color: #32D74B"],
-  [style*="color: #32d74b"] {
-    color: var(--tint-color) !important;
+  /* Typography - Sleek Modern */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--text-white);
   }
-} 
+  
+  body, p, span, div {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    color: var(--text-white);
+    line-height: 1.5;
+  }
+  
+  /* Background gradient effect */
+  body {
+    background: linear-gradient(135deg, #022c22 0%, #064e3b 100%);
+    min-height: 100vh;
+  }
+}
+
+/* Glassmorphism Utilities */
+@layer utilities {
+  .glass-panel {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  
+  .text-glow {
+    text-shadow: 0 0 10px rgba(74, 222, 128, 0.5);
+  }
+  
+  .spacing-xs { gap: 4px; }
+  .spacing-sm { gap: 8px; }
+  .spacing-md { gap: 12px; }
+  .spacing-lg { gap: 16px; }
+  .spacing-xl { gap: 24px; }
+  
+  .rounded-card { border-radius: 24px; }
+  .rounded-pill { border-radius: 9999px; }
+}

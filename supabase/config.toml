@@ -23,30 +23,6 @@ site_url = "exp://localhost:8081"
 additional_redirect_urls = ["https://your-app.com"]
 jwt_expiry = 3600
 enable_signup = true
-enable_email_confirmations = false
-enable_email_autoconfirm = true
-
-[edge_functions]
-enabled = true
-verify_jwt = false
-
-[[edge_functions.env_vars]]
-name = "SUPABASE_URL"
-value = "http://localhost:54321"
-
-[[edge_functions.env_vars]]
-name = "SUPABASE_SERVICE_ROLE_KEY"
-value = "YOUR_SERVICE_ROLE_KEY_HERE"
-
-[[edge_functions.env_vars]]
-name = "OPENAI_API_KEY"
-value = "YOUR_OPENAI_API_KEY_HERE"
-
-[storage]
-enabled = true
-file_size_limit = "50MiB"
-allowed_mime_types = ["image/jpeg", "image/png", "image/webp"]
-bucket_defaults = { public = false }
 
 [analytics]
 enabled = false 

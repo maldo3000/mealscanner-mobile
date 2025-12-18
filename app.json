@@ -1,23 +1,40 @@
 {
   "expo": {
-    "name": "mealscanner-mobile",
+    "name": "MealScanner",
     "slug": "mealscanner-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "mealscannermobile",
+    "scheme": "mealscanner",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.mealscanner-mobile"
+      "bundleIdentifier": "app.mealscanner",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSCameraUsageDescription": "MealScanner needs access to your camera to scan and analyze meal images for nutritional information.",
+        "NSPhotoLibraryUsageDescription": "MealScanner needs access to your photo library to select meal images for nutritional analysis.",
+        "NSMicrophoneUsageDescription": "MealScanner needs access to your microphone for voice input to describe meals.",
+        "NSFaceIDUsageDescription": "MealScanner uses Face ID to securely authenticate and protect your account information."
+      },
+      "runtimeVersion": "1.0.0"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#143c23"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ],
+      "runtimeVersion": {
+        "policy": "appVersion"
+      }
     },
     "web": {
       "bundler": "metro",
@@ -35,6 +52,12 @@
           "backgroundColor": "#ffffff"
         }
       ],
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Allow $(PRODUCT_NAME) to access your microphone for voice input."
+        }
+      ],
       "expo-secure-store",
       "expo-font",
       "expo-web-browser"
@@ -47,6 +70,9 @@
       "eas": {
         "projectId": "6670b9f1-d3f7-46f4-a488-d1fa4f491e40"
       }
+    },
+    "updates": {
+      "url": "https://u.expo.dev/6670b9f1-d3f7-46f4-a488-d1fa4f491e40"
     }
   }
 }

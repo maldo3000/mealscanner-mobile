@@ -1,22 +1,27 @@
-import { ThemedView } from '@/components/ThemedView';
+import { PageContainer } from '@/components/layout/PageContainer';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { ThumbnailImage } from '@/components/ui/OptimizedImage';
-import { Colors } from '@/constants/Colors';
+import { Tag } from '@/components/ui/Tag';
+import { Colors, glassBorder, glassSurface, neonGreen, primaryGreen } from '@/constants/Colors';
+import { PageSpacing, Spacing } from '@/constants/Spacing';
 import { TextStyles } from '@/constants/Typography';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { deleteMeal, getCurrentUser, getUserMeals, supabase } from '@/lib/supabase';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-    Alert,
-    FlatList,
-    Platform,
-    RefreshControl,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  Alert,
+  FlatList,
+  Platform,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
 
 interface Meal {
@@ -44,7 +49,7 @@ interface Meal {
   processing_status?: 'pending' | 'processing' | 'completed' | 'failed';
 }
 
-export default function JournalScreen() {
+export default function MealsScreen() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
   const router = useRouter();
@@ -180,16 +185,16 @@ export default function JournalScreen() {
     }
   };
 
-  const getHealthScoreStyle = (healthScore?: string) => {
+  const getHealthScoreTagColor = (healthScore?: string): 'default' | 'accent' | 'muted' | undefined => {
     switch (healthScore) {
       case 'healthy':
-        return { backgroundColor: '#10B981', color: 'white' };
+        return 'accent';
       case 'moderately_healthy':
-        return { backgroundColor: '#F59E0B', color: 'white' };
+        return 'default';
       case 'unhealthy':
-        return { backgroundColor: '#EF4444', color: 'white' };
+        return 'muted';
       default:
-        return { backgroundColor: '#6B7280', color: 'white' };
+        return undefined;
     }
   };
 
@@ -203,6 +208,19 @@ export default function JournalScreen() {
         return 'Unhealthy';
       default:
         return 'Unknown';
+    }
+  };
+
+  const getMealTypeTagColor = (mealType: string): 'default' | 'accent' | 'muted' => {
+    switch (mealType) {
+      case 'Breakfast':
+        return 'accent';
+      case 'Lunch':
+        return 'accent';
+      case 'Dinner':
+        return 'accent';
+      default:
+        return 'default';
     }
   };
 
@@ -230,155 +248,87 @@ export default function JournalScreen() {
   const renderMealCard = ({ item: meal }: { item: Meal }) => (
     <TouchableOpacity 
       style={[
-        styles.mealCard, 
-        { backgroundColor: colors.background, borderColor: colors.border },
         viewMode === 'grid' && styles.gridCard
       ]}
       onPress={() => {
         router.push(`/meal/${meal.id}`);
       }}
+      activeOpacity={0.7}
     >
-      <View style={styles.cardHeader}>
-        <View style={styles.mealTypeContainer}>
-          <View style={[styles.mealTypeBadge, { backgroundColor: colors.icon }]}>
-            <Text style={[TextStyles.caption, { color: 'white' }]}>{getMealType(meal.created_at)}</Text>
-          </View>
-          {meal.health_score && (
-            <View style={[styles.healthBadge, getHealthScoreStyle(meal.health_score)]}>
-                      <Text style={[TextStyles.caption, { color: getHealthScoreStyle(meal.health_score).color }]}>
-          {getHealthScoreText(meal.health_score)}
-        </Text>
+      <Card variant="glass" style={styles.mealCard}>
+        {meal.image_url && (
+          <ThumbnailImage source={{ uri: meal.image_url }} style={styles.mealImage} />
+        )}
+
+        <View style={styles.cardContent}>
+          <Text style={[TextStyles.body, { color: colors.text, marginBottom: Spacing.md, fontWeight: '600' }]} numberOfLines={2}>
+            {meal.description}
+          </Text>
+          
+          <View style={styles.mealMeta}>
+            <View style={styles.dateTimeContainer}>
+              <IconSymbol name="calendar" size={14} color={colors.icon} />
+              <Text style={[TextStyles.bodySmall, { color: colors.icon }]}>
+                {formatDate(meal.created_at)}
+              </Text>
             </View>
-          )}
-          {/* AI Analysis Status Badge */}
-          {meal.processing_status && (
-            <View style={[
-              styles.statusBadge, 
-              { 
-                backgroundColor: meal.processing_status === 'completed' ? '#10B981' : 
-                                meal.processing_status === 'processing' ? '#F59E0B' :
-                                meal.processing_status === 'failed' ? '#EF4444' : '#6B7280'
-              }
-            ]}>
-              <Text style={[TextStyles.caption, { color: 'white' }]}>
-                {meal.processing_status === 'completed' ? 'AI' : 
-                 meal.processing_status === 'processing' ? '...' :
-                 meal.processing_status === 'failed' ? '!' : '?'}
+            
+            {meal.calories && (
+              <Text style={[TextStyles.bodyLarge, { color: primaryGreen, fontWeight: '700' }]}>
+                {meal.calories} cal
+              </Text>
+            )}
+          </View>
+
+          {meal.macros && (
+            <View style={styles.macrosContainer}>
+              <Text style={[TextStyles.caption, { color: colors.icon }]}>
+                P: {meal.macros.protein || 0}g
+              </Text>
+              <Text style={[TextStyles.caption, { color: colors.icon }]}>
+                F: {meal.macros.fat || 0}g
+              </Text>
+              <Text style={[TextStyles.caption, { color: colors.icon }]}>
+                C: {meal.macros.carbs || 0}g
               </Text>
             </View>
           )}
         </View>
-        <TouchableOpacity 
-          style={styles.deleteButton}
-          onPress={(e) => {
-            console.log('🚨 DELETE BUTTON CLICKED! Event:', e);
-            e.stopPropagation();
-            console.log('🚨 About to call handleDeleteMeal with ID:', meal.id);
-            handleDeleteMeal(meal.id);
-          }}
-          activeOpacity={0.6}
-        >
-          <IconSymbol name="trash" size={20} color="#EF4444" />
-        </TouchableOpacity>
-      </View>
-
-      {meal.image_url && (
-        <ThumbnailImage source={{ uri: meal.image_url }} style={styles.mealImage} />
-      )}
-
-      <View style={styles.cardContent}>
-        <Text style={[TextStyles.h4, { color: colors.text }]} numberOfLines={2}>
-          {meal.description}
-        </Text>
-        
-        <View style={styles.mealMeta}>
-          <View style={styles.dateTimeContainer}>
-            <IconSymbol name="calendar" size={14} color={colors.icon} />
-            <Text style={[TextStyles.bodySmall, { color: colors.icon }]}>
-              {formatDate(meal.created_at)}
-            </Text>
-          </View>
-          
-          {meal.calories && (
-            <Text style={[TextStyles.bodyMedium, { color: colors.tint }]}>
-              {meal.calories} calories
-            </Text>
-          )}
-        </View>
-
-        {meal.macros && (
-          <View style={styles.macrosContainer}>
-            <Text style={[TextStyles.caption, { color: colors.icon }]}>
-              P: {meal.macros.protein || 0}g
-            </Text>
-            <Text style={[TextStyles.caption, { color: colors.icon }]}>
-              F: {meal.macros.fat || 0}g
-            </Text>
-            <Text style={[TextStyles.caption, { color: colors.icon }]}>
-              C: {meal.macros.carbs || 0}g
-            </Text>
-          </View>
-        )}
-
-        {/* AI Analysis Confidence Score */}
-        {meal.nutrition_confidence && meal.nutrition_confidence > 0 && (
-          <View style={styles.confidenceContainer}>
-            <IconSymbol name="checkmark.seal" size={12} color={colors.tint} />
-            <Text style={[TextStyles.caption, { color: colors.icon }]}>
-              {Math.round(meal.nutrition_confidence * 100)}% confidence
-            </Text>
-          </View>
-        )}
-
-        {/* AI Qualitative Feedback Preview */}
-        {meal.qualitative_feedback && (
-          <View style={styles.feedbackContainer}>
-            <Text style={[TextStyles.bodySmall, { color: colors.icon, fontStyle: 'italic', lineHeight: 16 }]} numberOfLines={2}>
-              {meal.qualitative_feedback}
-            </Text>
-          </View>
-        )}
-      </View>
+      </Card>
     </TouchableOpacity>
   );
 
   if (!user) {
     return (
-      <ThemedView style={styles.container}>
+      <PageContainer>
         <View style={styles.emptyContainer}>
           <IconSymbol name="person" size={48} color={colors.icon} />
           <Text style={[TextStyles.h3, { color: colors.text, textAlign: 'center' }]}>Sign in to view your journal</Text>
           <Text style={[TextStyles.body, { color: colors.icon, textAlign: 'center', lineHeight: 24 }]}>
             Your meal history will appear here once you're signed in
           </Text>
-          <TouchableOpacity 
-            style={[styles.signInButton, { backgroundColor: colors.tint }]}
+          <Button
+            variant="primary"
             onPress={() => router.push('/(tabs)/auth')}
+            style={styles.signInButton}
           >
-            <Text style={[TextStyles.button, { color: 'white' }]}>Sign In</Text>
-          </TouchableOpacity>
+            Sign In
+          </Button>
         </View>
-      </ThemedView>
+      </PageContainer>
     );
   }
 
   return (
-    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: colors.background }]}>
-        <View style={styles.headerContent}>
-          <View>
-            <Text style={[TextStyles.h2, { color: colors.text }]}>Meal Journal</Text>
-            <Text style={[TextStyles.body, { color: colors.icon, marginTop: 4 }]}>
-              Browse and search your meal history
-            </Text>
-          </View>
-        </View>
-      </View>
+    <PageContainer>
+      <PageHeader
+        title="Meals"
+        subtitle="Browse and search your meal history"
+      />
 
       {/* Search and Controls */}
       <View style={styles.searchContainer}>
-        <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <View style={[styles.searchBar, { backgroundColor: glassSurface, borderColor: glassBorder, borderWidth: 1 }]}>
           <IconSymbol name="magnifyingglass" size={20} color={colors.icon} />
           <TextInput
             style={[TextStyles.body, { color: colors.text, flex: 1 }]}
@@ -395,27 +345,35 @@ export default function JournalScreen() {
             <TouchableOpacity
               style={[
                 styles.viewButton,
-                { backgroundColor: viewMode === 'grid' ? colors.tint : colors.surface }
+                { 
+                  backgroundColor: viewMode === 'grid' ? neonGreen : glassSurface,
+                  borderColor: glassBorder,
+                  borderWidth: 1
+                }
               ]}
               onPress={() => setViewMode('grid')}
             >
               <IconSymbol 
                 name="grid" 
                 size={20} 
-                color={viewMode === 'grid' ? 'white' : colors.icon} 
+                color={viewMode === 'grid' ? '#000000' : colors.icon} 
               />
             </TouchableOpacity>
             <TouchableOpacity
               style={[
                 styles.viewButton,
-                { backgroundColor: viewMode === 'list' ? colors.tint : colors.surface }
+                { 
+                  backgroundColor: viewMode === 'list' ? neonGreen : glassSurface,
+                  borderColor: glassBorder,
+                  borderWidth: 1
+                }
               ]}
               onPress={() => setViewMode('list')}
             >
               <IconSymbol 
                 name="list.bullet" 
                 size={20} 
-                color={viewMode === 'list' ? 'white' : colors.icon} 
+                color={viewMode === 'list' ? '#000000' : colors.icon} 
               />
             </TouchableOpacity>
           </View>
@@ -426,26 +384,26 @@ export default function JournalScreen() {
       <View style={styles.filtersContainer}>
         <View style={styles.filterButtons}>
           <TouchableOpacity 
-            style={[styles.filterButton, selectedFilter === 'today' && { backgroundColor: colors.tint }]}
+            style={[styles.filterButton, selectedFilter === 'today' && styles.filterButtonActive]}
             onPress={() => setSelectedFilter('today')}
           >
-            <Text style={[TextStyles.button, selectedFilter === 'today' ? { color: 'white' } : { color: '#6B7280' }]}>
+            <Text style={[TextStyles.button, { color: selectedFilter === 'today' ? 'white' : colors.icon }]}>
               Today
             </Text>
           </TouchableOpacity>
           <TouchableOpacity 
-            style={[styles.filterButton, selectedFilter === 'week' && { backgroundColor: colors.tint }]}
+            style={[styles.filterButton, selectedFilter === 'week' && styles.filterButtonActive]}
             onPress={() => setSelectedFilter('week')}
           >
-            <Text style={[TextStyles.button, selectedFilter === 'week' ? { color: 'white' } : { color: '#6B7280' }]}>
+            <Text style={[TextStyles.button, { color: selectedFilter === 'week' ? 'white' : colors.icon }]}>
               This Week
             </Text>
           </TouchableOpacity>
           <TouchableOpacity 
-            style={[styles.filterButton, selectedFilter === 'all' && { backgroundColor: colors.tint }]}
+            style={[styles.filterButton, selectedFilter === 'all' && styles.filterButtonActive]}
             onPress={() => setSelectedFilter('all')}
           >
-            <Text style={[TextStyles.button, selectedFilter === 'all' ? { color: 'white' } : { color: '#6B7280' }]}>
+            <Text style={[TextStyles.button, { color: selectedFilter === 'all' ? 'white' : colors.icon }]}>
               All
             </Text>
           </TouchableOpacity>
@@ -454,9 +412,26 @@ export default function JournalScreen() {
 
       {/* Meals List */}
       {loading ? (
-        <View style={styles.loadingContainer}>
-          <IconSymbol name="hourglass" size={32} color={colors.icon} />
-          <Text style={[TextStyles.body, { color: colors.icon }]}>Loading meals...</Text>
+        <View style={styles.mealsList}>
+          {[1, 2, 3, 4].map((i) => (
+            <View key={i} style={styles.mealCard}>
+              <Card variant="glass" style={styles.mealCard}>
+                <View style={[styles.skeletonImage, { width: '100%', height: 200, backgroundColor: colors.border, opacity: 0.3, borderRadius: 16, marginBottom: 8 }]} />
+                <View style={styles.cardContent}>
+                  <View style={[styles.skeletonText, { width: '80%', height: 20, backgroundColor: colors.border, opacity: 0.3, borderRadius: 4, marginBottom: Spacing.md }]} />
+                  <View style={styles.mealMeta}>
+                    <View style={[styles.skeletonText, { width: 120, height: 14, backgroundColor: colors.border, opacity: 0.3, borderRadius: 4 }]} />
+                    <View style={[styles.skeletonText, { width: 60, height: 16, backgroundColor: colors.border, opacity: 0.3, borderRadius: 4 }]} />
+                  </View>
+                  <View style={styles.macrosContainer}>
+                    {[1, 2, 3].map((j) => (
+                      <View key={j} style={[styles.skeletonText, { width: 50, height: 12, backgroundColor: colors.border, opacity: 0.3, borderRadius: 4 }]} />
+                    ))}
+                  </View>
+                </View>
+              </Card>
+            </View>
+          ))}
         </View>
       ) : filteredMeals.length === 0 ? (
         <View style={styles.emptyContainer}>
@@ -471,13 +446,16 @@ export default function JournalScreen() {
             }
           </Text>
           {(!searchQuery && selectedFilter === 'all') && (
-            <TouchableOpacity 
-              style={[styles.captureButton, { backgroundColor: colors.tint }]}
+            <Button
+              variant="primary"
               onPress={() => router.push('/(tabs)/log')}
+              style={styles.captureButton}
             >
-              <IconSymbol name="camera" size={20} color="white" />
-              <Text style={[TextStyles.button, { color: 'white' }]}>Capture Meal</Text>
-            </TouchableOpacity>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <IconSymbol name="camera" size={20} color="white" />
+                <Text style={[TextStyles.button, { color: 'white' }]}>Capture Meal</Text>
+              </View>
+            </Button>
           )}
         </View>
       ) : (
@@ -494,35 +472,25 @@ export default function JournalScreen() {
           }
         />
       )}
-    </ThemedView>
+    </PageContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  emptyContainer: {
     flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: PageSpacing.containerPadding,
+    gap: Spacing.base,
   },
-  header: {
-    paddingTop: 60,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
+  signInButton: {
+    marginTop: Spacing.base,
   },
-  headerContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  headerTitle: {
-    marginBottom: 4,
-  },
-  headerSubtitle: {
-  },
-
   searchContainer: {
-    paddingHorizontal: 20,
-    marginBottom: 16,
+    marginBottom: Spacing.base,
     flexDirection: 'row',
-    gap: 12,
+    gap: Spacing.md,
   },
   searchBar: {
     flex: 1,
@@ -530,8 +498,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderRadius: 25,
-    borderWidth: 1,
+    borderRadius: 20,
     gap: 12,
   },
   viewControls: {
@@ -549,39 +516,30 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   filtersContainer: {
-    paddingHorizontal: 20,
-    marginBottom: 20,
+    marginBottom: PageSpacing.containerPadding,
   },
   filterButtons: {
     flexDirection: 'row',
-    gap: 12,
+    gap: Spacing.md,
   },
   filterButton: {
     paddingHorizontal: 20,
     paddingVertical: 8,
-    borderRadius: 20,
+    borderRadius: 9999,
     backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: glassBorder,
   },
-  filterButtonText: {
-    color: '#6B7280',
-  },
-  filterButtonTextActive: {
-    color: 'white',
+  filterButtonActive: {
+    backgroundColor: neonGreen,
+    borderColor: neonGreen,
   },
   mealsList: {
-    paddingHorizontal: 20,
     paddingBottom: 100,
   },
   mealCard: {
-    borderRadius: 16,
-    marginBottom: 16,
-    borderWidth: 1,
+    marginBottom: PageSpacing.cardGap,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
   },
   gridCard: {
     flex: 1,
@@ -597,31 +555,7 @@ const styles = StyleSheet.create({
   mealTypeContainer: {
     flexDirection: 'row',
     gap: 8,
-  },
-  mealTypeBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  mealTypeText: {
-    color: 'white',
-  },
-  healthBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  healthBadgeText: {
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    minWidth: 24,
-    alignItems: 'center',
-  },
-  statusBadgeText: {
-    color: 'white',
+    flexWrap: 'wrap',
   },
   deleteButton: {
     padding: 8,
@@ -637,6 +571,9 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 200,
     resizeMode: 'cover',
+    borderRadius: 16,
+    marginTop: 16,
+    marginBottom: 8,
   },
   cardContent: {
     padding: 16,
@@ -706,24 +643,22 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   signInButton: {
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 25,
     marginTop: 8,
-  },
-  signInButtonText: {
-    color: 'white',
   },
   captureButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 25,
     marginTop: 8,
   },
-  captureButtonText: {
-    color: 'white',
+  skeletonImage: {
+    borderRadius: 16,
   },
-}); 
+  skeletonText: {
+    borderRadius: 4,
+  },
+  skeletonBadge: {
+    borderRadius: 16,
+  },
+  skeletonIcon: {
+    borderRadius: 9,
+  },
+});
+

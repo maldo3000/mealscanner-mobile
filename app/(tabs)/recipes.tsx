@@ -1,25 +1,26 @@
+import { PageContainer } from '@/components/layout/PageContainer';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { RecipeGeneratorModal } from '@/components/RecipeGeneratorModal';
+import { Card } from '@/components/ui/Card';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { ThumbnailImage } from '@/components/ui/OptimizedImage';
-import { Colors } from '@/constants/Colors';
+import { Colors, glassBorder, glassSurface, neonGreen } from '@/constants/Colors';
+import { PageSpacing, Spacing } from '@/constants/Spacing';
 import { TextStyles } from '@/constants/Typography';
 import { useColorScheme } from '@/hooks/useColorScheme';
-import { deleteRecipe, getCurrentUser, getUserRecipes, searchRecipes } from '@/lib/supabase';
+import { getCurrentUser, getUserRecipes, searchRecipes } from '@/lib/supabase';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-  Alert,
-  FlatList,
-  Platform,
-  RefreshControl,
-  SafeAreaView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    FlatList,
+    Platform,
+    RefreshControl,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Recipe = {
   id: string;
@@ -46,190 +47,79 @@ type Recipe = {
 interface RecipeCardProps {
   recipe: Recipe;
   onPress: () => void;
-  onDelete: (recipeId: string) => void;
   viewMode: 'grid' | 'list';
 }
 
-function RecipeCard({ recipe, onPress, onDelete, viewMode }: RecipeCardProps) {
+function RecipeCard({ recipe, onPress, viewMode }: RecipeCardProps) {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
-  
-  // Animation for delete button
-  const deleteOpacity = useSharedValue(1);
-  
-  const deleteAnimatedStyle = useAnimatedStyle(() => {
-    return {
-      opacity: deleteOpacity.value,
-    };
-  });
-  
-  const handleDeletePressIn = () => {
-    deleteOpacity.value = withTiming(0.5, { duration: 150 });
-  };
-  
-  const handleDeletePressOut = () => {
-    deleteOpacity.value = withTiming(1, { duration: 150 });
-  };
-
-  const handleLongPress = () => {
-    Alert.alert(
-      'Recipe Options',
-      `What would you like to do with "${recipe.name}"?`,
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => handleDelete(),
-        },
-      ]
-    );
-  };
-
-  const handleDelete = () => {
-    console.log('🗑️ RecipeCard: Delete button pressed for recipe:', recipe.name, 'ID:', recipe.id);
-    Alert.alert(
-      'Delete Recipe',
-      `Are you sure you want to delete "${recipe.name}"? This action cannot be undone.`,
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            console.log('🗑️ RecipeCard: User confirmed delete for recipe ID:', recipe.id);
-            onDelete(recipe.id);
-          },
-        },
-      ]
-    );
-  };
 
   return (
     <TouchableOpacity 
       style={[
         viewMode === 'list' ? styles.recipeCardList : styles.recipeCardGrid,
         Platform.OS === 'web' && viewMode === 'grid' && styles.recipeCardGridWeb,
-        { backgroundColor: colors.surface }
       ]} 
       onPress={onPress}
-      onLongPress={handleLongPress}
-      delayLongPress={500}
+      activeOpacity={0.7}
     >
-      {/* Square thumbnail */}
-      {recipe.image_url ? (
-        <ThumbnailImage 
-          source={{ uri: recipe.image_url }} 
-          style={viewMode === 'list' ? styles.recipeImageList : styles.recipeImageGrid}
-        />
-      ) : (
-        <View style={[
-          viewMode === 'list' ? styles.recipeImageList : styles.recipeImageGrid, 
-          styles.placeholderImage, 
-          { backgroundColor: colors.border }
-        ]}>
-          <IconSymbol name="fork.knife" size={viewMode === 'list' ? 24 : 32} color={colors.icon} />
-        </View>
-      )}
-      
-      <View style={[
-        styles.recipeContent, 
-        viewMode === 'grid' && styles.recipeContentGrid,
-        Platform.OS === 'web' && viewMode === 'grid' && styles.recipeContentGridWeb
-      ]}>
-        <Text style={[TextStyles.h4, { color: colors.text }]} numberOfLines={2}>
-          {recipe.name}
-        </Text>
-        {recipe.description && viewMode === 'list' && (
-          <Text style={[TextStyles.body, { color: colors.icon, marginTop: 4 }]} numberOfLines={2}>
-            {recipe.description}
-          </Text>
-        )}
-        <View style={[
-          styles.recipeMetaRow, 
-          viewMode === 'grid' && styles.recipeMetaRowGrid,
-          Platform.OS === 'web' && viewMode === 'grid' && styles.recipeMetaRowGridWeb
-        ]}>
-          <View style={[
-            styles.recipeMetaLeft,
-            Platform.OS === 'web' && viewMode === 'grid' && styles.recipeMetaLeftWeb
-          ]}>
-            {recipe.prep_time && (
-              <View style={styles.recipeMeta}>
-                <IconSymbol name="clock" size={14} color={colors.icon} />
-                <Text style={[TextStyles.caption, { color: colors.icon }]}>
-                  {recipe.prep_time}
-                </Text>
+      <Card variant="glass" style={styles.card} padding="none">
+        {viewMode === 'grid' ? (
+          <>
+            {/* Square thumbnail for grid */}
+            {recipe.image_url ? (
+              <ThumbnailImage 
+                source={{ uri: recipe.image_url }} 
+                style={styles.recipeImageGrid}
+              />
+            ) : (
+              <View style={[styles.recipeImageGrid, styles.placeholderImage, { backgroundColor: colors.border }]}>
+                <IconSymbol name="fork.knife" size={32} color={colors.icon} />
               </View>
             )}
-            {recipe.servings && (
-              <View style={styles.recipeMeta}>
-                <IconSymbol name="person.2" size={14} color={colors.icon} />
-                <Text style={[TextStyles.caption, { color: colors.icon }]}>
-                  {recipe.servings} servings
-                </Text>
-              </View>
-            )}
-          </View>
-          {recipe.difficulty && (
-            <View style={[styles.difficultyBadge, { backgroundColor: getDifficultyColor(recipe.difficulty) }]}>
-              <Text style={[TextStyles.caption, { color: 'white', fontWeight: '600' }]}>
-                {recipe.difficulty}
+            <View style={styles.recipeContentGrid}>
+              <Text style={[TextStyles.bodySmall, { color: colors.text }]} numberOfLines={2}>
+                {recipe.name}
               </Text>
             </View>
-          )}
-        </View>
-      </View>
-      
-      {/* Delete button overlay */}
-      <TouchableOpacity
-        style={styles.deleteButton}
-        onPress={(e) => {
-          e.stopPropagation();
-          handleDelete();
-        }}
-        onPressIn={handleDeletePressIn}
-        onPressOut={handleDeletePressOut}
-        activeOpacity={1}
-      >
-        <Animated.View style={deleteAnimatedStyle}>
-          <IconSymbol name="trash" size={18} color="#EF4444" />
-        </Animated.View>
-      </TouchableOpacity>
+          </>
+        ) : (
+          <View style={styles.listLayout}>
+            {/* Horizontal layout for list */}
+            {recipe.image_url ? (
+              <ThumbnailImage 
+                source={{ uri: recipe.image_url }} 
+                style={styles.recipeImageList}
+              />
+            ) : (
+              <View style={[styles.recipeImageList, styles.placeholderImage, { backgroundColor: colors.border }]}>
+                <IconSymbol name="fork.knife" size={24} color={colors.icon} />
+              </View>
+            )}
+            <View style={styles.recipeContentList}>
+              <Text style={[TextStyles.bodySmall, { color: colors.text }]} numberOfLines={2}>
+                {recipe.name}
+              </Text>
+            </View>
+          </View>
+        )}
+      </Card>
     </TouchableOpacity>
   );
 }
 
-function getDifficultyColor(difficulty: string): string {
-  switch (difficulty.toLowerCase()) {
-    case 'easy':
-      return '#10B981';
-    case 'medium':
-      return '#F59E0B';
-    case 'hard':
-      return '#EF4444';
-    default:
-      return '#6B7280';
-  }
-}
 
 export default function RecipesScreen() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [user, setUser] = useState<any>(null);
+  const [showGeneratorModal, setShowGeneratorModal] = useState(false);
 
   // Fetch user and recipes on component mount
   useEffect(() => {
@@ -308,50 +198,39 @@ export default function RecipesScreen() {
     router.push(`/recipe/${recipe.id}`);
   };
 
-  const handleDeleteRecipe = async (recipeId: string) => {
-    try {
-      console.log('🗑️ Recipes: handleDeleteRecipe called with ID:', recipeId);
-      const { error } = await deleteRecipe(recipeId);
-      
-      if (error) {
-        console.error('🗑️ Recipes: Delete error:', error);
-        Alert.alert('Error', 'Failed to delete recipe. Please try again.');
-        return;
-      }
-      
-      console.log('🗑️ Recipes: Delete successful, updating UI...');
-      // Remove the recipe from the local state
-      setRecipes(prevRecipes => prevRecipes.filter(recipe => recipe.id !== recipeId));
-      
-      console.log('✅ Recipes: Recipe deleted successfully, UI updated');
-    } catch (error) {
-      console.error('🗑️ Recipes: Delete exception:', error);
-      Alert.alert('Error', 'Failed to delete recipe. Please try again.');
-    }
-  };
 
   const renderRecipe = ({ item }: { item: Recipe }) => (
     <RecipeCard 
       recipe={item} 
       onPress={() => handleRecipePress(item)}
-      onDelete={handleDeleteRecipe}
       viewMode={viewMode}
     />
   );
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top }]}>
-        <Text style={[TextStyles.h2, { color: colors.text }]}>Recipes</Text>
-        <Text style={[TextStyles.body, { color: colors.icon, marginTop: 4, lineHeight: 22 }]}>
-          {filteredRecipes.length} saved {filteredRecipes.length === 1 ? 'recipe' : 'recipes'}
-        </Text>
-      </View>
+    <PageContainer>
+      <PageHeader
+        title="Recipes"
+        subtitle={`${filteredRecipes.length} saved ${filteredRecipes.length === 1 ? 'recipe' : 'recipes'}`}
+      />
+
+      {/* Generate Recipe Button */}
+      {!loading && user && (
+        <TouchableOpacity
+          style={[styles.generateButton, { backgroundColor: neonGreen }]}
+          onPress={() => setShowGeneratorModal(true)}
+          activeOpacity={0.8}
+        >
+          <IconSymbol name="sparkles" size={20} color="#000000" />
+          <Text style={[TextStyles.button, { color: '#000000', marginLeft: 8 }]}>
+            Generate Recipe
+          </Text>
+        </TouchableOpacity>
+      )}
 
       {/* Search and Controls */}
       <View style={styles.controls}>
-        <View style={[styles.searchContainer, { backgroundColor: colors.surface }]}>
+        <View style={[styles.searchContainer, { backgroundColor: glassSurface, borderColor: glassBorder, borderWidth: 1 }]}>
           <IconSymbol name="magnifyingglass" size={20} color={colors.icon} />
           <TextInput
             style={[styles.searchInput, { color: colors.text }]}
@@ -366,27 +245,35 @@ export default function RecipesScreen() {
           <TouchableOpacity
             style={[
               styles.viewButton,
-              { backgroundColor: viewMode === 'grid' ? colors.tint : colors.surface }
+              { 
+                backgroundColor: viewMode === 'grid' ? neonGreen : glassSurface,
+                borderColor: glassBorder,
+                borderWidth: 1
+              }
             ]}
             onPress={() => setViewMode('grid')}
           >
             <IconSymbol 
               name="grid" 
               size={20} 
-              color={viewMode === 'grid' ? 'white' : colors.icon} 
+              color={viewMode === 'grid' ? '#000000' : colors.icon} 
             />
           </TouchableOpacity>
           <TouchableOpacity
             style={[
               styles.viewButton,
-              { backgroundColor: viewMode === 'list' ? colors.tint : colors.surface }
+              { 
+                backgroundColor: viewMode === 'list' ? neonGreen : glassSurface,
+                borderColor: glassBorder,
+                borderWidth: 1
+              }
             ]}
             onPress={() => setViewMode('list')}
           >
             <IconSymbol 
               name="list.bullet" 
               size={20} 
-              color={viewMode === 'list' ? 'white' : colors.icon} 
+              color={viewMode === 'list' ? '#000000' : colors.icon} 
             />
           </TouchableOpacity>
         </View>
@@ -394,15 +281,35 @@ export default function RecipesScreen() {
 
       {/* Recipes List */}
       {loading ? (
-        <View style={styles.emptyState}>
-          <IconSymbol name="hourglass" size={64} color={colors.icon} />
-          <Text style={[TextStyles.h3, { color: colors.text, marginTop: 16 }]}>
-            Loading Recipes...
-          </Text>
-          <Text style={[TextStyles.body, { color: colors.icon, textAlign: 'center', marginTop: 8, lineHeight: 22 }]}>
-            Please wait while we fetch your recipes
-          </Text>
-        </View>
+        <FlatList
+          data={[1, 2, 3, 4, 5, 6]}
+          renderItem={() => (
+            <View style={viewMode === 'grid' ? styles.recipeCardGrid : styles.recipeCardList}>
+              <Card variant="glass" style={styles.card} padding="none">
+                {viewMode === 'grid' ? (
+                  <>
+                    <View style={[styles.recipeImageGrid, { backgroundColor: colors.border, opacity: 0.3 }]} />
+                    <View style={styles.recipeContentGrid}>
+                      <View style={[styles.skeletonText, { width: '90%', height: 16, backgroundColor: colors.border, opacity: 0.3, borderRadius: 4 }]} />
+                    </View>
+                  </>
+                ) : (
+                  <View style={styles.listLayout}>
+                    <View style={[styles.recipeImageList, { backgroundColor: colors.border, opacity: 0.3 }]} />
+                    <View style={styles.recipeContentList}>
+                      <View style={[styles.skeletonText, { width: '80%', height: 16, backgroundColor: colors.border, opacity: 0.3, borderRadius: 4 }]} />
+                    </View>
+                  </View>
+                )}
+              </Card>
+            </View>
+          )}
+          keyExtractor={(item) => item.toString()}
+          numColumns={viewMode === 'grid' ? (Platform.OS === 'web' ? 4 : 2) : 1}
+          key={viewMode}
+          contentContainerStyle={styles.recipesList}
+          showsVerticalScrollIndicator={false}
+        />
       ) : (console.log('🍳 Recipes: Render check - recipes.length:', recipes.length, 'filteredRecipes.length:', filteredRecipes.length, 'searchQuery:', searchQuery), filteredRecipes.length === 0) ? (
         <View style={styles.emptyState}>
           <IconSymbol name="fork.knife" size={64} color={colors.icon} />
@@ -414,11 +321,11 @@ export default function RecipesScreen() {
           </Text>
           {!searchQuery && (
             <TouchableOpacity
-              style={[styles.ctaButton, { backgroundColor: colors.tint }]}
+              style={[styles.ctaButton, { backgroundColor: neonGreen }]}
               onPress={() => router.push('/(tabs)/log')}
             >
-              <IconSymbol name="camera" size={20} color="white" />
-              <Text style={[TextStyles.button, { color: 'white', marginLeft: 8 }]}>
+              <IconSymbol name="camera" size={20} color="#000000" />
+              <Text style={[TextStyles.button, { color: '#000000', marginLeft: 8 }]}>
                 Capture Recipe
               </Text>
             </TouchableOpacity>
@@ -442,23 +349,41 @@ export default function RecipesScreen() {
           }
         />
       )}
-    </SafeAreaView>
+
+      {/* Recipe Generator Modal */}
+      {user && (
+        <RecipeGeneratorModal
+          visible={showGeneratorModal}
+          userId={user.id}
+          onClose={() => setShowGeneratorModal(false)}
+          onRecipeGenerated={() => {
+            loadUserAndRecipes();
+          }}
+        />
+      )}
+    </PageContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  header: {
+  generateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 24,
-    paddingBottom: 16,
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginBottom: Spacing.md,
+    shadowColor: neonGreen,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
   controls: {
     flexDirection: 'row',
-    paddingHorizontal: 24,
-    paddingBottom: 16,
-    gap: 12,
+    paddingBottom: Spacing.base,
+    gap: Spacing.md,
   },
   searchContainer: {
     flex: 1,
@@ -499,104 +424,54 @@ const styles = StyleSheet.create({
     marginTop: 24,
   },
   recipesList: {
-    paddingHorizontal: 24,
-    paddingBottom: 24,
+    paddingBottom: PageSpacing.containerPadding,
   },
   recipeCardGrid: {
     flex: 1,
-    margin: 4,
-    borderRadius: 12,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 3,
+    marginHorizontal: Spacing.sm,
+    marginBottom: PageSpacing.cardGap,
   },
   recipeCardGridWeb: {
-    margin: 3,
-    borderRadius: 10,
-    shadowRadius: 4,
+    marginHorizontal: Spacing.xs,
+    marginBottom: PageSpacing.cardGap,
   },
   recipeCardList: {
-    flexDirection: 'row',
-    marginHorizontal: 6,
-    marginVertical: 8,
-    borderRadius: 16,
+    marginBottom: PageSpacing.cardGap,
+  },
+  card: {
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+  },
+  listLayout: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   recipeImageGrid: {
     width: '100%',
     aspectRatio: 1,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
   },
   recipeImageList: {
-    width: 100,
-    height: 100,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 12,
-    margin: 12,
+    width: 80,
+    height: 80,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 16,
+    margin: Spacing.base,
   },
   placeholderImage: {
     justifyContent: 'center',
     alignItems: 'center',
   },
-  recipeContent: {
-    flex: 1,
-    padding: 16,
-  },
   recipeContentGrid: {
-    padding: 10,
+    padding: Spacing.base,
+    paddingTop: Spacing.md,
   },
-  recipeContentGridWeb: {
-    padding: 8,
-  },
-  recipeMetaRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 8,
-    marginBottom: 8,
-  },
-  recipeMetaRowGrid: {
-    marginTop: 4,
-    marginBottom: 4,
-  },
-  recipeMetaRowGridWeb: {
-    marginTop: 2,
-    marginBottom: 2,
-  },
-  recipeMetaLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  recipeMetaLeftWeb: {
-    gap: 8,
-  },
-  recipeMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  difficultyBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  deleteButton: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 40,
-    height: 40,
+  recipeContentList: {
+    flex: 1,
+    paddingRight: Spacing.base,
     justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 10,
   },
-}); 
+  skeletonText: {
+    borderRadius: 4,
+  },
+});
+

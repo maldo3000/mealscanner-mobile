@@ -4,8 +4,10 @@ import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native
 
 import { HapticTab } from '@/components/HapticTab';
 import { IconSymbol } from '@/components/ui/IconSymbol';
+import { AnimatedTabIcon } from '@/components/ui/AnimatedTabIcon';
+import { CustomTabBar } from '@/components/ui/CustomTabBar';
 import TabBarBackground from '@/components/ui/TabBarBackground';
-import { Colors } from '@/constants/Colors';
+import { Colors, borderBlack, textWhite, bgPrimary, neonGreen, glassSurface, glassBorder } from '@/constants/Colors';
 import { TextStyles } from '@/constants/Typography';
 import { useColorScheme } from '@/hooks/useColorScheme';
 
@@ -32,7 +34,7 @@ const navigationItems = [
   {
     name: 'recipes',
     title: 'Recipes',
-    icon: 'fork.knife',
+    icon: 'book.closed',
     href: '/(tabs)/recipes'
   },
   {
@@ -57,7 +59,7 @@ function SidebarLayout() {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <View style={[styles.container, { backgroundColor: bgPrimary }]}>
       {/* Sidebar */}
       <View style={[styles.sidebar, { backgroundColor: colors.surface, borderRightColor: colors.border }]}>
         {/* Logo/Header */}
@@ -129,43 +131,27 @@ export default function TabLayout() {
 
   return (
     <Tabs
+      tabBar={(props) => <CustomTabBar {...props} />}
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
         headerShown: false,
-        tabBarButton: HapticTab,
-        tabBarBackground: TabBarBackground,
-        tabBarLabelStyle: {
-          fontFamily: Platform.OS === 'web' 
-            ? "'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-            : 'SpaceGrotesk_400Regular',
-          fontSize: 12,
-          fontWeight: Platform.OS === 'web' ? '400' : 'normal',
-        },
-        tabBarStyle: Platform.select({
-          ios: {
-            // Use a transparent background on iOS to show the blur effect
-            position: 'absolute',
-            height: 90,
-            paddingBottom: 10,
-          },
-          default: {
-            height: 90,
-            paddingBottom: 10,
-          },
-        }),
+        tabBarShowLabel: false,
       }}>
       <Tabs.Screen
         name="index"
         options={{
           title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={24} name="house" color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <AnimatedTabIcon focused={focused} color={color} name="house" />
+          ),
         }}
       />
       <Tabs.Screen
         name="journal"
         options={{
           title: 'Journal',
-          tabBarIcon: ({ color }) => <IconSymbol size={24} name="book" color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <AnimatedTabIcon focused={focused} color={color} name="book" />
+          ),
         }}
       />
       <Tabs.Screen
@@ -173,25 +159,7 @@ export default function TabLayout() {
         options={{
           title: 'Capture',
           tabBarIcon: ({ color, focused }) => (
-            <View style={styles.mobileTabCaptureContainer}>
-              <View style={[
-                styles.mobileTabCapture,
-                { 
-                  backgroundColor: Colors[colorScheme ?? 'light'].tint,
-                  transform: [{ scale: focused ? 1.1 : 1.0 }]
-                }
-              ]}>
-                <IconSymbol size={26} name="plus" color="white" />
-              </View>
-            </View>
-          ),
-          tabBarLabel: ({ focused }) => (
-            <Text style={[
-              styles.mobileTabCaptureLabel,
-              { color: Colors[colorScheme ?? 'light'].tint }
-            ]}>
-              Capture
-            </Text>
+            <AnimatedTabIcon focused={focused} color={color} name="plus" size={24} />
           ),
         }}
       />
@@ -199,20 +167,24 @@ export default function TabLayout() {
         name="recipes"
         options={{
           title: 'Recipes',
-          tabBarIcon: ({ color }) => <IconSymbol size={24} name="fork.knife" color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <AnimatedTabIcon focused={focused} color={color} name="book.closed" />
+          ),
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
           title: 'Profile',
-          tabBarIcon: ({ color }) => <IconSymbol size={24} name="person.circle" color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <AnimatedTabIcon focused={focused} color={color} name="person" />
+          ),
         }}
       />
       <Tabs.Screen
         name="auth"
         options={{
-          href: null, // Hide from tab bar but keep the route accessible
+          href: null,
         }}
       />
     </Tabs>
@@ -220,6 +192,7 @@ export default function TabLayout() {
 }
 
 const styles = StyleSheet.create({
+  // ... existing sidebar styles ...
   container: {
     flex: 1,
     flexDirection: 'row',
@@ -259,55 +232,6 @@ const styles = StyleSheet.create({
     cursor: 'pointer',
     // @ts-ignore - web-only property
     transition: 'background-color 0.2s',
-  },
-  captureNavItem: {
-    flexDirection: 'column',
-    alignItems: 'center',
-    paddingVertical: 20,
-    gap: 8,
-  },
-  captureIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  captureText: {
-    textAlign: 'center',
-    fontSize: 12,
-  },
-  mobileTabCaptureContainer: {
-    justifyContent: 'flex-start',
-    alignItems: 'center',
-    height: 70,
-    marginTop: -20,
-  },
-  mobileTabCapture: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 12,
-    marginBottom: 6,
-    borderWidth: 3,
-    borderColor: 'white',
-  },
-  mobileTabCaptureLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    textAlign: 'center',
-    marginTop: 2,
   },
   sidebarFooter: {
     padding: 24,
