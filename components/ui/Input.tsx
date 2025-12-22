@@ -1,10 +1,12 @@
 import React from 'react';
 import { StyleSheet, Text, TextInput, TextInputProps, View } from 'react-native';
 
+import { Platform } from 'react-native';
+
 import { Colors, glassBorder, glassSurface, semanticColors } from '@/constants/Colors';
 import { BorderRadius } from '@/constants/Layout';
 import { ComponentSpacing, Spacing } from '@/constants/Spacing';
-import { TextStyles } from '@/constants/Typography';
+import { FontFamilies, TextStyles } from '@/constants/Typography';
 import { useColorScheme } from '@/hooks/useColorScheme';
 
 interface InputProps extends TextInputProps {
@@ -62,6 +64,9 @@ export function Input({
             styles.input,
             {
               color: colors.text,
+              fontFamily: Platform.OS === 'web' 
+                ? "'Source Sans 3', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+                : FontFamilies.body,
               paddingLeft: leftIcon ? Spacing.sm : ComponentSpacing.inputPadding,
               paddingRight: rightIcon ? Spacing.sm : ComponentSpacing.inputPadding,
             },

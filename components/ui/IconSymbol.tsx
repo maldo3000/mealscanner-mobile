@@ -54,11 +54,20 @@ const MAPPING = {
   'chart.bar.fill': 'bar-chart',
   'clock': 'access-time',
   'hourglass': 'hourglass-empty',
+  'star.fill': 'star',
+  'heart.fill': 'favorite',
+  'trophy.fill': 'emoji-events',
   
   // App-specific
   'fork.knife': 'restaurant',
   'brain.head.profile': 'psychology',
   'mic': 'mic',
+  'flame': 'local-fire-department',
+  'flame.fill': 'local-fire-department',
+  'leaf.fill': 'eco',
+  'drop.fill': 'water-drop',
+  'figure.strengthtraining.traditional': 'fitness-center',
+  'sparkles': 'auto-awesome',
   
   // Legacy
   'paperplane.fill': 'send',

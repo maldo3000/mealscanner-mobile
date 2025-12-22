@@ -263,6 +263,92 @@ export const analyzeTextMeal = async (description: string, userId: string, mealI
   }
 }
 
+export interface MealItem {
+  id: string
+  meal_id: string
+  item_type: 'photo' | 'text'
+  image_url: string | null
+  text: string | null
+  quantity: number
+  order_index: number
+  is_hero: boolean
+  ai_nutrition_per_unit: {
+    calories: number
+    protein: number
+    carbs: number
+    fat: number
+    fiber: number
+  } | null
+  ai_ingredients: string[] | null
+  ai_confidence: number | null
+  created_at: string
+  updated_at: string
+}
+
+export interface AnalyzeMealMultiItemInput {
+  itemType: 'photo' | 'text'
+  imageUrl?: string
+  text?: string
+  quantity: number
+  orderIndex: number
+  isHero: boolean
+}
+
+export interface AnalyzeMealMultiRequest {
+  userId: string
+  mealId?: string
+  contextText?: string
+  items: AnalyzeMealMultiItemInput[]
+}
+
+export const analyzeMealMulti = async (payload: AnalyzeMealMultiRequest) => {
+  try {
+    const { data, error } = await supabase.functions.invoke('analyze-meal-multi', {
+      body: payload,
+    })
+
+    if (error) {
+      throw error
+    }
+
+    return { data, error: null }
+  } catch (error) {
+    return { data: null, error }
+  }
+}
+
+export const getMealItems = async (mealId: string) => {
+  const { data, error } = await supabase
+    .from('meal_items')
+    .select('*')
+    .eq('meal_id', mealId)
+    .order('order_index', { ascending: true })
+
+  return { data: (data as MealItem[]) ?? null, error }
+}
+
+export const updateMealItemQuantity = async (mealItemId: string, quantity: number) => {
+  const normalizedQuantity = Math.max(1, Math.floor(quantity))
+
+  const { data, error } = await supabase
+    .from('meal_items')
+    .update({ quantity: normalizedQuantity })
+    .eq('id', mealItemId)
+    .select()
+    .single()
+
+  return { data: (data as MealItem) ?? null, error }
+}
+
+export const setMealHeroItem = async (mealId: string, mealItemId: string) => {
+  const { data, error } = await supabase.rpc('set_meal_hero_item', {
+    p_meal_id: mealId,
+    p_meal_item_id: mealItemId,
+  })
+
+  return { data, error }
+}
+
 // User Goals Functions
 export const saveUserGoals = async (userId: string, goals: {
   goal_type: 'weight_loss' | 'muscle_gain' | 'maintenance' | 'health'

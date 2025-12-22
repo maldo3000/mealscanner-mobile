@@ -1,5 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { getLLMRouter } from '../_shared/llm/router.ts';
+import type { LLMConfig } from '../_shared/llm/types.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -11,6 +13,7 @@ interface RecipeAnalysisRequest {
   user_id: string;
   description?: string;
   source_meal_id?: string;
+  llm?: LLMConfig;
 }
 
 interface RecipeAnalysisResponse {
@@ -54,7 +57,7 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { image_url, user_id, description, source_meal_id } = await req.json() as RecipeAnalysisRequest;
+    const { image_url, user_id, description, source_meal_id, llm } = await req.json() as RecipeAnalysisRequest;
 
     if (!image_url || !user_id) {
       return new Response(
@@ -67,12 +70,6 @@ Deno.serve(async (req) => {
     }
 
     console.log(`Starting recipe analysis for user ${user_id} with image: ${image_url}`);
-
-    // Get OpenAI API key
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
-    if (!openaiApiKey) {
-      throw new Error('OpenAI API key not configured');
-    }
 
     // Create comprehensive recipe analysis prompt
     const systemPrompt = `You are a professional chef and recipe developer with expertise in analyzing food images to create detailed, accurate recipes. Analyze the provided meal image and extract a complete recipe that would recreate this dish.`;
@@ -117,15 +114,10 @@ Analyze this food image and provide a complete recipe to recreate this dish. Ple
 Make the recipe detailed and realistic - include proper measurements, cooking techniques, and step-by-step instructions that would actually work to recreate this dish. Base the difficulty on the actual complexity of the cooking techniques required.
 `;
 
-    // Call OpenAI Vision API
-    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openaiApiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: "gpt-4o",
+    // Use LLM router for vision analysis
+    const llmRouter = getLLMRouter();
+    const chatResponse = await llmRouter.chatComplete(
+      {
         messages: [
           {
             role: "system",
@@ -142,17 +134,22 @@ Make the recipe detailed and realistic - include proper measurements, cooking te
         max_tokens: 2000,
         temperature: 0.3,
         response_format: { type: "json_object" }
-      })
-    });
+      },
+      llm
+    );
 
-    if (!openaiResponse.ok) {
-      const errorData = await openaiResponse.text();
-      console.error('OpenAI API error:', errorData);
-      throw new Error(`OpenAI API error: ${openaiResponse.status} ${openaiResponse.statusText}`);
-    }
-
-    const openaiData = await openaiResponse.json();
-    const analysisText = openaiData.choices[0].message.content;
+    const analysisText = chatResponse.content;
+    
+    // Create a mock openaiData structure for backward compatibility with database storage
+    const openaiData = {
+      model: chatResponse.model,
+      choices: [{
+        message: {
+          content: analysisText
+        }
+      }],
+      usage: chatResponse.usage
+    };
     
     let recipeAnalysis: RecipeAnalysisResponse;
     try {

@@ -1,22 +1,29 @@
 import { ContentContainer } from '@/components/layout/ContentContainer';
 import { PageContainer } from '@/components/layout/PageContainer';
 import { AnimatedCard } from '@/components/ui/AnimatedCard';
+import { Button } from '@/components/ui/Button';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { IngredientTags } from '@/components/ui/IngredientTags';
 import { NutritionCard } from '@/components/ui/NutritionCard';
+import { ThumbnailImage } from '@/components/ui/OptimizedImage';
 import { ParallaxImage } from '@/components/ui/ParallaxImage';
-import { Colors, neonGreen } from '@/constants/Colors';
+import { Input } from '@/components/ui/Input';
+import { bgPrimary, Colors, neonGreen } from '@/constants/Colors';
 import { Shadows } from '@/constants/Layout';
 import { PageSpacing, Spacing } from '@/constants/Spacing';
 import { TextStyles } from '@/constants/Typography';
+import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { useNutritionGoals } from '@/hooks/useNutritionGoals';
-import { deleteMeal, getMealById } from '@/lib/supabase';
+import { analyzeMealMulti, deleteMeal, getMealById, getMealItems, setMealHeroItem, transcribeAudioDirect } from '@/lib/supabase';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Dimensions,
+  FlatList,
+  Modal,
   Platform,
   StyleSheet,
   Text,
@@ -45,6 +52,8 @@ interface Meal {
   ai_analysis?: any;
   nutrition_confidence?: number;
   processing_status?: 'pending' | 'processing' | 'completed' | 'failed';
+  context_text?: string | null;
+  items_count?: number;
 }
 
 const { width } = Dimensions.get('window');
@@ -58,7 +67,67 @@ export default function MealDetailScreen() {
   const { activeGoal } = useNutritionGoals();
   
   const [meal, setMeal] = useState<Meal | null>(null);
+  const [mealItems, setMealItems] = useState<Array<{
+    id: string;
+    meal_id: string;
+    item_type: 'photo' | 'text';
+    image_url: string | null;
+    text: string | null;
+    quantity: number;
+    order_index: number;
+    is_hero: boolean;
+    ai_nutrition_per_unit?: {
+      calories?: number;
+      protein?: number;
+      carbs?: number;
+      fat?: number;
+      fiber?: number;
+    } | null;
+    ai_ingredients?: string[] | null;
+  }>>([]);
   const [loading, setLoading] = useState(true);
+  const [showReanalyzeModal, setShowReanalyzeModal] = useState(false);
+  const [tempContextText, setTempContextText] = useState('');
+  const [reanalyzing, setReanalyzing] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+
+  const handleAudioTranscription = async (audioUri: string) => {
+    if (!meal || !audioUri) return;
+    setIsTranscribing(true);
+    try {
+      const { data, error } = await transcribeAudioDirect(audioUri, meal.user_id);
+      if (error) throw error;
+      if (data?.transcript) {
+        setTempContextText((prev) => {
+          const trimmed = prev.trim();
+          return trimmed ? `${trimmed} ${data.transcript}` : data.transcript;
+        });
+      }
+    } catch (e) {
+      Alert.alert('Transcription Error', 'Failed to transcribe audio. Please try again or type your feedback.');
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
+
+  const { isRecording, startRecording, stopRecording } = useAudioRecorder({
+    onRecordingComplete: handleAudioTranscription,
+    onError: (error) => {
+      Alert.alert('Recording Error', error.message);
+    },
+  });
+
+  const handleVoiceInput = async () => {
+    if (isRecording) {
+      await stopRecording();
+      return;
+    }
+    try {
+      await startRecording();
+    } catch {
+      Alert.alert('Error', 'Failed to start recording. Please check microphone permissions.');
+    }
+  };
 
   useEffect(() => {
     if (id) {
@@ -76,12 +145,84 @@ export default function MealDetailScreen() {
         return;
       }
       setMeal(data);
+
+      const { data: itemsData, error: itemsError } = await getMealItems(id);
+      if (itemsError) {
+        console.error('Error loading meal items:', itemsError);
+      }
+      setMealItems(
+        (itemsData || []).map((it) => ({
+          id: it.id,
+          meal_id: it.meal_id,
+          item_type: it.item_type,
+          image_url: it.image_url,
+          text: it.text,
+          quantity: it.quantity,
+          order_index: it.order_index,
+          is_hero: it.is_hero,
+          ai_nutrition_per_unit: it.ai_nutrition_per_unit,
+          ai_ingredients: it.ai_ingredients,
+        }))
+      );
     } catch (error) {
       console.error('Error loading meal:', error);
       Alert.alert('Error', 'Failed to load meal details');
       router.back();
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSetHero = async (mealItemId: string, imageUrl: string | null) => {
+    if (!meal) return;
+    try {
+      const { error } = await setMealHeroItem(meal.id, mealItemId);
+      if (error) {
+        throw error;
+      }
+      setMealItems((prev) => prev.map((i) => (i.item_type === 'photo' ? { ...i, is_hero: i.id === mealItemId } : i)));
+      if (imageUrl) {
+        setMeal((prev) => (prev ? { ...prev, image_url: imageUrl } : prev));
+      }
+    } catch (e) {
+      Alert.alert('Error', 'Failed to set hero image');
+    }
+  };
+
+  const openReanalyze = () => {
+    setTempContextText(meal?.context_text ?? '');
+    setShowReanalyzeModal(true);
+  };
+
+  const handleReanalyze = async () => {
+    if (!meal) return;
+    setReanalyzing(true);
+    try {
+      const itemsPayload = mealItems.map((it, idx) => ({
+        itemType: it.item_type,
+        imageUrl: it.item_type === 'photo' ? it.image_url ?? undefined : undefined,
+        text: it.item_type === 'text' ? it.text ?? '' : undefined,
+        quantity: it.quantity,
+        orderIndex: idx,
+        isHero: it.item_type === 'photo' ? it.is_hero : false,
+      }));
+
+      const payload = {
+        userId: meal.user_id,
+        mealId: meal.id,
+        contextText: tempContextText.trim() ? tempContextText.trim() : undefined,
+        items: itemsPayload,
+      };
+
+      const { error } = await analyzeMealMulti(payload);
+      if (error) throw error;
+
+      setShowReanalyzeModal(false);
+      await loadMealDetail();
+    } catch (e) {
+      Alert.alert('Error', 'Failed to reanalyze meal. Please try again.');
+    } finally {
+      setReanalyzing(false);
     }
   };
 
@@ -137,6 +278,65 @@ export default function MealDetailScreen() {
       hour: '2-digit', 
       minute: '2-digit' 
     });
+  };
+
+  // Generate summarized meal title from items or use AI description
+  const getMealTitle = (): string => {
+    if (mealItems.length === 0) {
+      return meal?.description || 'Meal';
+    }
+
+    // If AI analysis has a good description, use it
+    if (meal?.ai_analysis?.meal?.description && mealItems.length > 1) {
+      return meal.ai_analysis.meal.description;
+    }
+
+    // For single item, use text or simple description
+    if (mealItems.length === 1) {
+      const item = mealItems[0];
+      if (item.item_type === 'text' && item.text) {
+        return item.text.trim();
+      }
+      return meal?.description || 'Meal';
+    }
+
+    // For multiple items, create a concise summary
+    const photoCount = mealItems.filter((i) => i.item_type === 'photo').length;
+    const textItems = mealItems.filter((i) => i.item_type === 'text' && i.text);
+    
+    if (textItems.length > 0) {
+      // Use first text item as base, add count if multiple
+      const base = textItems[0]!.text!.trim();
+      if (mealItems.length === 2 && photoCount === 1) {
+        return `${base} with photo`;
+      }
+      return `${base} + ${mealItems.length - 1} more`;
+    }
+
+    // All photos - use meal type + count
+    const mealType = getMealType(meal?.created_at || new Date().toISOString());
+    return `${mealType} (${mealItems.length} items)`;
+  };
+
+  // Get item display name from AI analysis or generate from data
+  const getItemDisplayName = (item: typeof mealItems[0], index: number): string => {
+    // Check if AI analysis has item names
+    if (meal?.ai_analysis?.items && Array.isArray(meal.ai_analysis.items)) {
+      const aiItem = meal.ai_analysis.items.find((it: any) => it.index === index);
+      if (aiItem?.name) {
+        return aiItem.name;
+      }
+    }
+
+    // Fallback to text or generic name
+    if (item.item_type === 'text' && item.text) {
+      const trimmed = item.text.trim();
+      // Take first 30 chars or first sentence
+      const firstSentence = trimmed.split(/[.!?]/)[0];
+      return firstSentence.length > 30 ? firstSentence.substring(0, 30) + '...' : firstSentence;
+    }
+
+    return `Item ${index + 1}`;
   };
 
   const getHealthScoreStyle = (healthScore?: string) => {
@@ -268,13 +468,13 @@ export default function MealDetailScreen() {
           <View style={styles.headerActions}>
             <TouchableOpacity 
               style={styles.headerButtonEdit}
-              onPress={() => Alert.alert('Edit', 'Edit functionality coming soon!')}
+              onPress={openReanalyze}
               activeOpacity={0.8}
             >
               <View style={styles.iconContainer}>
                 <View style={styles.iconBackground} />
                 <View style={styles.iconGlow}>
-                  <IconSymbol name="pencil" size={18} color={neonGreen} style={styles.iconThick} />
+                  <IconSymbol name="arrow.clockwise" size={18} color={neonGreen} style={styles.iconThick} />
                 </View>
               </View>
             </TouchableOpacity>
@@ -300,11 +500,68 @@ export default function MealDetailScreen() {
           <ParallaxImage source={{ uri: meal.image_url }} height={380} />
         )}
 
+        {/* Items carousel */}
+        {mealItems.length > 0 && (
+          <View style={styles.itemsCarousel}>
+            <FlatList
+              data={mealItems}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={styles.itemsCarouselContent}
+              renderItem={({ item }) => {
+                const isPhoto = item.item_type === 'photo';
+                return (
+                  <TouchableOpacity
+                    style={styles.carouselItem}
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      if (isPhoto) {
+                        void handleSetHero(item.id, item.image_url);
+                      }
+                    }}
+                    disabled={!isPhoto}
+                  >
+                    {isPhoto && item.image_url ? (
+                      <View style={styles.carouselPhotoWrapper}>
+                        <ThumbnailImage source={{ uri: item.image_url }} style={styles.carouselPhoto} />
+                        <View style={styles.carouselBadges}>
+                          <View style={styles.quantityBadge}>
+                            <Text style={styles.quantityBadgeText}>x{item.quantity}</Text>
+                          </View>
+                          {item.is_hero && (
+                            <View style={styles.heroBadge}>
+                              <IconSymbol name="star.fill" size={14} color="#000000" />
+                              <Text style={styles.heroBadgeText}>Hero</Text>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+                    ) : (
+                      <View style={styles.carouselTextCard}>
+                        <View style={styles.carouselTextHeader}>
+                          <IconSymbol name="text.alignleft" size={18} color={neonGreen} />
+                          <View style={styles.quantityBadge}>
+                            <Text style={styles.quantityBadgeText}>x{item.quantity}</Text>
+                          </View>
+                        </View>
+                        <Text style={styles.carouselText} numberOfLines={3}>
+                          {item.text || 'Text item'}
+                        </Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              }}
+            />
+          </View>
+        )}
+
         {/* Title Card - Elevated */}
         <AnimatedCard delay={100} style={styles.titleCard}>
           <View style={styles.titleHeader}>
             <Text style={[TextStyles.h3, { color: colors.text, flex: 1 }]}>
-              {meal.description}
+              {getMealTitle()}
             </Text>
             {meal.health_score && (
               <View style={[styles.healthBadge, getHealthScoreStyle(meal.health_score)]}>
@@ -404,6 +661,55 @@ export default function MealDetailScreen() {
                     />
                   </View>
                 )}
+              </View>
+            )}
+
+            {/* Item Breakdown - Show when multiple items */}
+            {mealItems.length > 1 && (
+              <View style={styles.itemsBreakdown}>
+                <View style={styles.sectionHeader}>
+                  <IconSymbol name="square.grid.2x2" size={20} color={colors.tint} />
+                  <Text style={[TextStyles.bodyLarge, { color: colors.text, fontWeight: '600' }]}>
+                    Items ({mealItems.length})
+                  </Text>
+                </View>
+                <View style={styles.itemsChipsContainer}>
+                  {mealItems.map((item, index) => {
+                    const displayName = getItemDisplayName(item, index);
+                    const nutrition = item.ai_nutrition_per_unit;
+                    const totalCalories = nutrition?.calories ? Math.round(nutrition.calories * item.quantity) : null;
+                    
+                    return (
+                      <View key={item.id} style={styles.itemChip}>
+                        <View style={styles.itemChipHeader}>
+                          <View style={styles.itemChipNameRow}>
+                            {item.item_type === 'photo' ? (
+                              <IconSymbol name="photo" size={14} color={neonGreen} />
+                            ) : (
+                              <IconSymbol name="text.alignleft" size={14} color={neonGreen} />
+                            )}
+                            <Text style={[TextStyles.bodySmall, { color: colors.text, fontWeight: '600', flex: 1 }]} numberOfLines={1}>
+                              {displayName}
+                            </Text>
+                          </View>
+                          <View style={styles.itemChipQuantity}>
+                            <Text style={[TextStyles.caption, { color: '#000000', fontWeight: '700' }]}>
+                              ×{item.quantity}
+                            </Text>
+                          </View>
+                        </View>
+                        {totalCalories !== null && (
+                          <View style={styles.itemChipNutrition}>
+                            <Text style={[TextStyles.caption, { color: colors.icon }]}>
+                              {totalCalories} cal
+                              {nutrition?.protein && ` • ${Math.round(nutrition.protein * item.quantity)}g P`}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
               </View>
             )}
           </AnimatedCard>
@@ -528,6 +834,92 @@ export default function MealDetailScreen() {
           </AnimatedCard>
         )}
       </ContentContainer>
+
+      {/* Reanalyze Modal */}
+      <Modal
+        visible={showReanalyzeModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowReanalyzeModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalCard}>
+              <View style={styles.modalHeaderRow}>
+                <Text style={[TextStyles.h3, { color: colors.text }]}>Reanalyze</Text>
+                <TouchableOpacity
+                  onPress={() => setShowReanalyzeModal(false)}
+                  style={styles.modalCloseButton}
+                  activeOpacity={0.8}
+                  disabled={reanalyzing}
+                >
+                  <IconSymbol name="xmark" size={22} color={colors.icon} />
+                </TouchableOpacity>
+              </View>
+
+              <Text style={[TextStyles.bodySmall, { color: colors.icon, marginBottom: Spacing.md }]}>
+                Add or update context for the full meal, then re-run analysis. Type or use voice input.
+              </Text>
+
+              <Input
+                placeholder="E.g., large portions, sugar-free drink, extra sauce…"
+                value={tempContextText}
+                onChangeText={setTempContextText}
+                multiline
+                numberOfLines={7}
+                textAlignVertical="top"
+                rightIcon={
+                  <TouchableOpacity 
+                    onPress={handleVoiceInput} 
+                    disabled={isTranscribing || reanalyzing} 
+                    activeOpacity={0.7}
+                    style={styles.voiceInputButton}
+                  >
+                    <IconSymbol 
+                      name={isRecording ? 'stop.fill' : isTranscribing ? 'hourglass' : 'mic'} 
+                      size={26} 
+                      color={isRecording ? '#EF4444' : neonGreen} 
+                    />
+                  </TouchableOpacity>
+                }
+                containerStyle={{ marginBottom: Spacing.lg }}
+                style={{ minHeight: 140 }}
+              />
+
+              {/* Recording indicator */}
+              {isRecording && (
+                <View style={styles.recordingIndicator}>
+                  <View style={styles.recordingDot} />
+                  <Text style={[TextStyles.bodySmall, { color: '#EF4444' }]}>Recording… tap mic to stop</Text>
+                </View>
+              )}
+
+              {/* Transcribing indicator */}
+              {isTranscribing && (
+                <View style={styles.transcribingIndicator}>
+                  <ActivityIndicator size="small" color={neonGreen} />
+                  <Text style={[TextStyles.bodySmall, { color: colors.icon }]}>Transcribing…</Text>
+                </View>
+              )}
+
+              <View style={styles.modalActions}>
+                <Button variant="secondary" onPress={() => setShowReanalyzeModal(false)} style={styles.modalActionBtn}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  onPress={handleReanalyze}
+                  style={styles.modalActionBtn}
+                  disabled={reanalyzing}
+                  icon={reanalyzing ? <ActivityIndicator size="small" color="#000000" /> : undefined}
+                >
+                  {reanalyzing ? 'Reanalyzing…' : 'Reanalyze'}
+                </Button>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </PageContainer>
   );
 }
@@ -736,5 +1128,190 @@ const styles = StyleSheet.create({
   },
   skeletonCard: {
     borderRadius: 12,
+  },
+
+  itemsCarousel: {
+    marginTop: Spacing.base,
+    marginBottom: PageSpacing.sectionGap,
+  },
+  itemsCarouselContent: {
+    paddingHorizontal: PageSpacing.containerPadding,
+    gap: Spacing.md,
+  },
+  carouselItem: {
+    width: 140,
+  },
+  carouselPhotoWrapper: {
+    width: 140,
+    height: 120,
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+  },
+  carouselPhoto: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 16,
+  },
+  carouselBadges: {
+    position: 'absolute',
+    left: 8,
+    right: 8,
+    top: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  quantityBadge: {
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 9999,
+  },
+  quantityBadgeText: {
+    color: 'white',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  heroBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: neonGreen,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 9999,
+  },
+  heroBadgeText: {
+    color: '#000000',
+    fontWeight: '800',
+    fontSize: 12,
+  },
+  carouselTextCard: {
+    width: 140,
+    height: 120,
+    borderRadius: 16,
+    padding: 12,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+    justifyContent: 'space-between',
+  },
+  carouselTextHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  carouselText: {
+    color: 'white',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.lg,
+  },
+  modalContainer: {
+    width: '100%',
+    maxWidth: 520,
+  },
+  modalCard: {
+    backgroundColor: bgPrimary,
+    borderRadius: 20,
+    padding: Spacing.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+  },
+  modalHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+  },
+  modalCloseButton: {
+    padding: Spacing.xs,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+  },
+  modalActionBtn: {
+    flex: 1,
+  },
+  voiceInputButton: {
+    padding: Spacing.xs,
+  },
+  recordingIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginTop: -Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  recordingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#EF4444',
+  },
+  transcribingIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginTop: -Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  itemsBreakdown: {
+    marginTop: Spacing.lg,
+    paddingTop: Spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  itemsChipsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.md,
+    marginTop: Spacing.md,
+  },
+  itemChip: {
+    flex: 1,
+    minWidth: '45%',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 12,
+    padding: Spacing.md,
+    gap: Spacing.sm,
+  },
+  itemChipHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+  },
+  itemChipNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    flex: 1,
+  },
+  itemChipQuantity: {
+    backgroundColor: 'rgba(74, 222, 128, 0.2)',
+    borderWidth: 1,
+    borderColor: neonGreen,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  itemChipNutrition: {
+    marginTop: Spacing.xs,
   },
 }); 

@@ -23,14 +23,18 @@ export function AnimatedTabIcon({ focused, color, name, size = 24 }: AnimatedTab
   const iconScale = useSharedValue(focused ? 1 : 0.85);
 
   useEffect(() => {
+    // Higher damping = faster settle, less oscillation
+    // Stiffness controls snap speed
+    const springConfig = { damping: 18, stiffness: 400 };
+    
     if (focused) {
-      scale.value = withSpring(1.2, { damping: 10, stiffness: 400 });
-      progress.value = withTiming(1, { duration: 250 });
-      iconScale.value = withSpring(1, { damping: 10, stiffness: 400 });
+      scale.value = withSpring(1.15, springConfig);
+      progress.value = withTiming(1, { duration: 200 });
+      iconScale.value = withSpring(1, springConfig);
     } else {
-      scale.value = withSpring(1, { damping: 10, stiffness: 400 });
-      progress.value = withTiming(0, { duration: 250 });
-      iconScale.value = withSpring(0.85, { damping: 10, stiffness: 400 });
+      scale.value = withSpring(1, springConfig);
+      progress.value = withTiming(0, { duration: 200 });
+      iconScale.value = withSpring(0.9, springConfig);
     }
   }, [focused, scale, progress, iconScale]);
 

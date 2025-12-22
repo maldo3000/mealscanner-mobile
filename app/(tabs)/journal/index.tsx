@@ -29,6 +29,7 @@ interface Meal {
   description: string;
   image_url?: string;
   user_id: string;
+  items_count?: number;
   ingredients?: string[];
   serving_estimate?: string;
   calories?: number;
@@ -257,7 +258,15 @@ export default function MealsScreen() {
     >
       <Card variant="glass" style={styles.mealCard}>
         {meal.image_url && (
-          <ThumbnailImage source={{ uri: meal.image_url }} style={styles.mealImage} />
+          <View style={styles.mealImageWrapper}>
+            <ThumbnailImage source={{ uri: meal.image_url }} style={styles.mealImage} />
+            {(meal.items_count ?? 0) > 1 && (
+              <View style={styles.itemsCountBadge}>
+                <IconSymbol name="square.stack.3d.up" size={14} color="#000000" />
+                <Text style={styles.itemsCountBadgeText}>{meal.items_count} items</Text>
+              </View>
+            )}
+          </View>
         )}
 
         <View style={styles.cardContent}>
@@ -574,6 +583,26 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     marginTop: 16,
     marginBottom: 8,
+  },
+  mealImageWrapper: {
+    position: 'relative',
+  },
+  itemsCountBadge: {
+    position: 'absolute',
+    top: 26,
+    right: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: neonGreen,
+    borderRadius: 9999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  itemsCountBadgeText: {
+    color: '#000000',
+    fontWeight: '800',
+    fontSize: 12,
   },
   cardContent: {
     padding: 16,

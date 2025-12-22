@@ -114,7 +114,7 @@ export default function RecipesScreen() {
   const colors = Colors[colorScheme ?? 'light'];
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);

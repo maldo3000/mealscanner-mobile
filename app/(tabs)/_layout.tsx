@@ -2,12 +2,10 @@ import { Slot, Tabs, usePathname, useRouter } from 'expo-router';
 import React from 'react';
 import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
-import { HapticTab } from '@/components/HapticTab';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { AnimatedTabIcon } from '@/components/ui/AnimatedTabIcon';
 import { CustomTabBar } from '@/components/ui/CustomTabBar';
-import TabBarBackground from '@/components/ui/TabBarBackground';
-import { Colors, borderBlack, textWhite, bgPrimary, neonGreen, glassSurface, glassBorder } from '@/constants/Colors';
+import { Colors, bgPrimary } from '@/constants/Colors';
 import { TextStyles } from '@/constants/Typography';
 import { useColorScheme } from '@/hooks/useColorScheme';
 

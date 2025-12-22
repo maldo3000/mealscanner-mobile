@@ -1,7 +1,7 @@
 import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View, ViewProps } from 'react-native';
+import { StyleSheet, Text, View, ViewProps } from 'react-native';
 
-import { Colors, textMuted } from '@/constants/Colors';
+import { Colors } from '@/constants/Colors';
 import { PageSpacing, Spacing } from '@/constants/Spacing';
 import { TextStyles } from '@/constants/Typography';
 import { useColorScheme } from '@/hooks/useColorScheme';
@@ -52,7 +52,7 @@ export function PageHeader({
         )}
         
         <View style={styles.titleContainer}>
-          <Text style={[TextStyles.h2, { color: colors.text }]}>
+          <Text style={[TextStyles.h1, { color: colors.text, fontSize: 44, lineHeight: 52 }]}>
             {title}
           </Text>
           {subtitle && (

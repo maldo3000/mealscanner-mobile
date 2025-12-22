@@ -2,16 +2,16 @@
 
 ## 🎯 Overview
 
-The MealScanner LLM Integration system provides automated nutrition analysis for meals through image recognition and text description processing. This system leverages Supabase Edge Functions to integrate with modern LLM APIs (OpenAI GPT-4 Vision, Claude, etc.) to deliver accurate nutrition insights and personalized recommendations.
+The MealScanner LLM Integration system provides automated nutrition analysis for meals through image recognition and text description processing. This system leverages Supabase Edge Functions to integrate with modern LLM APIs through a unified router that supports multiple providers (OpenAI, OpenRouter) and models. The router enables flexible model switching while maintaining backward compatibility with existing functionality.
 
 ## 🏗️ System Architecture
 
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Mobile App    │───▶│ Supabase Edge   │───▶│   LLM APIs      │
-│   (React Native)│    │   Functions     │    │ (OpenAI/Claude) │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-        │                       │
+┌─────────────────┐    ┌─────────────────┐    ┌──────────────┐    ┌─────────────────┐
+│   Mobile App    │───▶│ Supabase Edge   │───▶│  LLM Router │───▶│   LLM APIs      │
+│   (React Native)│    │   Functions     │    │  (Provider   │    │ (OpenAI/        │
+└─────────────────┘    └─────────────────┘    │   Selection) │    │  OpenRouter)    │
+        │                       │            └──────────────┘    └─────────────────┘
         │              ┌─────────────────┐
         └─────────────▶│   Supabase      │
                        │   Database      │
@@ -106,7 +106,11 @@ CREATE TABLE recommendations (
   imageUrl: string,        // Public URL to meal image
   userId: string,          // User UUID
   mealId?: string,         // Optional meal ID to update
-  description?: string     // Optional user description
+  description?: string,    // Optional user description
+  llm?: {                  // Optional LLM provider/model override
+    provider?: 'openai' | 'openrouter',
+    model?: string         // Model name (e.g., 'gpt-4-vision-preview' or 'openai/gpt-4o')
+  }
 }
 ```
 
@@ -145,7 +149,11 @@ CREATE TABLE recommendations (
 {
   description: string,     // Meal description
   userId: string,          // User UUID
-  mealId?: string         // Optional meal ID to update
+  mealId?: string,         // Optional meal ID to update
+  llm?: {                  // Optional LLM provider/model override
+    provider?: 'openai' | 'openrouter',
+    model?: string         // Model name (e.g., 'gpt-4-turbo-preview' or 'openai/gpt-4o')
+  }
 }
 ```
 
@@ -223,15 +231,66 @@ export const getAnalysisResults = async (mealId: string)
 
 ```bash
 # Supabase Edge Functions Environment Variables
-OPENAI_API_KEY=sk-...           # OpenAI API key for GPT-4 Vision/Turbo
-ANTHROPIC_API_KEY=sk-ant-...    # Optional: Claude API key
+OPENAI_API_KEY=sk-...           # OpenAI API key for GPT-4 Vision/Turbo (required for transcription)
 SUPABASE_URL=https://...        # Your Supabase project URL
 SUPABASE_SERVICE_ROLE_KEY=...   # Service role key for database access
+
+# OpenRouter Configuration (optional, enables model switching)
+OPENROUTER_API_KEY=sk-or-...     # OpenRouter API key (get from https://openrouter.ai)
+OPENROUTER_SITE_URL=https://... # Your app URL (recommended by OpenRouter)
+OPENROUTER_APP_NAME=MealScanner # Your app name (recommended by OpenRouter)
+
+# Optional: Default LLM Provider/Model Configuration
+LLM_DEFAULT_PROVIDER=openai     # Default provider: 'openai' or 'openrouter'
+LLM_DEFAULT_TEXT_MODEL=gpt-4-turbo-preview  # Default text model
+LLM_DEFAULT_VISION_MODEL=gpt-4-vision-preview # Default vision model
 
 # Optional: Rate limiting and caching
 REDIS_URL=...                   # For caching and rate limiting
 MAX_REQUESTS_PER_MINUTE=30      # Rate limiting
 ```
+
+### LLM Provider Support
+
+The system now supports multiple LLM providers through a unified router:
+
+- **OpenAI** (default): Direct integration with OpenAI's API
+  - Chat completions: GPT-4 Turbo, GPT-4 Vision
+  - Transcription: Whisper API
+- **OpenRouter**: Unified API for multiple LLM providers
+  - Chat completions: Access to OpenAI, Anthropic, Google, and more models
+  - Model format: `provider/model-name` (e.g., `openai/gpt-4o`, `anthropic/claude-3-opus`)
+  - Transcription: Automatically falls back to OpenAI Whisper
+
+### Switching LLM Providers and Models
+
+You can switch providers and models per-request by including an optional `llm` field in the request body:
+
+```typescript
+// Example: Use OpenRouter with a specific model
+{
+  description: "Grilled chicken with vegetables",
+  userId: "user-uuid",
+  llm: {
+    provider: "openrouter",
+    model: "openai/gpt-4o"  // or "anthropic/claude-3-opus", etc.
+  }
+}
+
+// Example: Use OpenAI with default model (backward compatible)
+{
+  description: "Grilled chicken with vegetables",
+  userId: "user-uuid"
+  // llm field omitted - uses default provider/model
+}
+```
+
+**Recommended OpenRouter Models:**
+- Text analysis: `openai/gpt-4-turbo`, `anthropic/claude-3-sonnet`
+- Vision analysis: `openai/gpt-4o`, `openai/gpt-4-vision-preview`
+- Cost-effective: `openai/gpt-3.5-turbo`, `google/gemini-pro`
+
+**Note:** Speech-to-text always uses OpenAI Whisper (OpenRouter doesn't support transcription endpoints). If you request OpenRouter for transcription, it will automatically fallback to OpenAI with a warning log.
 
 ### Deployment Commands
 
@@ -254,6 +313,16 @@ supabase functions deploy analyze-meal-text
 
 # Set environment variables
 supabase secrets set OPENAI_API_KEY=your-key-here
+
+# Optional: Set OpenRouter configuration
+supabase secrets set OPENROUTER_API_KEY=your-openrouter-key
+supabase secrets set OPENROUTER_SITE_URL=https://your-app-url.com
+supabase secrets set OPENROUTER_APP_NAME=MealScanner
+
+# Optional: Set default provider/model preferences
+supabase secrets set LLM_DEFAULT_PROVIDER=openrouter
+supabase secrets set LLM_DEFAULT_TEXT_MODEL=openai/gpt-4-turbo
+supabase secrets set LLM_DEFAULT_VISION_MODEL=openai/gpt-4o
 ```
 
 ## 🛡️ Error Handling & Reliability
