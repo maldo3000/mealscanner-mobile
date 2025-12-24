@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS meals (
   serving_estimate TEXT,
   calories INTEGER,
   macros JSONB, -- { protein, carbs, fat, fiber }
-  health_score TEXT CHECK (health_score IN ('healthy', 'moderately_healthy', 'unhealthy')),
+  health_score TEXT CHECK (health_score IN ('very_healthy', 'healthy', 'needs_improvement')),
   fiber_score TEXT,
   qualitative_feedback TEXT,
   recipe TEXT,

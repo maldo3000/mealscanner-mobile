@@ -23,11 +23,14 @@ import {
   Alert,
   Dimensions,
   FlatList,
+  Keyboard,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -46,7 +49,7 @@ interface Meal {
     carbs?: number;
     fiber?: number;
   };
-  health_score?: 'healthy' | 'moderately_healthy' | 'unhealthy';
+  health_score?: 'very_healthy' | 'healthy' | 'needs_improvement';
   qualitative_feedback?: string;
   created_at: string;
   ai_analysis?: any;
@@ -90,6 +93,22 @@ export default function MealDetailScreen() {
   const [tempContextText, setTempContextText] = useState('');
   const [reanalyzing, setReanalyzing] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      () => setIsKeyboardVisible(true)
+    );
+    const hideSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setIsKeyboardVisible(false)
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const handleAudioTranscription = async (audioUri: string) => {
     if (!meal || !audioUri) return;
@@ -282,16 +301,19 @@ export default function MealDetailScreen() {
 
   // Generate summarized meal title from items or use AI description
   const getMealTitle = (): string => {
+    // 1. Prioritize the AI-generated description if it's available and not a generic placeholder
+    if (meal?.description && 
+        meal.description !== 'Meal' && 
+        meal.description !== 'Analyzed meal' &&
+        !meal.description.includes('items)')) {
+      return meal.description;
+    }
+
     if (mealItems.length === 0) {
       return meal?.description || 'Meal';
     }
 
-    // If AI analysis has a good description, use it
-    if (meal?.ai_analysis?.meal?.description && mealItems.length > 1) {
-      return meal.ai_analysis.meal.description;
-    }
-
-    // For single item, use text or simple description
+    // 2. For single items, use the item text or the generic meal description
     if (mealItems.length === 1) {
       const item = mealItems[0];
       if (item.item_type === 'text' && item.text) {
@@ -300,20 +322,19 @@ export default function MealDetailScreen() {
       return meal?.description || 'Meal';
     }
 
-    // For multiple items, create a concise summary
+    // 3. Fallback for multiple items if AI description is missing or generic
     const photoCount = mealItems.filter((i) => i.item_type === 'photo').length;
     const textItems = mealItems.filter((i) => i.item_type === 'text' && i.text);
     
     if (textItems.length > 0) {
-      // Use first text item as base, add count if multiple
       const base = textItems[0]!.text!.trim();
-      if (mealItems.length === 2 && photoCount === 1) {
-        return `${base} with photo`;
-      }
-      return `${base} + ${mealItems.length - 1} more`;
+      // If we have multiple items but no good AI description yet
+      return textItems.length === 1 && mealItems.length > 1 
+        ? `${base} + ${mealItems.length - 1} more` 
+        : `${base} and others`;
     }
 
-    // All photos - use meal type + count
+    // 4. Final fallback using meal type and item count
     const mealType = getMealType(meal?.created_at || new Date().toISOString());
     return `${mealType} (${mealItems.length} items)`;
   };
@@ -341,12 +362,12 @@ export default function MealDetailScreen() {
 
   const getHealthScoreStyle = (healthScore?: string) => {
     switch (healthScore) {
+      case 'very_healthy':
+        return { backgroundColor: '#059669', color: 'white' }; // Very healthy - dark green
       case 'healthy':
-        return { backgroundColor: '#10B981', color: 'white' };
-      case 'moderately_healthy':
-        return { backgroundColor: '#F59E0B', color: 'white' };
-      case 'unhealthy':
-        return { backgroundColor: '#EF4444', color: 'white' };
+        return { backgroundColor: '#10B981', color: 'white' }; // Healthy - standard green
+      case 'needs_improvement':
+        return { backgroundColor: '#F59E0B', color: 'white' }; // Needs improvement - amber
       default:
         return { backgroundColor: '#6B7280', color: 'white' };
     }
@@ -354,11 +375,11 @@ export default function MealDetailScreen() {
 
   const getHealthScoreText = (healthScore?: string) => {
     switch (healthScore) {
+      case 'very_healthy':
+        return 'Very Healthy';
       case 'healthy':
         return 'Healthy';
-      case 'moderately_healthy':
-        return 'Moderately Healthy';
-      case 'unhealthy':
+      case 'needs_improvement':
         return 'Needs Improvement';
       default:
         return 'Not Analyzed';
@@ -500,8 +521,8 @@ export default function MealDetailScreen() {
           <ParallaxImage source={{ uri: meal.image_url }} height={380} />
         )}
 
-        {/* Items carousel */}
-        {mealItems.length > 0 && (
+        {/* Items carousel - Only show if there are multiple photos to switch between */}
+        {mealItems.filter((i) => i.item_type === 'photo').length > 1 && (
           <View style={styles.itemsCarousel}>
             <FlatList
               data={mealItems}
@@ -526,13 +547,10 @@ export default function MealDetailScreen() {
                       <View style={styles.carouselPhotoWrapper}>
                         <ThumbnailImage source={{ uri: item.image_url }} style={styles.carouselPhoto} />
                         <View style={styles.carouselBadges}>
-                          <View style={styles.quantityBadge}>
-                            <Text style={styles.quantityBadgeText}>x{item.quantity}</Text>
-                          </View>
+                          <View />
                           {item.is_hero && (
                             <View style={styles.heroBadge}>
                               <IconSymbol name="star.fill" size={14} color="#000000" />
-                              <Text style={styles.heroBadgeText}>Hero</Text>
                             </View>
                           )}
                         </View>
@@ -541,9 +559,6 @@ export default function MealDetailScreen() {
                       <View style={styles.carouselTextCard}>
                         <View style={styles.carouselTextHeader}>
                           <IconSymbol name="text.alignleft" size={18} color={neonGreen} />
-                          <View style={styles.quantityBadge}>
-                            <Text style={styles.quantityBadgeText}>x{item.quantity}</Text>
-                          </View>
                         </View>
                         <Text style={styles.carouselText} numberOfLines={3}>
                           {item.text || 'Text item'}
@@ -842,83 +857,90 @@ export default function MealDetailScreen() {
         animationType="fade"
         onRequestClose={() => setShowReanalyzeModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <View style={styles.modalCard}>
-              <View style={styles.modalHeaderRow}>
-                <Text style={[TextStyles.h3, { color: colors.text }]}>Reanalyze</Text>
-                <TouchableOpacity
-                  onPress={() => setShowReanalyzeModal(false)}
-                  style={styles.modalCloseButton}
-                  activeOpacity={0.8}
-                  disabled={reanalyzing}
-                >
-                  <IconSymbol name="xmark" size={22} color={colors.icon} />
-                </TouchableOpacity>
-              </View>
-
-              <Text style={[TextStyles.bodySmall, { color: colors.icon, marginBottom: Spacing.md }]}>
-                Add or update context for the full meal, then re-run analysis. Type or use voice input.
-              </Text>
-
-              <Input
-                placeholder="E.g., large portions, sugar-free drink, extra sauce…"
-                value={tempContextText}
-                onChangeText={setTempContextText}
-                multiline
-                numberOfLines={7}
-                textAlignVertical="top"
-                rightIcon={
-                  <TouchableOpacity 
-                    onPress={handleVoiceInput} 
-                    disabled={isTranscribing || reanalyzing} 
-                    activeOpacity={0.7}
-                    style={styles.voiceInputButton}
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={styles.modalOverlay}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={styles.modalContainer}
+            >
+              <View style={styles.modalCard}>
+                <View style={styles.modalHeaderRow}>
+                  <Text style={[TextStyles.h3, { color: colors.text }]}>Reanalyze</Text>
+                  <TouchableOpacity
+                    onPress={() => setShowReanalyzeModal(false)}
+                    style={styles.modalCloseButton}
+                    activeOpacity={0.8}
+                    disabled={reanalyzing}
                   >
-                    <IconSymbol 
-                      name={isRecording ? 'stop.fill' : isTranscribing ? 'hourglass' : 'mic'} 
-                      size={26} 
-                      color={isRecording ? '#EF4444' : neonGreen} 
-                    />
+                    <IconSymbol name="xmark" size={22} color={colors.icon} />
                   </TouchableOpacity>
-                }
-                containerStyle={{ marginBottom: Spacing.lg }}
-                style={{ minHeight: 140 }}
-              />
-
-              {/* Recording indicator */}
-              {isRecording && (
-                <View style={styles.recordingIndicator}>
-                  <View style={styles.recordingDot} />
-                  <Text style={[TextStyles.bodySmall, { color: '#EF4444' }]}>Recording… tap mic to stop</Text>
                 </View>
-              )}
 
-              {/* Transcribing indicator */}
-              {isTranscribing && (
-                <View style={styles.transcribingIndicator}>
-                  <ActivityIndicator size="small" color={neonGreen} />
-                  <Text style={[TextStyles.bodySmall, { color: colors.icon }]}>Transcribing…</Text>
+                <Text style={[TextStyles.bodySmall, { color: colors.icon, marginBottom: Spacing.md }]}>
+                  Add or update context for the full meal, then re-run analysis. Type or use voice input.
+                </Text>
+
+                <Input
+                  placeholder="E.g., large portions, sugar-free drink, extra sauce…"
+                  value={tempContextText}
+                  onChangeText={setTempContextText}
+                  multiline
+                  numberOfLines={7}
+                  textAlignVertical="top"
+                  rightIcon={
+                    !isKeyboardVisible && (
+                      <TouchableOpacity
+                        onPress={handleVoiceInput}
+                        disabled={isTranscribing || reanalyzing}
+                        activeOpacity={0.7}
+                        style={styles.voiceInputButton}
+                      >
+                        <IconSymbol
+                          name={isRecording ? 'stop.fill' : isTranscribing ? 'hourglass' : 'mic'}
+                          size={26}
+                          color={isRecording ? '#EF4444' : neonGreen}
+                        />
+                      </TouchableOpacity>
+                    )
+                  }
+                  containerStyle={{ marginBottom: Spacing.lg }}
+                  style={{ minHeight: 140 }}
+                />
+
+                {/* Recording indicator */}
+                {isRecording && (
+                  <View style={styles.recordingIndicator}>
+                    <View style={styles.recordingDot} />
+                    <Text style={[TextStyles.bodySmall, { color: '#EF4444' }]}>Recording… tap mic to stop</Text>
+                  </View>
+                )}
+
+                {/* Transcribing indicator */}
+                {isTranscribing && (
+                  <View style={styles.transcribingIndicator}>
+                    <ActivityIndicator size="small" color={neonGreen} />
+                    <Text style={[TextStyles.bodySmall, { color: colors.icon }]}>Transcribing…</Text>
+                  </View>
+                )}
+
+                <View style={styles.modalActions}>
+                  <Button variant="secondary" onPress={() => setShowReanalyzeModal(false)} style={styles.modalActionBtn}>
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="primary"
+                    onPress={handleReanalyze}
+                    style={styles.modalActionBtn}
+                    disabled={reanalyzing}
+                    icon={reanalyzing ? <ActivityIndicator size="small" color="#000000" /> : undefined}
+                  >
+                    {reanalyzing ? 'Reanalyzing…' : 'Reanalyze'}
+                  </Button>
                 </View>
-              )}
-
-              <View style={styles.modalActions}>
-                <Button variant="secondary" onPress={() => setShowReanalyzeModal(false)} style={styles.modalActionBtn}>
-                  Cancel
-                </Button>
-                <Button
-                  variant="primary"
-                  onPress={handleReanalyze}
-                  style={styles.modalActionBtn}
-                  disabled={reanalyzing}
-                  icon={reanalyzing ? <ActivityIndicator size="small" color="#000000" /> : undefined}
-                >
-                  {reanalyzing ? 'Reanalyzing…' : 'Reanalyze'}
-                </Button>
               </View>
-            </View>
+            </KeyboardAvoidingView>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </Modal>
     </PageContainer>
   );
@@ -1164,32 +1186,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  quantityBadge: {
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 9999,
-  },
-  quantityBadgeText: {
-    color: 'white',
-    fontWeight: '700',
-    fontSize: 12,
-  },
   heroBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
     backgroundColor: neonGreen,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    padding: 6,
     borderRadius: 9999,
-  },
-  heroBadgeText: {
-    color: '#000000',
-    fontWeight: '800',
-    fontSize: 12,
   },
   carouselTextCard: {
     width: 140,

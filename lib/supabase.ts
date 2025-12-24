@@ -126,6 +126,44 @@ export const uploadMealImage = async (uri: string, fileName: string, userId: str
   }
 }
 
+export interface UploadImageResult {
+  data: { publicUrl: string } | null;
+  error: unknown;
+}
+
+/**
+ * Uploads an image for recipe extraction and returns a public URL.
+ * Uses the existing `meal-images` bucket, but namespaces paths under `recipes/`.
+ */
+export const uploadRecipeImage = async (uri: string, fileName: string, userId: string): Promise<UploadImageResult> => {
+  try {
+    const formData = new FormData();
+    formData.append('file', {
+      uri,
+      type: 'image/jpeg',
+      name: fileName,
+    } as any);
+
+    const objectPath = `${userId}/recipes/${fileName}`;
+    const { data, error } = await supabase.storage
+      .from('meal-images')
+      .upload(objectPath, formData, {
+        contentType: 'image/jpeg',
+        upsert: false,
+      });
+
+    if (error || !data) return { data: null, error };
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('meal-images')
+      .getPublicUrl(objectPath);
+
+    return { data: { publicUrl }, error: null };
+  } catch (error) {
+    return { data: null, error };
+  }
+};
+
 // Meal helper functions
 export const saveMeal = async (mealData: {
   description: string
@@ -135,7 +173,7 @@ export const saveMeal = async (mealData: {
   serving_estimate?: string
   calories?: number
   macros?: any
-  health_score?: 'healthy' | 'moderately_healthy' | 'unhealthy'
+  health_score?: 'very_healthy' | 'healthy' | 'needs_improvement'
   fiber_score?: string
   qualitative_feedback?: string
   recipe?: string
@@ -187,7 +225,7 @@ export const updateMeal = async (mealId: string, updates: {
   serving_estimate?: string
   calories?: number
   macros?: any
-  health_score?: 'healthy' | 'moderately_healthy' | 'unhealthy'
+  health_score?: 'very_healthy' | 'healthy' | 'needs_improvement'
   fiber_score?: string
   qualitative_feedback?: string
   recipe?: string
@@ -464,7 +502,7 @@ export const saveMealWithAnalysis = async (mealData: {
   serving_estimate?: string
   calories?: number
   macros?: any
-  health_score?: 'healthy' | 'moderately_healthy' | 'unhealthy'
+  health_score?: 'very_healthy' | 'healthy' | 'needs_improvement'
   fiber_score?: string
   qualitative_feedback?: string
   recipe?: string

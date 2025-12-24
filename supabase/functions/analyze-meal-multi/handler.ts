@@ -55,10 +55,10 @@ interface AnalyzeMealMultiLLMResponse {
   }>
 }
 
-function toMealHealthCategory(score: number): 'healthy' | 'moderately_healthy' | 'unhealthy' {
-  if (score > 7) return 'healthy'
-  if (score > 4) return 'moderately_healthy'
-  return 'unhealthy'
+function toMealHealthCategory(score: number): 'very_healthy' | 'healthy' | 'needs_improvement' {
+  if (score > 7) return 'very_healthy'
+  if (score > 4) return 'healthy'
+  return 'needs_improvement'
 }
 
 function clampNumber(value: number, min: number, max: number): number {

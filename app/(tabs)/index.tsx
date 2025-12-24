@@ -31,7 +31,7 @@ interface Meal {
     fat?: number;
     carbs?: number;
   };
-  health_score?: 'healthy' | 'moderately_healthy' | 'unhealthy';
+  health_score?: 'very_healthy' | 'healthy' | 'needs_improvement';
   fiber_score?: string;
   qualitative_feedback?: string;
   recipe?: string;

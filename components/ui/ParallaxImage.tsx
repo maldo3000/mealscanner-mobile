@@ -30,10 +30,6 @@ export function ParallaxImage({
         style={[styles.image, { height }]}
       />
       
-      {/* Gradient overlay using multiple views */}
-      <View style={styles.gradientOverlay} />
-      <View style={styles.gradientOverlayBottom} />
-
       {children && (
         <View style={styles.childrenContainer}>
           {children}
@@ -53,19 +49,6 @@ const styles = StyleSheet.create({
   image: {
     width: '100%',
     resizeMode: 'cover',
-  },
-  gradientOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'transparent',
-  },
-  gradientOverlayBottom: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: '15%', // Further reduced to show more of the image
-    backgroundColor: bgPrimary,
-    opacity: 0.3, // Further reduced for lighter overlay
   },
   childrenContainer: {
     ...StyleSheet.absoluteFillObject,

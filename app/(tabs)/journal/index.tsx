@@ -38,7 +38,7 @@ interface Meal {
     fat?: number;
     carbs?: number;
   };
-  health_score?: 'healthy' | 'moderately_healthy' | 'unhealthy';
+  health_score?: 'very_healthy' | 'healthy' | 'needs_improvement';
   fiber_score?: string;
   qualitative_feedback?: string;
   recipe?: string;
@@ -61,8 +61,8 @@ export default function MealsScreen() {
   const [user, setUser] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<'today' | 'week' | 'all'>('all');
-  // Mobile uses list view only, web can toggle between grid and list
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>(Platform.OS === 'web' ? 'grid' : 'list');
+  // Mobile defaults to compact view, web can toggle between grid and list
+  const [viewMode, setViewMode] = useState<'grid' | 'list' | 'compact'>(Platform.OS === 'web' ? 'grid' : 'compact');
 
   useEffect(() => {
     checkUserAndLoadMeals();
@@ -188,11 +188,11 @@ export default function MealsScreen() {
 
   const getHealthScoreTagColor = (healthScore?: string): 'default' | 'accent' | 'muted' | undefined => {
     switch (healthScore) {
-      case 'healthy':
+      case 'very_healthy':
         return 'accent';
-      case 'moderately_healthy':
+      case 'healthy':
         return 'default';
-      case 'unhealthy':
+      case 'needs_improvement':
         return 'muted';
       default:
         return undefined;
@@ -201,12 +201,12 @@ export default function MealsScreen() {
 
   const getHealthScoreText = (healthScore?: string) => {
     switch (healthScore) {
+      case 'very_healthy':
+        return 'Very Healthy';
       case 'healthy':
         return 'Healthy';
-      case 'moderately_healthy':
-        return 'Moderate';
-      case 'unhealthy':
-        return 'Unhealthy';
+      case 'needs_improvement':
+        return 'Needs Improvement';
       default:
         return 'Unknown';
     }
@@ -307,6 +307,52 @@ export default function MealsScreen() {
     </TouchableOpacity>
   );
 
+  const renderCompactMealRow = ({ item: meal }: { item: Meal }) => (
+    <TouchableOpacity
+      style={styles.compactRow}
+      onPress={() => router.push(`/meal/${meal.id}`)}
+      activeOpacity={0.7}
+    >
+      {/* Circular thumbnail */}
+      <View style={styles.compactImageContainer}>
+        {meal.image_url ? (
+          <ThumbnailImage 
+            source={{ uri: meal.image_url }} 
+            style={styles.compactImage} 
+          />
+        ) : (
+          <View style={[styles.compactImagePlaceholder, { backgroundColor: colors.border }]}>
+            <IconSymbol name="fork.knife" size={20} color={colors.icon} />
+          </View>
+        )}
+      </View>
+
+      {/* Meal info */}
+      <View style={styles.compactContent}>
+        <Text 
+          style={[TextStyles.body, { color: colors.text, fontWeight: '600' }]} 
+          numberOfLines={1}
+        >
+          {meal.description}
+        </Text>
+        <View style={styles.compactMeta}>
+          <Text style={[TextStyles.bodySmall, { color: colors.icon }]}>
+            cal
+          </Text>
+          <Text style={[TextStyles.body, { color: primaryGreen, fontWeight: '600' }]}>
+            {meal.calories || '—'}
+          </Text>
+          <Text style={[TextStyles.bodySmall, { color: colors.icon, marginLeft: Spacing.md }]}>
+            pro
+          </Text>
+          <Text style={[TextStyles.body, { color: colors.icon }]}>
+            {meal.macros?.protein || '—'}g
+          </Text>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+
   if (!user) {
     return (
       <PageContainer>
@@ -391,31 +437,65 @@ export default function MealsScreen() {
 
       {/* Filters */}
       <View style={styles.filtersContainer}>
-        <View style={styles.filterButtons}>
-          <TouchableOpacity 
-            style={[styles.filterButton, selectedFilter === 'today' && styles.filterButtonActive]}
-            onPress={() => setSelectedFilter('today')}
-          >
-            <Text style={[TextStyles.button, { color: selectedFilter === 'today' ? 'white' : colors.icon }]}>
-              Today
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.filterButton, selectedFilter === 'week' && styles.filterButtonActive]}
-            onPress={() => setSelectedFilter('week')}
-          >
-            <Text style={[TextStyles.button, { color: selectedFilter === 'week' ? 'white' : colors.icon }]}>
-              This Week
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.filterButton, selectedFilter === 'all' && styles.filterButtonActive]}
-            onPress={() => setSelectedFilter('all')}
-          >
-            <Text style={[TextStyles.button, { color: selectedFilter === 'all' ? 'white' : colors.icon }]}>
-              All
-            </Text>
-          </TouchableOpacity>
+        <View style={styles.filtersRow}>
+          <View style={styles.filterButtons}>
+            <TouchableOpacity 
+              style={[styles.filterButton, selectedFilter === 'today' && styles.filterButtonActive]}
+              onPress={() => setSelectedFilter('today')}
+            >
+              <Text style={[TextStyles.button, { color: selectedFilter === 'today' ? 'white' : colors.icon }]}>
+                Today
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.filterButton, selectedFilter === 'week' && styles.filterButtonActive]}
+              onPress={() => setSelectedFilter('week')}
+            >
+              <Text style={[TextStyles.button, { color: selectedFilter === 'week' ? 'white' : colors.icon }]}>
+                This Week
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.filterButton, selectedFilter === 'all' && styles.filterButtonActive]}
+              onPress={() => setSelectedFilter('all')}
+            >
+              <Text style={[TextStyles.button, { color: selectedFilter === 'all' ? 'white' : colors.icon }]}>
+                All
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Mobile view toggle */}
+          {Platform.OS !== 'web' && (
+            <View style={styles.viewToggleContainer}>
+              <TouchableOpacity
+                style={[
+                  styles.viewToggleButton,
+                  { backgroundColor: viewMode === 'compact' ? neonGreen : glassSurface, borderColor: viewMode === 'compact' ? neonGreen : glassBorder }
+                ]}
+                onPress={() => setViewMode('compact')}
+              >
+                <IconSymbol 
+                  name="list.bullet" 
+                  size={16} 
+                  color={viewMode === 'compact' ? '#000000' : colors.icon} 
+                />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.viewToggleButton,
+                  { backgroundColor: viewMode === 'list' ? neonGreen : glassSurface, borderColor: viewMode === 'list' ? neonGreen : glassBorder }
+                ]}
+                onPress={() => setViewMode('list')}
+              >
+                <IconSymbol 
+                  name="rectangle.stack" 
+                  size={16} 
+                  color={viewMode === 'list' ? '#000000' : colors.icon} 
+                />
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </View>
 
@@ -470,12 +550,13 @@ export default function MealsScreen() {
       ) : (
         <FlatList
           data={filteredMeals}
-          renderItem={renderMealCard}
+          renderItem={viewMode === 'compact' ? renderCompactMealRow : renderMealCard}
           keyExtractor={(item) => item.id}
           numColumns={Platform.OS === 'web' ? (viewMode === 'grid' ? 2 : 1) : 1}
           key={viewMode} // Force re-render when view mode changes
-          contentContainerStyle={styles.mealsList}
+          contentContainerStyle={viewMode === 'compact' ? styles.compactList : styles.mealsList}
           showsVerticalScrollIndicator={false}
+          ItemSeparatorComponent={viewMode === 'compact' ? () => <View style={styles.compactSeparator} /> : undefined}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
@@ -527,9 +608,26 @@ const styles = StyleSheet.create({
   filtersContainer: {
     marginBottom: PageSpacing.containerPadding,
   },
+  filtersRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   filterButtons: {
     flexDirection: 'row',
     gap: Spacing.md,
+  },
+  viewToggleContainer: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  viewToggleButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
   },
   filterButton: {
     paddingHorizontal: 20,
@@ -545,6 +643,48 @@ const styles = StyleSheet.create({
   },
   mealsList: {
     paddingBottom: 100,
+  },
+  compactList: {
+    paddingBottom: 100,
+  },
+  compactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.sm,
+    gap: Spacing.base,
+  },
+  compactImageContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    overflow: 'hidden',
+  },
+  compactImage: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+  },
+  compactImagePlaceholder: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  compactContent: {
+    flex: 1,
+    gap: 2,
+  },
+  compactMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  compactSeparator: {
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    marginLeft: 72,
   },
   mealCard: {
     marginBottom: PageSpacing.cardGap,
