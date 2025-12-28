@@ -23,7 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 
 // Mock recipe data - this will be replaced with Supabase data later
-const mockRecipeDetails = {
+const mockRecipeDetails: Record<string, any> = {
   '1': {
     id: '1',
     name: 'Mediterranean Quinoa Bowl',
@@ -111,6 +111,98 @@ const mockRecipeDetails = {
       fiber: 0,
     }
   },
+  'd1': {
+    id: 'd1',
+    name: 'High Protein Salmon Bowl',
+    image_url: 'https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=800',
+    prep_time: '10 min',
+    cook_time: '10 min',
+    difficulty: 'Easy',
+    servings: 1,
+    nutrition: { calories: 450, protein: 35, carbs: 10, fat: 28 },
+    ingredients: [
+      { name: 'Salmon fillet', amount: '6', unit: 'oz' },
+      { name: 'Quinoa', amount: '1/2', unit: 'cup' },
+      { name: 'Avocado', amount: '1/2', unit: 'medium' },
+      { name: 'Spinach', amount: '1', unit: 'cup' }
+    ],
+    instructions: [
+      'Season salmon with salt and pepper.',
+      'Sear salmon in a pan for 4 minutes per side.',
+      'Assemble bowl with quinoa, spinach, and avocado.',
+      'Place salmon on top and enjoy!'
+    ],
+    tags: ['High Protein', 'Under 30 Mins']
+  },
+  'd2': {
+    id: 'd2',
+    name: 'Keto Avocado Salad',
+    image_url: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=800',
+    prep_time: '15 min',
+    cook_time: '0 min',
+    difficulty: 'Easy',
+    servings: 1,
+    nutrition: { calories: 320, protein: 8, carbs: 12, fat: 28 },
+    ingredients: [
+      { name: 'Avocado', amount: '1', unit: 'large' },
+      { name: 'Mixed greens', amount: '2', unit: 'cups' },
+      { name: 'Cherry tomatoes', amount: '1/2', unit: 'cup' },
+      { name: 'Olive oil', amount: '1', unit: 'tbsp' }
+    ],
+    instructions: [
+      'Wash mixed greens and cherry tomatoes.',
+      'Slice avocado and halve tomatoes.',
+      'Combine all ingredients in a large bowl.',
+      'Drizzle with olive oil and serve.'
+    ],
+    tags: ['Keto', 'Quick']
+  },
+  'd3': {
+    id: 'd3',
+    name: 'Quinoa Veggie Power Bowl',
+    image_url: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800',
+    prep_time: '15 min',
+    cook_time: '10 min',
+    difficulty: 'Easy',
+    servings: 1,
+    nutrition: { calories: 380, protein: 12, carbs: 55, fat: 12 },
+    ingredients: [
+      { name: 'Quinoa', amount: '1/2', unit: 'cup' },
+      { name: 'Roasted veggies', amount: '1', unit: 'cup' },
+      { name: 'Hummus', amount: '2', unit: 'tbsp' },
+      { name: 'Tahini', amount: '1', unit: 'tbsp' }
+    ],
+    instructions: [
+      'Cook quinoa according to package instructions.',
+      'Prepare or reheat roasted vegetables.',
+      'Place quinoa and veggies in a bowl.',
+      'Top with hummus and drizzle with tahini.'
+    ],
+    tags: ['Vegetarian', 'Fiber Rich']
+  },
+  'd4': {
+    id: 'd4',
+    name: 'Lemon Herb Grilled Chicken',
+    image_url: 'https://images.unsplash.com/photo-1532550907401-a500c9a57435?w=800',
+    prep_time: '10 min',
+    cook_time: '20 min',
+    difficulty: 'Easy',
+    servings: 2,
+    nutrition: { calories: 290, protein: 42, carbs: 4, fat: 12 },
+    ingredients: [
+      { name: 'Chicken breast', amount: '2', unit: 'large' },
+      { name: 'Lemon', amount: '1', unit: 'juiced' },
+      { name: 'Dried herbs', amount: '2', unit: 'tsp' },
+      { name: 'Olive oil', amount: '1', unit: 'tbsp' }
+    ],
+    instructions: [
+      'Marinate chicken with lemon juice, herbs, and oil.',
+      'Grill chicken for 6-8 minutes per side.',
+      'Let rest for 5 minutes before slicing.',
+      'Serve with a side salad if desired.'
+    ],
+    tags: ['Low Carb', 'High Protein']
+  }
 };
 
 function getDifficultyColor(difficulty: string): string {
@@ -151,6 +243,19 @@ export default function RecipeDetailScreen() {
         console.error('🍳 Recipe Detail: No ID provided');
         setLoading(false);
         return;
+      }
+
+      // Check if it's a mock ID
+      const isMock = typeof id === 'string' && (id.startsWith('d') || id === '1' || id === '2');
+      
+      if (isMock) {
+        console.log('🍳 Recipe Detail: Loading mock data for ID:', id);
+        const mockData = mockRecipeDetails[id as string];
+        if (mockData) {
+          setRecipe(mockData);
+          setLoading(false);
+          return;
+        }
       }
 
       const { data, error } = await getRecipeWithDetails(id as string);

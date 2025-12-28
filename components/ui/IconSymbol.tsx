@@ -34,6 +34,7 @@ const MAPPING = {
   'checkmark.circle': 'check-circle',
   'checkmark.seal': 'verified',
   'xmark': 'close',
+  'minus': 'remove',
   
   // Interface
   'chevron.right': 'chevron-right',
@@ -44,6 +45,7 @@ const MAPPING = {
   'arrow.triangle.2.circlepath.camera': 'flip-camera-ios',
   'grid': 'grid-view',
   'list.bullet': 'view-list',
+  'barcode': 'qr-code-scanner',
   
   // User & Info
   'person': 'person',
@@ -68,6 +70,7 @@ const MAPPING = {
   'drop.fill': 'water-drop',
   'figure.strengthtraining.traditional': 'fitness-center',
   'sparkles': 'auto-awesome',
+  'pill': 'medication',
   
   // Legacy
   'paperplane.fill': 'send',

@@ -177,6 +177,8 @@ export const saveMeal = async (mealData: {
   fiber_score?: string
   qualitative_feedback?: string
   recipe?: string
+  meal_type?: string
+  created_at?: string
 }) => {
   const { data, error } = await supabase
     .from('meals')
@@ -229,6 +231,8 @@ export const updateMeal = async (mealId: string, updates: {
   fiber_score?: string
   qualitative_feedback?: string
   recipe?: string
+  meal_type?: string
+  created_at?: string
 }) => {
   const { data, error } = await supabase
     .from('meals')
@@ -324,9 +328,19 @@ export interface MealItem {
 }
 
 export interface AnalyzeMealMultiItemInput {
-  itemType: 'photo' | 'text'
+  itemType: 'photo' | 'text' | 'verified'
   imageUrl?: string
   text?: string
+  verifiedNutrition?: {
+    name: string
+    calories: number
+    protein: number
+    carbs: number
+    fat: number
+    fiber?: number
+    sodium?: number
+    ingredients?: string
+  }
   quantity: number
   orderIndex: number
   isHero: boolean
@@ -341,16 +355,49 @@ export interface AnalyzeMealMultiRequest {
 
 export const analyzeMealMulti = async (payload: AnalyzeMealMultiRequest) => {
   try {
+    console.log('🔍 Invoking analyze-meal-multi with items:', payload.items.length);
     const { data, error } = await supabase.functions.invoke('analyze-meal-multi', {
       body: payload,
     })
 
     if (error) {
+      console.error('❌ analyze-meal-multi error:', error);
+      
+      // Try to extract the detailed message from the response body if available
+      // We use .clone() because the response body might be read multiple times
+      if ((error as any).context && typeof (error as any).context.clone === 'function') {
+        try {
+          const responseClone = (error as any).context.clone();
+          const body = await responseClone.json();
+          if (body.details || body.error) {
+            const detailMsg = body.details || body.error;
+            console.error('❌ Server details:', detailMsg);
+            throw new Error(`Edge Function Error: ${detailMsg}`);
+          }
+        } catch (e) {
+          // If we couldn't parse the JSON, just log that we tried
+          console.error('❌ Could not parse error context body');
+        }
+      }
+
+      // Try to log context or detailed error info if available
+      if ((error as any).context) {
+        try {
+          // Note: context might already be read, so we rely on the clone above for detailed body extraction
+          const context = typeof (error as any).context === 'string' 
+            ? JSON.parse((error as any).context) 
+            : (error as any).context;
+          console.error('❌ Error context details:', JSON.stringify(context, null, 2));
+        } catch (e) {
+          console.error('❌ Could not parse error context:', (error as any).context);
+        }
+      }
       throw error
     }
 
     return { data, error: null }
   } catch (error) {
+    console.error('❌ analyze-meal-multi catch error:', error);
     return { data: null, error }
   }
 }
@@ -507,6 +554,8 @@ export const saveMealWithAnalysis = async (mealData: {
   qualitative_feedback?: string
   recipe?: string
   processing_status?: string
+  meal_type?: string
+  created_at?: string
 }) => {
   const { data, error } = await supabase
     .from('meals')

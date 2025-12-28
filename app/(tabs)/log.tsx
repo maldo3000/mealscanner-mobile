@@ -2,17 +2,23 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
 
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { useCameraPermissions } from 'expo-camera';
 import { useNavigation, useRouter } from 'expo-router';
 
 import { PageContainer } from '@/components/layout/PageContainer';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { ContentContainer } from '@/components/layout/ContentContainer';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { Button } from '@/components/ui/Button';
 import { CaptureCameraOverlay } from '@/components/capture/CaptureCameraOverlay';
+import { CaptureImagePreview } from '@/components/capture/CaptureImagePreview';
 import { CaptureQuad } from '@/components/capture/CaptureQuad';
 import { DescribeInputSheet } from '@/components/capture/DescribeInputSheet';
 import { MealStagingScreen } from '@/components/capture/MealStagingScreen';
+import { FoodSearchModal } from '@/components/capture/FoodSearchModal';
+import { AnalysisStatus } from '@/components/capture/AnalysisLoadingOverlay';
 import { useMealCaptureDraft } from '@/hooks/useMealCaptureDraft';
 import { Colors, primaryGreen, neonGreen } from '@/constants/Colors';
 import { Spacing, PageSpacing } from '@/constants/Spacing';
@@ -27,7 +33,7 @@ import {
 } from '@/lib/supabase';
 import type { AnalyzeMealMultiItemInput, AnalyzeMealMultiRequest } from '@/lib/supabase';
 import type { User } from '@supabase/supabase-js';
-import type { CaptureIntent } from '@/components/capture/types';
+import type { CaptureIntent, DatabaseFoodItem } from '@/components/capture/types';
 
 type ScreenState =
   | { type: 'loading_auth' }
@@ -39,7 +45,8 @@ type ScreenState =
   | { type: 'camera_recipe' }
   | { type: 'describe_meal' }
   | { type: 'search_entry' }
-  | { type: 'recipe_processing'; photoUri: string };
+  | { type: 'recipe_processing'; photoUri: string }
+  | { type: 'image_preview'; uri: string; mode: 'meal' | 'recipe' };
 
 export default function LogScreen(): React.ReactElement {
   const colorScheme = useColorScheme();
@@ -49,7 +56,7 @@ export default function LogScreen(): React.ReactElement {
 
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
-  const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
+  const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>('idle');
   const [isProcessingRecipe, setIsProcessingRecipe] = useState<boolean>(false);
 
   const [permission, requestPermission] = useCameraPermissions();
@@ -62,11 +69,13 @@ export default function LogScreen(): React.ReactElement {
   const [describeOpen, setDescribeOpen] = useState<boolean>(false);
   const [searchOpen, setSearchOpen] = useState<boolean>(false);
   const [recipePhotoUri, setRecipePhotoUri] = useState<string | null>(null);
+  const [previewUri, setPreviewUri] = useState<{ uri: string; mode: 'meal' | 'recipe' } | null>(null);
 
   const screenState = useMemo<ScreenState>(() => {
     if (authLoading) return { type: 'loading_auth' };
     if (!user) return { type: 'signed_out' };
     if (!draft.isReady) return { type: 'loading_draft' };
+    if (previewUri) return { type: 'image_preview', uri: previewUri.uri, mode: previewUri.mode };
     if (recipePhotoUri && isProcessingRecipe) return { type: 'recipe_processing', photoUri: recipePhotoUri };
     if (cameraMode === 'meal') return { type: 'camera_meal' };
     if (cameraMode === 'recipe') return { type: 'camera_recipe' };
@@ -74,18 +83,18 @@ export default function LogScreen(): React.ReactElement {
     if (searchOpen) return { type: 'search_entry' };
     if (draft.items.length > 0) return { type: 'staging' };
     return { type: 'quad' };
-  }, [authLoading, cameraMode, describeOpen, draft.isReady, draft.items.length, isProcessingRecipe, recipePhotoUri, searchOpen, user]);
+  }, [authLoading, cameraMode, describeOpen, draft.isReady, draft.items.length, isProcessingRecipe, previewUri, recipePhotoUri, searchOpen, user]);
 
-  // Hide tab bar when camera is open
+  // Hide tab bar when camera or preview is open
   useEffect(() => {
-    const hideTabBar = cameraMode !== null;
+    const hideTabBar = cameraMode !== null || previewUri !== null;
     navigation.setOptions({
       tabBarStyle: hideTabBar ? { display: 'none', height: 0, opacity: 0, pointerEvents: 'none' } : undefined,
     });
     return () => {
       navigation.setOptions({ tabBarStyle: undefined });
     };
-  }, [cameraMode, navigation]);
+  }, [cameraMode, previewUri, navigation]);
 
   // Auth
   useEffect(() => {
@@ -143,7 +152,21 @@ export default function LogScreen(): React.ReactElement {
   const handleMealPhotoCaptured = useCallback(
     async (uri: string): Promise<void> => {
       setCameraMode(null);
-      await draft.addPhotoFromUri(uri);
+      
+      try {
+        // Resize image to ensure it's within a reasonable size for the AI service
+        // 1200px is plenty for AI vision and keeps file size < 1MB
+        const manipulated = await ImageManipulator.manipulateAsync(
+          uri,
+          [{ resize: { width: 1200 } }],
+          { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+        );
+        await draft.addPhotoFromUri(manipulated.uri);
+      } catch (e) {
+        console.error('❌ Failed to resize captured image:', e);
+        // Fallback to original if resize fails
+        await draft.addPhotoFromUri(uri);
+      }
     },
     [draft]
   );
@@ -161,23 +184,18 @@ export default function LogScreen(): React.ReactElement {
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.8,
+      allowsEditing: false,
+      quality: 0.5,
     });
 
     if (!result.canceled && result.assets?.[0]?.uri) {
       const uri = result.assets[0].uri;
-      const currentMode = cameraMode;
-      // Close camera/mode first so we can process
+      const currentMode = cameraMode || 'meal';
+      
+      // Update preview state FIRST, then close camera mode
+      // This ensures screenState useMemo sees the previewUri before cameraMode is cleared
+      setPreviewUri({ uri, mode: currentMode as 'meal' | 'recipe' });
       setCameraMode(null);
-
-      if (currentMode === 'meal') {
-        await draft.addPhotoFromUri(uri);
-      } else if (currentMode === 'recipe') {
-        // reuse the recipe processing logic
-        await handleRecipePhotoCaptured(uri);
-      }
     }
   }, [cameraMode, draft, handleRecipePhotoCaptured]);
 
@@ -195,9 +213,9 @@ export default function LogScreen(): React.ReactElement {
   }, []);
 
   // Search (manual entry) handlers
-  const handleSearchSubmit = useCallback(
-    async (text: string): Promise<void> => {
-      await draft.addTextItem(text);
+  const handleFoodItemSelected = useCallback(
+    async (item: DatabaseFoodItem, quantity: number): Promise<void> => {
+      await draft.addVerifiedItem(item, quantity);
       setSearchOpen(false);
     },
     [draft]
@@ -224,12 +242,11 @@ export default function LogScreen(): React.ReactElement {
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.8,
+      allowsEditing: false,
+      quality: 0.5,
     });
     if (!result.canceled && result.assets?.[0]?.uri) {
-      await draft.addPhotoFromUri(result.assets[0].uri);
+      setPreviewUri({ uri: result.assets[0].uri, mode: 'meal' });
     }
   }, [draft]);
 
@@ -254,7 +271,7 @@ export default function LogScreen(): React.ReactElement {
   // Analyze meal
   const handleAnalyze = useCallback(async (): Promise<void> => {
     if (!user || draft.items.length === 0) return;
-    setIsAnalyzing(true);
+    setAnalysisStatus('analyzing');
 
     try {
       const inputs: AnalyzeMealMultiItemInput[] = [];
@@ -262,6 +279,16 @@ export default function LogScreen(): React.ReactElement {
 
       for (const item of draft.items) {
         if (item.itemType === 'photo') {
+          // Log photo size for debugging
+          try {
+            const fileInfo = await FileSystem.getInfoAsync(item.localUri);
+            if (fileInfo.exists) {
+              console.log(`📸 Photo ${orderIndex + 1} size: ${(fileInfo.size / 1024 / 1024).toFixed(2)} MB`);
+            }
+          } catch (e) {
+            console.warn('Could not check file size:', e);
+          }
+
           const fileName = `meal_${Date.now()}_${orderIndex}.jpg`;
           const { data: uploadData, error: uploadError } = await uploadMealImage(item.localUri, fileName, user.id);
           if (uploadError || !uploadData?.publicUrl) {
@@ -274,10 +301,27 @@ export default function LogScreen(): React.ReactElement {
             orderIndex,
             isHero: item.isHero,
           });
-        } else {
+        } else if (item.itemType === 'text') {
           inputs.push({
             itemType: 'text',
             text: item.text,
+            quantity: item.quantity,
+            orderIndex,
+            isHero: false,
+          });
+        } else if (item.itemType === 'verified') {
+          inputs.push({
+            itemType: 'verified',
+            verifiedNutrition: {
+              name: item.foodItem.name,
+              calories: item.foodItem.calories,
+              protein: item.foodItem.protein,
+              carbs: item.foodItem.carbs,
+              fat: item.foodItem.fat,
+              fiber: item.foodItem.fiber,
+              sodium: item.foodItem.sodium,
+              ingredients: item.foodItem.ingredients,
+            },
             quantity: item.quantity,
             orderIndex,
             isHero: false,
@@ -296,6 +340,11 @@ export default function LogScreen(): React.ReactElement {
       if (error) throw error;
 
       const mealId = (data as { meal_id?: string } | null)?.meal_id;
+
+      // Show success state briefly before navigating
+      setAnalysisStatus('success');
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+
       await draft.discardSession();
 
       if (mealId) {
@@ -304,10 +353,18 @@ export default function LogScreen(): React.ReactElement {
         router.push('/(tabs)/journal');
       }
     } catch (error) {
+      console.error('❌ Analysis failed:', error);
       const message = error instanceof Error ? error.message : 'Failed to analyze meal';
-      Alert.alert('Error', message);
+      const isEdgeFunctionError = message.includes('Edge Function');
+      
+      Alert.alert(
+        'Error', 
+        isEdgeFunctionError 
+          ? 'The AI analysis service is having trouble. This usually happens if the photo is too large or if there is a temporary server issue. Try again with a different photo or check your connection.'
+          : message
+      );
     } finally {
-      setIsAnalyzing(false);
+      setAnalysisStatus('idle');
     }
   }, [draft, router, user]);
 
@@ -315,7 +372,21 @@ export default function LogScreen(): React.ReactElement {
   const handleRecipePhotoCaptured = useCallback(
     async (uri: string): Promise<void> => {
       setCameraMode(null);
-      setRecipePhotoUri(uri);
+      
+      let finalUri = uri;
+      try {
+        // Resize image to ensure it's within a reasonable size for the AI service
+        const manipulated = await ImageManipulator.manipulateAsync(
+          uri,
+          [{ resize: { width: 1200 } }],
+          { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+        );
+        finalUri = manipulated.uri;
+      } catch (e) {
+        console.error('❌ Failed to resize recipe image:', e);
+      }
+
+      setRecipePhotoUri(finalUri);
       setIsProcessingRecipe(true);
 
       try {
@@ -323,7 +394,7 @@ export default function LogScreen(): React.ReactElement {
 
         // Upload the photo
         const fileName = `recipe_${Date.now()}.jpg`;
-        const { data: uploadData, error: uploadError } = await uploadMealImage(uri, fileName, user.id);
+        const { data: uploadData, error: uploadError } = await uploadMealImage(finalUri, fileName, user.id);
         if (uploadError || !uploadData?.publicUrl) {
           throw new Error('Failed to upload recipe image');
         }
@@ -437,14 +508,44 @@ export default function LogScreen(): React.ReactElement {
   }
 
   if (screenState.type === 'search_entry') {
+    return <FoodSearchModal onCancel={handleSearchCancel} onSelectItem={handleFoodItemSelected} />;
+  }
+
+  if (screenState.type === 'image_preview') {
     return (
-      <DescribeInputSheet
-        userId={user?.id ?? ''}
-        title="Search Database"
-        subtitle="Enter specific brands or measurements"
-        placeholder="E.g., 1 cup Chobani Greek Yogurt, 2 oz almonds"
-        onCancel={handleSearchCancel}
-        onSubmit={handleSearchSubmit}
+      <CaptureImagePreview
+        uri={screenState.uri}
+        onCancel={() => setPreviewUri(null)}
+        onConfirm={async () => {
+          const { uri, mode } = screenState;
+          setPreviewUri(null);
+
+          try {
+            // Resize image to ensure it's within a reasonable size for the AI service
+            // This replaces the compression/resizing previously handled by the native square cropper
+            const manipulated = await ImageManipulator.manipulateAsync(
+              uri,
+              [{ resize: { width: 1200 } }], // 1200px is plenty for AI vision and keeps file size < 1MB
+              { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+            );
+
+            const finalUri = manipulated.uri;
+
+            if (mode === 'meal') {
+              await draft.addPhotoFromUri(finalUri);
+            } else if (mode === 'recipe') {
+              await handleRecipePhotoCaptured(finalUri);
+            }
+          } catch (e) {
+            console.error('❌ Failed to resize image:', e);
+            // Fallback to original if resize fails
+            if (mode === 'meal') {
+              await draft.addPhotoFromUri(uri);
+            } else if (mode === 'recipe') {
+              await handleRecipePhotoCaptured(uri);
+            }
+          }
+        }}
       />
     );
   }
@@ -455,7 +556,7 @@ export default function LogScreen(): React.ReactElement {
         <MealStagingScreen
           items={draft.items}
           contextText={draft.contextText}
-          isAnalyzing={isAnalyzing}
+          analysisStatus={analysisStatus}
           heroPhotoLocalId={heroPhotoLocalId}
           photoCount={draft.photoCount}
           onDiscardSession={handleDiscardSession}
@@ -475,6 +576,7 @@ export default function LogScreen(): React.ReactElement {
   // Quad (default)
   return (
     <PageContainer>
+      <PageHeader title="Capture" />
       <CaptureQuad
         onSnap={() => handleIntent('snap')}
         onDescribe={() => handleIntent('describe')}

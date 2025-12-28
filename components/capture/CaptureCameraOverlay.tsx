@@ -3,6 +3,7 @@ import { SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-na
 
 import { CameraType, CameraView } from 'expo-camera';
 
+import { Viewfinder } from './Viewfinder';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { neonGreen } from '@/constants/Colors';
 
@@ -52,16 +53,7 @@ export function CaptureCameraOverlay(props: CaptureCameraOverlayProps): React.Re
           </View>
 
           <View style={styles.centerGuide}>
-            <View style={styles.viewfinder}>
-              <View style={styles.viewfinderRow}>
-                <View style={[styles.corner, styles.topLeft]} />
-                <View style={[styles.corner, styles.topRight]} />
-              </View>
-              <View style={styles.viewfinderRow}>
-                <View style={[styles.corner, styles.bottomLeft]} />
-                <View style={[styles.corner, styles.bottomRight]} />
-              </View>
-            </View>
+            <Viewfinder />
           </View>
 
           <View style={styles.bottomControls}>
@@ -138,41 +130,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  viewfinder: {
-    width: 280,
-    height: 280,
-    justifyContent: 'space-between',
-    backgroundColor: 'transparent',
-  },
-  viewfinderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  corner: {
-    width: 40,
-    height: 40,
-    borderColor: neonGreen,
-  },
-  topLeft: {
-    borderTopWidth: 4,
-    borderLeftWidth: 4,
-    borderTopLeftRadius: 20,
-  },
-  topRight: {
-    borderTopWidth: 4,
-    borderRightWidth: 4,
-    borderTopRightRadius: 20,
-  },
-  bottomLeft: {
-    borderBottomWidth: 4,
-    borderLeftWidth: 4,
-    borderBottomLeftRadius: 20,
-  },
-  bottomRight: {
-    borderBottomWidth: 4,
-    borderRightWidth: 4,
-    borderBottomRightRadius: 20,
   },
   bottomControls: {
     paddingBottom: 36,

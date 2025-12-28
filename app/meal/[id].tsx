@@ -4,10 +4,10 @@ import { AnimatedCard } from '@/components/ui/AnimatedCard';
 import { Button } from '@/components/ui/Button';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { IngredientTags } from '@/components/ui/IngredientTags';
+import { Input } from '@/components/ui/Input';
 import { NutritionCard } from '@/components/ui/NutritionCard';
 import { ThumbnailImage } from '@/components/ui/OptimizedImage';
 import { ParallaxImage } from '@/components/ui/ParallaxImage';
-import { Input } from '@/components/ui/Input';
 import { bgPrimary, Colors, neonGreen } from '@/constants/Colors';
 import { Shadows } from '@/constants/Layout';
 import { PageSpacing, Spacing } from '@/constants/Spacing';
@@ -15,23 +15,23 @@ import { TextStyles } from '@/constants/Typography';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { useNutritionGoals } from '@/hooks/useNutritionGoals';
-import { analyzeMealMulti, deleteMeal, getMealById, getMealItems, setMealHeroItem, transcribeAudioDirect } from '@/lib/supabase';
+import { analyzeMealMulti, deleteMeal, getMealById, getMealItems, setMealHeroItem, transcribeAudioDirect, updateMeal } from '@/lib/supabase';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  FlatList,
-  Keyboard,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  TouchableWithoutFeedback,
-  View
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    FlatList,
+    Keyboard,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    TouchableWithoutFeedback,
+    View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -57,6 +57,7 @@ interface Meal {
   processing_status?: 'pending' | 'processing' | 'completed' | 'failed';
   context_text?: string | null;
   items_count?: number;
+  meal_type?: string;
 }
 
 const { width } = Dimensions.get('window');
@@ -94,6 +95,10 @@ export default function MealDetailScreen() {
   const [reanalyzing, setReanalyzing] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const [showEditMetaModal, setShowEditMetaModal] = useState(false);
+  const [editedMealType, setEditedMealType] = useState('');
+  const [editedCreatedAt, setEditedCreatedAt] = useState('');
+  const [savingMeta, setSavingMeta] = useState(false);
 
   useEffect(() => {
     const showSub = Keyboard.addListener(
@@ -213,6 +218,58 @@ export default function MealDetailScreen() {
     setShowReanalyzeModal(true);
   };
 
+  const openEditMeta = () => {
+    if (!meal) return;
+    setEditedMealType(meal.meal_type || getMealType(meal.created_at));
+    setEditedCreatedAt(meal.created_at);
+    setShowEditMetaModal(true);
+  };
+
+  const handleUpdateMeta = async () => {
+    if (!meal) return;
+    setSavingMeta(true);
+    try {
+      console.log('🔄 Updating meal meta:', { 
+        id: meal.id, 
+        meal_type: editedMealType, 
+        created_at: editedCreatedAt 
+      });
+
+      const { error } = await updateMeal(meal.id, {
+        meal_type: editedMealType,
+        created_at: editedCreatedAt,
+      });
+      
+      if (error) {
+        console.error('❌ Failed to update meal meta:', error);
+        throw error;
+      }
+      
+      // Update local state
+      setMeal({
+        ...meal,
+        meal_type: editedMealType,
+        created_at: editedCreatedAt,
+      });
+      setShowEditMetaModal(false);
+    } catch (e: any) {
+      console.error('❌ handleUpdateMeta error:', e);
+      Alert.alert('Error', `Failed to update meal info: ${e.message || 'Unknown error'}`);
+    } finally {
+      setSavingMeta(false);
+    }
+  };
+
+  const adjustDate = (type: 'hour' | 'day', amount: number) => {
+    const date = new Date(editedCreatedAt);
+    if (type === 'hour') {
+      date.setHours(date.getHours() + amount);
+    } else if (type === 'day') {
+      date.setDate(date.getDate() + amount);
+    }
+    setEditedCreatedAt(date.toISOString());
+  };
+
   const handleReanalyze = async () => {
     if (!meal) return;
     setReanalyzing(true);
@@ -274,6 +331,8 @@ export default function MealDetailScreen() {
   };
 
   const getMealType = (createdAt: string): string => {
+    if (meal?.meal_type) return meal.meal_type;
+    
     const hour = new Date(createdAt).getHours();
     if (hour < 11) return 'Breakfast';
     if (hour < 16) return 'Lunch';
@@ -302,41 +361,40 @@ export default function MealDetailScreen() {
   // Generate summarized meal title from items or use AI description
   const getMealTitle = (): string => {
     // 1. Prioritize the AI-generated description if it's available and not a generic placeholder
-    if (meal?.description && 
-        meal.description !== 'Meal' && 
-        meal.description !== 'Analyzed meal' &&
-        !meal.description.includes('items)')) {
+    const isGeneric = !meal?.description || 
+                     meal.description === 'Meal' || 
+                     meal.description === 'Analyzed meal' ||
+                     meal.description.includes('items)');
+    
+    if (meal?.description && !isGeneric) {
       return meal.description;
     }
 
-    if (mealItems.length === 0) {
-      return meal?.description || 'Meal';
-    }
-
-    // 2. For single items, use the item text or the generic meal description
-    if (mealItems.length === 1) {
-      const item = mealItems[0];
-      if (item.item_type === 'text' && item.text) {
-        return item.text.trim();
+    // 2. Try to use the first item name from AI analysis if it exists but description is still generic
+    if (meal?.ai_analysis?.items && Array.isArray(meal.ai_analysis.items) && meal.ai_analysis.items.length > 0) {
+      const firstItem = meal.ai_analysis.items[0];
+      if (firstItem?.name && firstItem.name !== 'Item 1') {
+        const base = firstItem.name;
+        if (mealItems.length === 1) return base;
+        return `${base} and ${mealItems.length - 1} more`;
       }
-      return meal?.description || 'Meal';
     }
 
-    // 3. Fallback for multiple items if AI description is missing or generic
-    const photoCount = mealItems.filter((i) => i.item_type === 'photo').length;
+    // 3. Fallback to text items
     const textItems = mealItems.filter((i) => i.item_type === 'text' && i.text);
-    
     if (textItems.length > 0) {
       const base = textItems[0]!.text!.trim();
-      // If we have multiple items but no good AI description yet
-      return textItems.length === 1 && mealItems.length > 1 
-        ? `${base} + ${mealItems.length - 1} more` 
-        : `${base} and others`;
+      if (mealItems.length === 1) return base;
+      return `${base} + ${mealItems.length - 1} more`;
     }
 
     // 4. Final fallback using meal type and item count
     const mealType = getMealType(meal?.created_at || new Date().toISOString());
-    return `${mealType} (${mealItems.length} items)`;
+    if (mealItems.length > 0) {
+      return `${mealType} (${mealItems.length} item${mealItems.length > 1 ? 's' : ''})`;
+    }
+    
+    return meal?.description || 'Meal';
   };
 
   // Get item display name from AI analysis or generate from data
@@ -489,6 +547,18 @@ export default function MealDetailScreen() {
           <View style={styles.headerActions}>
             <TouchableOpacity 
               style={styles.headerButtonEdit}
+              onPress={openEditMeta}
+              activeOpacity={0.8}
+            >
+              <View style={styles.iconContainer}>
+                <View style={styles.iconBackground} />
+                <View style={styles.iconGlow}>
+                  <IconSymbol name="pencil" size={18} color={neonGreen} style={styles.iconThick} />
+                </View>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.headerButtonEdit}
               onPress={openReanalyze}
               activeOpacity={0.8}
             >
@@ -578,7 +648,7 @@ export default function MealDetailScreen() {
             <Text style={[TextStyles.h3, { color: colors.text, flex: 1 }]}>
               {getMealTitle()}
             </Text>
-            {meal.health_score && (
+            {!!meal.health_score && (
               <View style={[styles.healthBadge, getHealthScoreStyle(meal.health_score)]}>
                 <IconSymbol name="checkmark.seal" size={16} color="white" />
                 <Text style={[TextStyles.bodySmall, { color: 'white', fontWeight: '600' }]}>
@@ -587,9 +657,22 @@ export default function MealDetailScreen() {
               </View>
             )}
           </View>
+
+          {(!!meal.ai_analysis?.description || meal.processing_status === 'processing') && (
+            <View style={styles.descriptionContainer}>
+              <Text style={styles.descriptionText}>
+                {meal.ai_analysis?.description || 'AI is currently analyzing your meal details...'}
+              </Text>
+            </View>
+          )}
           
           <View style={styles.metaContainer}>
-            <View style={[styles.mealTypeBadge, { backgroundColor: neonGreen }]}>
+            <View style={[styles.mealTypeBadge, { backgroundColor: neonGreen, flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
+              <IconSymbol 
+                name={getMealType(meal.created_at) === 'Pill' ? 'pill' : 'fork.knife'} 
+                size={14} 
+                color="#000000" 
+              />
               <Text style={[TextStyles.bodySmall, { color: '#000000', fontWeight: '600' }]}>
                 {getMealType(meal.created_at)}
               </Text>
@@ -605,7 +688,7 @@ export default function MealDetailScreen() {
         </AnimatedCard>
 
         {/* Nutrition Overview - Enhanced Cards */}
-        {meal.calories && (
+        {!!meal.calories && (
           <AnimatedCard delay={200}>
             <View style={styles.sectionHeader}>
               <IconSymbol name="chart.bar" size={24} color={colors.tint} />
@@ -636,7 +719,7 @@ export default function MealDetailScreen() {
             </View>
 
             {/* Macros Grid - 2x2 layout */}
-            {meal.macros && (
+            {!!meal.macros && (
               <View style={styles.macrosGrid}>
                 <View style={styles.macroCardWrapper}>
                   <NutritionCard
@@ -942,6 +1025,108 @@ export default function MealDetailScreen() {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
+
+      {/* Edit Meta Modal */}
+      <Modal
+        visible={showEditMetaModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowEditMetaModal(false)}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContainer}>
+              <View style={styles.modalCard}>
+                <View style={styles.modalHeaderRow}>
+                  <Text style={[TextStyles.h3, { color: colors.text }]}>Edit Meal Info</Text>
+                  <TouchableOpacity
+                    onPress={() => setShowEditMetaModal(false)}
+                    style={styles.modalCloseButton}
+                    activeOpacity={0.8}
+                  >
+                    <IconSymbol name="xmark" size={22} color={colors.icon} />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Meal Type Selection */}
+                <Text style={[TextStyles.h4, { color: colors.text, marginBottom: Spacing.sm }]}>Meal Type</Text>
+                <View style={styles.mealTypeGrid}>
+                  {['Breakfast', 'Lunch', 'Dinner', 'Snack'].map((type) => (
+                    <TouchableOpacity
+                      key={type}
+                      style={[
+                        styles.mealTypeOption,
+                        editedMealType === type && { backgroundColor: neonGreen, borderColor: neonGreen }
+                      ]}
+                      onPress={() => setEditedMealType(type)}
+                    >
+                      <Text style={[
+                        TextStyles.bodySmall,
+                        { color: editedMealType === type ? '#000000' : colors.text, fontWeight: '600' }
+                      ]}>
+                        {type}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* Date/Time Adjustment */}
+                <Text style={[TextStyles.h4, { color: colors.text, marginTop: Spacing.lg, marginBottom: Spacing.sm }]}>
+                  Date & Time
+                </Text>
+                <View style={styles.dateDisplayCard}>
+                  <Text style={[TextStyles.body, { color: colors.text, textAlign: 'center' }]}>
+                    {formatDate(editedCreatedAt)}
+                  </Text>
+                  <Text style={[TextStyles.h2, { color: neonGreen, textAlign: 'center', marginTop: Spacing.xs }]}>
+                    {formatTime(editedCreatedAt)}
+                  </Text>
+                </View>
+
+                <View style={styles.adjustmentGrid}>
+                  <View style={styles.adjustmentColumn}>
+                    <Text style={[TextStyles.caption, { color: colors.icon, textAlign: 'center' }]}>Hours</Text>
+                    <View style={styles.adjustmentButtons}>
+                      <TouchableOpacity style={styles.adjustBtn} onPress={() => adjustDate('hour', -1)}>
+                        <IconSymbol name="minus" size={16} color={colors.text} />
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.adjustBtn} onPress={() => adjustDate('hour', 1)}>
+                        <IconSymbol name="plus" size={16} color={colors.text} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                  <View style={styles.adjustmentColumn}>
+                    <Text style={[TextStyles.caption, { color: colors.icon, textAlign: 'center' }]}>Days</Text>
+                    <View style={styles.adjustmentButtons}>
+                      <TouchableOpacity style={styles.adjustBtn} onPress={() => adjustDate('day', -1)}>
+                        <IconSymbol name="minus" size={16} color={colors.text} />
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.adjustBtn} onPress={() => adjustDate('day', 1)}>
+                        <IconSymbol name="plus" size={16} color={colors.text} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+
+                <View style={[styles.modalActions, { marginTop: Spacing.xl }]}>
+                  <Button variant="secondary" onPress={() => setShowEditMetaModal(false)} style={styles.modalActionBtn}>
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="primary"
+                    onPress={handleUpdateMeta}
+                    style={styles.modalActionBtn}
+                    disabled={savingMeta}
+                    icon={savingMeta ? <ActivityIndicator size="small" color="#000000" /> : undefined}
+                  >
+                    {savingMeta ? 'Saving...' : 'Save Changes'}
+                  </Button>
+                </View>
+              </View>
+            </View>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
     </PageContainer>
   );
 }
@@ -1062,6 +1247,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.xs,
+  },
+  descriptionContainer: {
+    marginTop: -Spacing.xs,
+    marginBottom: Spacing.lg,
+  },
+  descriptionText: {
+    ...TextStyles.body,
+    color: 'white',
+    opacity: 0.9,
+    lineHeight: 22,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -1315,5 +1510,46 @@ const styles = StyleSheet.create({
   },
   itemChipNutrition: {
     marginTop: Spacing.xs,
+  },
+  mealTypeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  mealTypeOption: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  dateDisplayCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 16,
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  adjustmentGrid: {
+    flexDirection: 'row',
+    gap: Spacing.lg,
+    marginTop: Spacing.md,
+  },
+  adjustmentColumn: {
+    flex: 1,
+    gap: Spacing.xs,
+  },
+  adjustmentButtons: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  adjustBtn: {
+    flex: 1,
+    height: 44,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 }); 

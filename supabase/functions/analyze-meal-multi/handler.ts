@@ -8,9 +8,19 @@ const corsHeaders: Record<string, string> = {
 }
 
 export interface MealMultiItemInput {
-  itemType: 'photo' | 'text'
+  itemType: 'photo' | 'text' | 'verified'
   imageUrl?: string
   text?: string
+  verifiedNutrition?: {
+    name: string
+    calories: number
+    protein: number
+    carbs: number
+    fat: number
+    fiber?: number
+    sodium?: number
+    ingredients?: string
+  }
   quantity: number
   orderIndex: number
   isHero: boolean
@@ -40,6 +50,7 @@ interface MealRecommendation {
 
 interface AnalyzeMealMultiLLMResponse {
   meal: {
+    name: string
     description: string
     serving_size: string
     health_score: number
@@ -109,11 +120,21 @@ function buildUserPrompt(params: {
     .filter((x): x is string => typeof x === 'string')
     .join('\n')
 
+  const verifiedDescription = items
+    .map((item, index) => {
+      if (item.itemType !== 'verified' || !item.verifiedNutrition) return null
+      const n = item.verifiedNutrition
+      return `Verified Database item ${index} (quantity ${item.quantity}): "${n.name}"${n.ingredients ? ` (Ingredients: ${n.ingredients})` : ''} with EXACT macros per unit: ${n.calories}kcal, ${n.protein}g protein, ${n.carbs}g carbs, ${n.fat}g fat, ${n.fiber || 0}g fiber, ${n.sodium || 0}mg sodium. DO NOT CHANGE THESE MACROS.`
+    })
+    .filter((x): x is string => typeof x === 'string')
+    .join('\n')
+
   return `
-You are a professional nutritionist. Analyze a meal that is composed of multiple items (some are photos, some are text entries).
+You are a professional nutritionist. Analyze a meal that is composed of multiple items (some are photos, some are text entries, and some are verified database items).
 
 Important rules:
-- Each item should produce *per-unit* nutrition. The client will multiply by quantity.
+- For 'verified' items, use the EXACT nutrition provided in the description for your final response. Do not re-estimate them.
+- For other items (photo/text), provide your best estimate for *per-unit* nutrition.
 - Quantity is an integer multiplier for the entire item.
 - Return strict JSON only (no markdown).
 
@@ -126,11 +147,13 @@ ${userGoals ? JSON.stringify(userGoals) : 'None'}
 Items:
 ${textItemsDescription || '(no text items)'}
 ${photosDescription || '(no photo items)'}
+${verifiedDescription || '(no verified items)'}
 
 Return JSON with this schema:
 {
   "meal": {
-    "description": "<short meal title/summary>",
+    "name": "<Generate a descriptive title for the meal between 40 and 60 characters. Focus on the primary dish and its style. Do NOT include drinks or side condiments here.>",
+    "description": "<Provide a detailed meal description including all items and context. Move specific mentions of drinks (e.g. 'Coca-Cola') or side condiments (e.g. 'pink sauce') here instead of the title.>",
     "serving_size": "<overall serving size estimate>",
     "health_score": <1-10>,
     "feedback": "<qualitative assessment>",
@@ -161,7 +184,8 @@ Provide specific numeric values as numbers (not strings).`
 
 function normalizeLLMResponse(raw: AnalyzeMealMultiLLMResponse, itemCount: number): AnalyzeMealMultiLLMResponse {
   const normalizedMeal = {
-    description: typeof raw.meal?.description === 'string' ? raw.meal.description : 'Meal',
+    name: typeof raw.meal?.name === 'string' ? raw.meal.name : 'Meal',
+    description: typeof raw.meal?.description === 'string' ? raw.meal.description : '',
     serving_size: typeof raw.meal?.serving_size === 'string' ? raw.meal.serving_size : 'Medium portion',
     health_score: clampNumber(typeof raw.meal?.health_score === 'number' ? raw.meal.health_score : 5, 1, 10),
     feedback: typeof raw.meal?.feedback === 'string' ? raw.meal.feedback : '',
@@ -249,9 +273,16 @@ export async function handleAnalyzeMealMulti(req: Request): Promise<Response> {
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
           )
         }
+      } else if (item.itemType === 'verified') {
+        if (!item.verifiedNutrition) {
+          return new Response(
+            JSON.stringify({ success: false, error: 'Verified items must include verifiedNutrition.' }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+          )
+        }
       } else {
         return new Response(
-          JSON.stringify({ success: false, error: 'Invalid itemType. Must be photo or text.' }),
+          JSON.stringify({ success: false, error: 'Invalid itemType. Must be photo, text, or verified.' }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
         )
       }
@@ -332,12 +363,21 @@ export async function handleAnalyzeMealMulti(req: Request): Promise<Response> {
 
     const mealItemsToInsert = normalizedItemsWithHero.map((item, index) => ({
       meal_id: finalMealId,
-      item_type: item.itemType,
+      item_type: item.itemType === 'verified' ? 'text' : item.itemType,
       image_url: item.itemType === 'photo' ? item.imageUrl : null,
-      text: item.itemType === 'text' ? item.text?.trim() : null,
+      text: item.itemType === 'verified' ? item.verifiedNutrition?.name : (item.itemType === 'text' ? item.text?.trim() : null),
       quantity: item.quantity,
       order_index: index,
       is_hero: item.itemType === 'photo' ? item.isHero : false,
+      ai_nutrition_per_unit: item.itemType === 'verified' ? {
+        calories: item.verifiedNutrition?.calories || 0,
+        protein: item.verifiedNutrition?.protein || 0,
+        carbs: item.verifiedNutrition?.carbs || 0,
+        fat: item.verifiedNutrition?.fat || 0,
+        fiber: item.verifiedNutrition?.fiber || 0,
+        sodium: item.verifiedNutrition?.sodium || 0,
+      } : null,
+      ai_confidence: item.itemType === 'verified' ? 1.0 : null,
     }))
 
     const { error: insertItemsError } = await supabase.from('meal_items').insert(mealItemsToInsert)
@@ -419,7 +459,8 @@ export async function handleAnalyzeMealMulti(req: Request): Promise<Response> {
     } catch {
       analysis = {
         meal: {
-          description: existingMealDescription ?? 'Meal',
+          name: existingMealDescription ?? 'Meal',
+          description: '',
           serving_size: 'Medium portion',
           health_score: 5,
           feedback: 'Unable to parse analysis. Please try reanalyzing with clearer photos or more details.',
@@ -487,23 +528,25 @@ export async function handleAnalyzeMealMulti(req: Request): Promise<Response> {
     const isSingleTextItem =
       normalizedItemsWithHero.length === 1 && normalizedItemsWithHero[0]?.itemType === 'text' && !!normalizedItemsWithHero[0]?.text
 
-    const finalDescription = isSingleTextItem
+    const finalName = isSingleTextItem
       ? normalizedItemsWithHero[0]!.text!.trim()
-      : normalized.meal.description || existingMealDescription || 'Meal'
+      : normalized.meal.name || existingMealDescription || 'Meal'
 
     await supabase
       .from('meals')
       .update({
-        description: finalDescription,
+        description: finalName,
         serving_estimate: normalized.meal.serving_size,
         qualitative_feedback: normalized.meal.feedback,
         health_score: toMealHealthCategory(normalized.meal.health_score),
         ai_analysis: {
+          name: finalName,
+          description: normalized.meal.description,
           feedback: normalized.meal.feedback,
           recommendations: normalized.meal.recommendations,
           items: normalized.items,
         },
-        analysis_version: 'multi-1.0',
+        analysis_version: 'multi-1.1',
         processing_status: 'completed',
       })
       .eq('id', finalMealId)

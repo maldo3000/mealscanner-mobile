@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import * as FileSystem from 'expo-file-system/legacy';
 
-import type { DraftMealItem, MealCaptureDraft } from '@/components/capture/types';
+import type { DraftMealItem, MealCaptureDraft, DatabaseFoodItem } from '@/components/capture/types';
 
 type AsyncStorageLike = {
   getItem(key: string): Promise<string | null>;
@@ -91,6 +91,7 @@ export interface UseMealCaptureDraftResult {
 
   addTextItem(text: string): Promise<void>;
   addPhotoFromUri(sourceUri: string): Promise<void>;
+  addVerifiedItem(foodItem: DatabaseFoodItem, quantity: number): Promise<void>;
   removeItem(localId: string): Promise<void>;
   setHero(localId: string): Promise<void>;
   updateQuantity(localId: string, nextQuantity: number): Promise<void>;
@@ -133,27 +134,40 @@ export function useMealCaptureDraft(): UseMealCaptureDraftResult {
   const canAddPhoto = photoCount < MAX_PHOTOS;
 
   const ensureSession = useCallback(async (): Promise<MealCaptureDraft> => {
-    if (draft) return draft;
-    const next: MealCaptureDraft = {
-      version: 1,
-      sessionId: createSessionId(),
-      createdAtMs: Date.now(),
-      updatedAtMs: Date.now(),
-      contextText: '',
-      items: [],
-    };
-    setDraft(next);
-    await writeDraft(next);
-    return next;
+    let result: MealCaptureDraft | null = null;
+    
+    setDraft((prev) => {
+      if (prev) {
+        result = prev;
+        return prev;
+      }
+      result = {
+        version: 1,
+        sessionId: createSessionId(),
+        createdAtMs: Date.now(),
+        updatedAtMs: Date.now(),
+        contextText: '',
+        items: [],
+      };
+      return result;
+    });
+
+    // Wait for the state update if needed (though setDraft is async, our result variable is set synchronously in the callback)
+    // To be safe, we also persist it if it was just created
+    if (result && !draft) {
+      await writeDraft(result);
+    }
+    
+    return result!;
   }, [draft]);
 
   const discardSession = useCallback(async (): Promise<void> => {
-    const current = draft;
+    const prevDraft = draft;
     setDraft(null);
     await writeDraft(null);
 
-    if (current?.sessionId) {
-      const sessionDir = `${DRAFTS_DIR}/${current.sessionId}`;
+    if (prevDraft?.sessionId) {
+      const sessionDir = `${DRAFTS_DIR}/${prevDraft.sessionId}`;
       try {
         const info = await FileSystem.getInfoAsync(sessionDir);
         if (info.exists) {
@@ -167,12 +181,27 @@ export function useMealCaptureDraft(): UseMealCaptureDraftResult {
 
   const mutate = useCallback(
     async (mutator: (prev: MealCaptureDraft) => MealCaptureDraft): Promise<void> => {
-      const base = await ensureSession();
-      const next = mutator(base);
-      setDraft(next);
-      await writeDraft(next);
+      let updatedDraft: MealCaptureDraft | null = null;
+      
+      setDraft((prev) => {
+        const base = prev || {
+          version: 1,
+          sessionId: createSessionId(),
+          createdAtMs: Date.now(),
+          updatedAtMs: Date.now(),
+          contextText: '',
+          items: [],
+        };
+        updatedDraft = mutator(base);
+        return updatedDraft;
+      });
+
+      // After state is updated, persist to storage
+      if (updatedDraft) {
+        await writeDraft(updatedDraft);
+      }
     },
-    [ensureSession]
+    []
   );
 
   const setContextTextSafe = useCallback(
@@ -208,10 +237,9 @@ export function useMealCaptureDraft(): UseMealCaptureDraftResult {
     async (sourceUri: string): Promise<void> => {
       if (!sourceUri) return;
 
+      // Ensure we have a session first to get a stable sessionId for the file path
       const base = await ensureSession();
-      const currentPhotos = base.items.filter((i) => i.itemType === 'photo').length;
-      if (currentPhotos >= MAX_PHOTOS) return;
-
+      
       const localId = createLocalId('photo');
       const sessionDir = `${DRAFTS_DIR}/${base.sessionId}`;
       const targetUri = `${sessionDir}/${localId}.jpg`;
@@ -219,20 +247,23 @@ export function useMealCaptureDraft(): UseMealCaptureDraftResult {
       await ensureDir(sessionDir);
       await FileSystem.copyAsync({ from: sourceUri, to: targetUri });
 
-      const now = Date.now();
-      const nextItems: DraftMealItem[] = [
-        ...base.items,
-        { localId, itemType: 'photo', localUri: targetUri, quantity: 1, isHero: false, createdAtMs: now },
-      ];
-      const next: MealCaptureDraft = {
-        ...base,
-        items: ensureHeroIfNeeded(nextItems),
-        updatedAtMs: now,
-      };
-      setDraft(next);
-      await writeDraft(next);
+      await mutate((prev) => {
+        const currentPhotos = prev.items.filter((i) => i.itemType === 'photo').length;
+        if (currentPhotos >= MAX_PHOTOS) return prev;
+
+        const now = Date.now();
+        const nextItems: DraftMealItem[] = [
+          ...prev.items,
+          { localId, itemType: 'photo', localUri: targetUri, quantity: 1, isHero: false, createdAtMs: now },
+        ];
+        return {
+          ...prev,
+          items: ensureHeroIfNeeded(nextItems),
+          updatedAtMs: now,
+        };
+      });
     },
-    [ensureSession]
+    [ensureSession, mutate]
   );
 
   const removeItem = useCallback(
@@ -275,6 +306,27 @@ export function useMealCaptureDraft(): UseMealCaptureDraftResult {
     [mutate]
   );
 
+  const addVerifiedItem = useCallback(
+    async (foodItem: DatabaseFoodItem, quantity: number): Promise<void> => {
+      const q = clampQuantity(quantity);
+      await mutate((prev) => {
+        const nextItems: DraftMealItem[] = [
+          ...prev.items,
+          {
+            localId: createLocalId('verified'),
+            itemType: 'verified',
+            foodItem,
+            quantity: q,
+            isHero: false,
+            createdAtMs: Date.now(),
+          },
+        ];
+        return { ...prev, items: ensureHeroIfNeeded(nextItems), updatedAtMs: Date.now() };
+      });
+    },
+    [mutate]
+  );
+
   return {
     isReady,
     draft,
@@ -289,6 +341,7 @@ export function useMealCaptureDraft(): UseMealCaptureDraftResult {
 
     addTextItem,
     addPhotoFromUri,
+    addVerifiedItem,
     removeItem,
     setHero,
     updateQuantity,

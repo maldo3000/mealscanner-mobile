@@ -10,13 +10,17 @@ import {
     Text,
     TouchableOpacity,
     View,
+    SafeAreaView,
+    StatusBar,
 } from 'react-native';
 
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { Input } from '@/components/ui/Input';
-import { Colors, glassBorder, neonGreen } from '@/constants/Colors';
+import { RecipeCardDiscover } from '@/components/recipe/RecipeCardDiscover';
+import type { Recipe } from '@/components/recipe/types';
+import { Colors, glassBorder, neonGreen, deepGreen, accentSky, glassSurface } from '@/constants/Colors';
 import { Spacing } from '@/constants/Spacing';
 import { TextStyles } from '@/constants/Typography';
 import { useColorScheme } from '@/hooks/useColorScheme';
@@ -147,286 +151,324 @@ export function RecipeGeneratorModal({
   return (
     <Modal
       visible={visible}
-      transparent
-      animationType="fade"
+      transparent={false}
+      animationType="slide"
+      presentationStyle="fullScreen"
       onRequestClose={handleClose}
     >
-      <View style={styles.modalOverlay}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.modalContainer}
-        >
-          <BlurView intensity={20} tint="dark" style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={[TextStyles.h3, { color: colors.text }]}>
-                Generate Recipe
-              </Text>
+      <View style={[styles.fullPageContainer, { backgroundColor: deepGreen }]}>
+        <StatusBar barStyle="light-content" />
+        <SafeAreaView style={styles.safeArea}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.flex1}
+          >
+            {/* Goal Bar */}
+            <View style={styles.goalBar}>
+              <View style={styles.goalPill}>
+                <IconSymbol name="target" size={14} color={neonGreen} />
+                <Text style={styles.goalText}>
+                  AI KITCHEN • TARGET: {activeGoal ? `${Math.round(activeGoal.dailyTargets.calories)} KCAL` : 'GENERAL HEALTH'}
+                </Text>
+              </View>
               <TouchableOpacity
                 onPress={handleClose}
-                style={styles.modalCloseButton}
+                style={styles.closeButton}
                 activeOpacity={0.7}
                 disabled={generatingRecipe}
               >
-                <IconSymbol name="xmark" size={24} color={colors.icon} />
+                <IconSymbol name="xmark" size={24} color="#FFF" />
               </TouchableOpacity>
             </View>
 
-            <Text style={[TextStyles.bodySmall, { color: colors.icon, marginBottom: Spacing.md }]}>
-              {activeGoal
-                ? `Tell us what you feel like eating or what ingredients you have. We'll suggest recipes aligned with your nutrition goals (${Math.round(activeGoal.dailyTargets.calories)} kcal/day).`
-                : "Tell us what you feel like eating or what ingredients you have. We'll suggest recipes for you."}
-            </Text>
-
-            {!suggestions.length && !loadingSuggestions && (
-              <>
-                <Input
-                  placeholder="E.g., I have chicken and vegetables, or I want something healthy and quick..."
-                  value={userInput}
-                  onChangeText={setUserInput}
-                  multiline
-                  numberOfLines={4}
-                  textAlignVertical="top"
-                  containerStyle={{ marginBottom: Spacing.lg }}
-                  style={{ minHeight: 100 }}
-                />
-
-                {error && (
-                  <Text style={[TextStyles.bodySmall, { color: '#F97316', marginBottom: Spacing.md }]}>
-                    {error}
+            <ScrollView 
+              style={styles.flex1} 
+              contentContainerStyle={styles.scrollContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {!suggestions.length && !loadingSuggestions && !generatingRecipe && (
+                <View style={styles.introSection}>
+                  <Text style={[TextStyles.h1, { color: '#FFF', marginBottom: Spacing.sm }]}>
+                    What's on your mind?
                   </Text>
-                )}
+                  <Text style={[TextStyles.body, { color: 'rgba(255,255,255,0.6)', marginBottom: Spacing.xl }]}>
+                    Describe what you feel like eating or what's in your fridge. We'll handle the rest.
+                  </Text>
 
-                <Button
-                  variant="primary"
-                  fullWidth
-                  onPress={handleGenerateSuggestions}
-                  disabled={loadingSuggestions || !userInput.trim()}
-                >
-                  {loadingSuggestions ? 'Generating Suggestions...' : 'Get Recipe Suggestions'}
-                </Button>
-              </>
-            )}
-
-            {loadingSuggestions && (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color={neonGreen} />
-                <Text style={[TextStyles.body, { color: colors.text, marginTop: Spacing.md }]}>
-                  Generating recipe suggestions...
-                </Text>
-              </View>
-            )}
-
-            {suggestions.length > 0 && !generatingRecipe && (
-              <ScrollView style={styles.suggestionsContainer} showsVerticalScrollIndicator={false}>
-                <Text style={[TextStyles.body, { color: colors.text, marginBottom: Spacing.md }]}>
-                  Select a recipe to generate:
-                </Text>
-                {suggestions.map((suggestion, index) => (
-                  <TouchableOpacity
-                    key={index}
-                    onPress={() => handleSelectSuggestion(suggestion)}
-                    activeOpacity={0.7}
-                    style={styles.suggestionCard}
-                  >
-                    <Card variant="glass" padding="md">
-                      <View style={styles.suggestionHeader}>
-                        <Text style={[TextStyles.body, { color: colors.text, flex: 1 }]}>
-                          {suggestion.name}
-                        </Text>
-                        {suggestion.difficulty && (
-                          <View
-                            style={[
-                              styles.difficultyBadge,
-                              {
-                                backgroundColor:
-                                  suggestion.difficulty === 'Easy'
-                                    ? `${neonGreen}20`
-                                    : suggestion.difficulty === 'Medium'
-                                    ? '#FFA50020'
-                                    : '#FF444420',
-                                borderColor:
-                                  suggestion.difficulty === 'Easy'
-                                    ? neonGreen
-                                    : suggestion.difficulty === 'Medium'
-                                    ? '#FFA500'
-                                    : '#FF4444',
-                              },
-                            ]}
-                          >
-                            <Text
-                              style={[
-                                TextStyles.caption,
-                                {
-                                  color:
-                                    suggestion.difficulty === 'Easy'
-                                      ? neonGreen
-                                      : suggestion.difficulty === 'Medium'
-                                      ? '#FFA500'
-                                      : '#FF4444',
-                                },
-                              ]}
-                            >
-                              {suggestion.difficulty}
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-                      <Text
-                        style={[TextStyles.bodySmall, { color: colors.icon, marginTop: Spacing.xs }]}
-                      >
-                        {suggestion.description}
+                  <View style={styles.inputStudio}>
+                    <Input
+                      placeholder="E.g., I have salmon and spinach, want something high protein and quick..."
+                      value={userInput}
+                      onChangeText={setUserInput}
+                      multiline
+                      numberOfLines={4}
+                      textAlignVertical="top"
+                      variant="filled"
+                      style={styles.studioInput}
+                      containerStyle={styles.studioInputContainer}
+                    />
+                    
+                    {error && (
+                      <Text style={styles.errorText}>
+                        {error}
                       </Text>
-                      <View style={styles.suggestionMeta}>
-                        {suggestion.estimated_calories && (
-                          <View style={styles.metaItem}>
-                            <IconSymbol name="flame" size={14} color={colors.icon} />
-                            <Text style={[TextStyles.caption, { color: colors.icon, marginLeft: 4 }]}>
-                              ~{suggestion.estimated_calories} kcal
-                            </Text>
-                          </View>
-                        )}
-                        {suggestion.estimated_protein && (
-                          <View style={styles.metaItem}>
-                            <IconSymbol name="dumbbell" size={14} color={colors.icon} />
-                            <Text style={[TextStyles.caption, { color: colors.icon, marginLeft: 4 }]}>
-                              ~{suggestion.estimated_protein}g protein
-                            </Text>
-                          </View>
-                        )}
-                        {suggestion.cuisine_type && (
-                          <View style={styles.metaItem}>
-                            <IconSymbol name="globe" size={14} color={colors.icon} />
-                            <Text style={[TextStyles.caption, { color: colors.icon, marginLeft: 4 }]}>
-                              {suggestion.cuisine_type}
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-                      {suggestion.tags && suggestion.tags.length > 0 && (
-                        <View style={styles.tagsContainer}>
-                          {suggestion.tags.map((tag, tagIndex) => (
-                            <View
-                              key={tagIndex}
-                              style={[styles.tag, { backgroundColor: `${neonGreen}20`, borderColor: `${neonGreen}40` }]}
-                            >
-                              <Text style={[TextStyles.caption, { color: colors.text }]}>{tag}</Text>
-                            </View>
-                          ))}
-                        </View>
-                      )}
-                    </Card>
-                  </TouchableOpacity>
-                ))}
-                <Button
-                  variant="secondary"
-                  fullWidth
-                  onPress={() => {
-                    setSuggestions([]);
-                    setUserInput('');
-                  }}
-                  style={{ marginTop: Spacing.md }}
-                >
-                  Start Over
-                </Button>
-              </ScrollView>
-            )}
+                    )}
 
-            {generatingRecipe && (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color={neonGreen} />
-                <Text style={[TextStyles.body, { color: colors.text, marginTop: Spacing.md }]}>
-                  Generating recipe: {selectedSuggestion?.name}...
-                </Text>
-                <Text style={[TextStyles.bodySmall, { color: colors.icon, marginTop: Spacing.xs }]}>
-                  This may take a moment
-                </Text>
-              </View>
-            )}
-          </BlurView>
-        </KeyboardAvoidingView>
+                    <Button
+                      variant="primary"
+                      fullWidth
+                      onPress={handleGenerateSuggestions}
+                      disabled={loadingSuggestions || !userInput.trim()}
+                      style={styles.generateBtn}
+                    >
+                      <IconSymbol name="sparkles" size={20} color="#000" style={{ marginRight: 8 }} />
+                      <Text style={[TextStyles.button, { color: '#000' }]}>
+                        Get Suggestions
+                      </Text>
+                    </Button>
+                  </View>
+                </View>
+              )}
+
+              {loadingSuggestions && (
+                <View style={styles.centeredContent}>
+                  <ActivityIndicator size="large" color={neonGreen} />
+                  <Text style={styles.loadingTitle}>Curating your menu...</Text>
+                  <Text style={styles.loadingSub}>Analyzing your goals and ingredients</Text>
+                </View>
+              )}
+
+              {suggestions.length > 0 && !generatingRecipe && (
+                <View style={styles.suggestionsSection}>
+                  <Text style={[TextStyles.h2, { color: '#FFF', marginBottom: Spacing.md }]}>
+                    Choose your path
+                  </Text>
+                  {suggestions.map((suggestion, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      onPress={() => handleSelectSuggestion(suggestion)}
+                      activeOpacity={0.8}
+                      style={styles.suggestionItem}
+                    >
+                      <Card variant="glass" padding="none" style={styles.suggestionCard}>
+                        <View style={styles.suggestionContent}>
+                          <View style={styles.suggestionHeader}>
+                            <Text style={[TextStyles.body, { color: '#FFF', fontWeight: '700', flex: 1 }]}>
+                              {suggestion.name}
+                            </Text>
+                            <View style={[styles.difficultyTag, { borderColor: suggestion.difficulty === 'Easy' ? neonGreen : accentSky }]}>
+                              <Text style={[TextStyles.caption, { color: suggestion.difficulty === 'Easy' ? neonGreen : accentSky }]}>
+                                {suggestion.difficulty}
+                              </Text>
+                            </View>
+                          </View>
+                          
+                          <Text style={[TextStyles.bodySmall, { color: 'rgba(255,255,255,0.6)', marginTop: 4 }]}>
+                            {suggestion.description}
+                          </Text>
+
+                          <View style={styles.suggestionFooter}>
+                            <View style={styles.metaRow}>
+                              <View style={styles.metaItem}>
+                                <IconSymbol name="flame" size={14} color={neonGreen} />
+                                <Text style={styles.metaText}>{suggestion.estimated_calories} kcal</Text>
+                              </View>
+                              <View style={styles.metaItem}>
+                                <IconSymbol name="sparkles" size={14} color={accentSky} />
+                                <Text style={styles.metaText}>{suggestion.estimated_protein}g protein</Text>
+                              </View>
+                            </View>
+                            <IconSymbol name="chevron.right" size={20} color="rgba(255,255,255,0.3)" />
+                          </View>
+                        </View>
+                      </Card>
+                    </TouchableOpacity>
+                  ))}
+                  
+                  <TouchableOpacity 
+                    onPress={() => {
+                      setSuggestions([]);
+                      setUserInput('');
+                    }}
+                    style={styles.startOverBtn}
+                  >
+                    <Text style={styles.startOverText}>Start Over</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {generatingRecipe && (
+                <View style={styles.centeredContent}>
+                  <ActivityIndicator size="large" color={neonGreen} />
+                  <Text style={styles.loadingTitle}>Crafting {selectedSuggestion?.name}...</Text>
+                  <Text style={styles.loadingSub}>Creating step-by-step instructions and nutrition details</Text>
+                </View>
+              )}
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
       </View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  modalOverlay: {
+  fullPageContainer: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: Spacing.lg,
   },
-  modalContainer: {
-    width: '100%',
-    maxWidth: 500,
-    maxHeight: '90%',
+  safeArea: {
+    flex: 1,
   },
-  modalContent: {
-    borderRadius: 24,
-    padding: Spacing.xl,
-    borderWidth: 1,
-    borderColor: glassBorder,
-    ...(Platform.OS === 'web' && {
-      backgroundColor: 'rgba(30, 30, 30, 0.95)',
-    }),
+  flex1: {
+    flex: 1,
   },
-  modalHeader: {
+  goalBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+  },
+  goalPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: glassBorder,
+  },
+  goalText: {
+    ...TextStyles.caption,
+    color: 'rgba(255,255,255,0.6)',
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  closeButton: {
+    padding: 8,
+  },
+  scrollContent: {
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.xl,
+    paddingBottom: 40,
+  },
+  introSection: {
+    flex: 1,
+  },
+  inputStudio: {
+    marginTop: Spacing.md,
+  },
+  studioInputContainer: {
+    marginBottom: Spacing.lg,
+  },
+  studioInput: {
+    minHeight: 160,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 24,
+    padding: 20,
+    fontSize: 18,
+    color: '#FFF',
+    borderWidth: 1,
+    borderColor: glassBorder,
+  },
+  generateBtn: {
+    height: 56,
+    borderRadius: 16,
+    marginTop: Spacing.md,
+  },
+  errorText: {
+    ...TextStyles.bodySmall,
+    color: '#F97316',
     marginBottom: Spacing.md,
+    textAlign: 'center',
   },
-  modalCloseButton: {
-    padding: Spacing.xs,
-  },
-  loadingContainer: {
+  centeredContent: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: Spacing.xl,
+    paddingTop: 100,
   },
-  suggestionsContainer: {
-    maxHeight: 500,
+  loadingTitle: {
+    ...TextStyles.h3,
+    color: '#FFF',
+    marginTop: Spacing.lg,
+    textAlign: 'center',
+  },
+  loadingSub: {
+    ...TextStyles.body,
+    color: 'rgba(255,255,255,0.5)',
+    marginTop: Spacing.xs,
+    textAlign: 'center',
+  },
+  suggestionsSection: {
+    flex: 1,
+  },
+  suggestionItem: {
+    marginBottom: Spacing.md,
   },
   suggestionCard: {
-    marginBottom: Spacing.md,
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  suggestionContent: {
+    padding: Spacing.lg,
   },
   suggestionHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: Spacing.xs,
+    alignItems: 'flex-start',
+    gap: 12,
   },
-  difficultyBadge: {
-    paddingHorizontal: Spacing.sm,
+  difficultyTag: {
+    paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 8,
     borderWidth: 1,
-    marginLeft: Spacing.sm,
   },
-  suggestionMeta: {
+  suggestionFooter: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: Spacing.sm,
-    gap: Spacing.sm,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: Spacing.md,
+    paddingTop: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.05)',
+  },
+  metaRow: {
+    flexDirection: 'row',
+    gap: 16,
   },
   metaItem: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
   },
-  tagsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: Spacing.sm,
-    gap: Spacing.xs,
+  metaText: {
+    ...TextStyles.caption,
+    color: '#FFF',
+    fontWeight: '600',
   },
-  tag: {
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
+  startOverBtn: {
+    alignItems: 'center',
+    paddingVertical: Spacing.xl,
+  },
+  startOverText: {
+    ...TextStyles.body,
+    color: 'rgba(255,255,255,0.4)',
+    fontWeight: '600',
+    textDecorationLine: 'underline',
   },
 });
+
+
+
+
+
+
+
+
 
 
 

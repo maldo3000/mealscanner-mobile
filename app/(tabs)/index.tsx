@@ -1,11 +1,14 @@
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, RefreshControl, StyleSheet, Text, View, TouchableOpacity } from 'react-native';
+import Animated, { FadeInDown, LinearTransition, Easing } from 'react-native-reanimated';
 
 import { ContentContainer } from '@/components/layout/ContentContainer';
 import { PageContainer } from '@/components/layout/PageContainer';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { Section } from '@/components/layout/Section';
 import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DiscoveryCard } from '@/components/ui/DiscoveryCard';
 import { IconSymbol } from '@/components/ui/IconSymbol';
@@ -101,6 +104,15 @@ export default function HomeScreen() {
     };
   }, []);
 
+  // Refresh data when screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      if (!loading) {
+        loadData(false, true);
+      }
+    }, [loading])
+  );
+
   const resetState = () => {
     setCurrentStreak(0);
     setLongestStreak(0);
@@ -115,10 +127,10 @@ export default function HomeScreen() {
     setAllMeals([]);
   };
 
-  const loadData = async (isRefreshing = false): Promise<void> => {
+  const loadData = async (isRefreshing = false, silent = false): Promise<void> => {
     try {
       if (isRefreshing) setRefreshing(true);
-      else setLoading(true);
+      else if (!silent) setLoading(true);
       
       const { user } = await getCurrentUser();
       if (!user) {
@@ -183,6 +195,23 @@ export default function HomeScreen() {
     loadData(true);
   }, []);
 
+  const formatDate = (dateString: string): string => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) {
+      return `Today, ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    } else if (diffDays === 1) {
+      return `Yesterday, ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    } else {
+      return date.toLocaleDateString([], { 
+        month: 'short', 
+        day: 'numeric'
+      });
+    }
+  };
+
   if (loading) {
     return (
       <PageContainer>
@@ -198,6 +227,7 @@ export default function HomeScreen() {
 
   return (
     <PageContainer>
+      <PageHeader title="Today" />
       <ContentContainer
         scrollable={true}
         refreshControl={
@@ -209,72 +239,110 @@ export default function HomeScreen() {
         }
       >
         {/* Hero Section */}
-        <Section gap={PageSpacing.cardGap}>
-          <NutritionHero 
-            stats={weeklyStats[selectedDateIndex]} 
-            weeklyCalories={weeklyCalories} 
-            selectedDateIndex={selectedDateIndex}
-            onSelectDate={setSelectedDateIndex}
-            currentStreak={currentStreak}
-          />
-        </Section>
+        <Animated.View entering={FadeInDown.duration(600).delay(100).easing(Easing.out(Easing.quad))}>
+          <Section gap={PageSpacing.cardGap}>
+            <NutritionHero 
+              stats={weeklyStats[selectedDateIndex]} 
+              weeklyCalories={weeklyCalories} 
+              selectedDateIndex={selectedDateIndex}
+              onSelectDate={setSelectedDateIndex}
+              currentStreak={currentStreak}
+            />
+          </Section>
+        </Animated.View>
 
-        {/* Discovery / Inspiration Section */}
-        <Section gap={Spacing.md}>
-          <View style={styles.sectionHeader}>
-            <Text style={[TextStyles.h4, { color: colors.text }]}>Inspiration</Text>
-          </View>
-          <DiscoveryCard 
-            type="recipe"
-            title="High-Protein Quinoa Bowl"
-            subtitle="Perfect for hitting your protein goal while staying light."
-            imageUrl="https://images.unsplash.com/photo-1512621776951-a57141f2eefd?auto=format&fit=crop&w=400&q=80"
-          />
-          <DiscoveryCard 
-            type="tip"
-            title="Hydration is Key"
-            subtitle="Drinking 500ml of water before meals can help with satiety."
-          />
-        </Section>
-
-        {/* Consistency & Progress */}
-        <Section gap={Spacing.md}>
-          <View style={styles.sectionHeader}>
-            <Text style={[TextStyles.h4, { color: colors.text }]}>Consistency</Text>
-          </View>
-          
-          <Card variant="glass" style={styles.streakCard}>
-            <View style={styles.streakContent}>
-              <View style={[styles.streakIconContainer, { backgroundColor: `${neonGreen}20` }]}>
-                <IconSymbol name="flame.fill" size={32} color={neonGreen} />
-              </View>
-              <View style={styles.streakText}>
-                <Text style={[TextStyles.h2, { color: colors.text }]}>{currentStreak} Day Streak</Text>
-                <Text style={[TextStyles.bodySmall, { color: colors.icon }]}>
-                  {currentStreak > 0 ? "You're on fire! Keep it up." : "Log a meal to start your streak!"}
+        {/* Recent Meal Section */}
+        <Animated.View entering={FadeInDown.duration(600).delay(200).easing(Easing.out(Easing.quad))}>
+          <Section gap={Spacing.md}>
+            <View style={styles.sectionHeader}>
+              <Text style={[TextStyles.h4, { color: colors.text }]}>Recent Meal</Text>
+              {allMeals.length > 0 && (
+                <TouchableOpacity onPress={() => router.push('/(tabs)/journal')}>
+                  <Text style={[TextStyles.bodySmall, { color: neonGreen, fontWeight: '600' }]}>View All</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            
+            {allMeals.length > 0 ? (
+              <DiscoveryCard 
+                type="meal"
+                title={allMeals[0].description}
+                subtitle={`${allMeals[0].calories ? allMeals[0].calories + ' kcal • ' : ''}${formatDate(allMeals[0].created_at)}`}
+                imageUrl={allMeals[0].image_url}
+                mealId={allMeals[0].id}
+              />
+            ) : (
+              <Card variant="glass" style={styles.emptyRecentMeal}>
+                <Text style={[TextStyles.body, { color: colors.icon, textAlign: 'center' }]}>
+                  No meals logged yet. Start capturing to see your history!
                 </Text>
-              </View>
-            </View>
-            <View style={styles.streakFooter}>
-              <Tag color="accent">Best: {longestStreak} days</Tag>
-            </View>
-          </Card>
+                <Button 
+                  variant="primary" 
+                  onPress={() => router.push('/(tabs)/log')}
+                  style={{ marginTop: Spacing.md }}
+                >
+                  Log My First Meal
+                </Button>
+              </Card>
+            )}
+          </Section>
+        </Animated.View>
 
-          {/* Centered Milestones/Achievements */}
-          <View style={styles.centeredBadgesContainer}>
-            <View style={styles.badgesGrid}>
-              {achievements.map((achievement, index) => (
-                <Badge
-                  key={index}
-                  icon={achievement.icon}
-                  title={achievement.title}
-                  unlocked={achievement.unlocked}
-                  accentColor={achievement.color as any}
-                />
-              ))}
+        {/* Progress Hub */}
+        <Animated.View entering={FadeInDown.duration(600).delay(300).easing(Easing.out(Easing.quad))}>
+          <Section gap={Spacing.md}>
+            <View style={styles.sectionHeader}>
+              <Text style={[TextStyles.h4, { color: colors.text }]}>Progress</Text>
             </View>
-          </View>
-        </Section>
+            
+            <Card variant="glass" style={styles.progressHubCard}>
+              {/* Centered Streak Section */}
+              <View style={styles.hubHeroSection}>
+                <View style={styles.hubStreakIconContainer}>
+                  <View style={styles.iconBacklight} />
+                  <IconSymbol name="flame.fill" size={36} color={neonGreen} />
+                </View>
+                
+                <View style={styles.hubStreakTextContainer}>
+                  <View style={styles.hubStreakRow}>
+                    <Text style={[TextStyles.h1, { color: colors.text, fontSize: 48, lineHeight: 56 }]}>
+                      {currentStreak}
+                    </Text>
+                    <Text style={[TextStyles.h4, { color: colors.text, opacity: 0.9, letterSpacing: 1 }]}>
+                      DAY STREAK
+                    </Text>
+                  </View>
+                  <Text style={[TextStyles.bodySmall, { color: colors.icon, marginTop: -4 }]}>
+                    {currentStreak > 0 ? "You're on fire! Keep it up." : "Log a meal to start."}
+                  </Text>
+                </View>
+
+                <View style={styles.hubBestStreakPill}>
+                  <IconSymbol name="star.fill" size={10} color={neonGreen} />
+                  <Text style={[TextStyles.caption, { color: neonGreen, fontWeight: '700' }]}>
+                    BEST: {longestStreak} DAYS
+                  </Text>
+                </View>
+              </View>
+
+              {/* Horizontal Divider */}
+              <View style={styles.hubDivider} />
+
+              {/* Achievements Grid inside the Card */}
+              <View style={styles.hubBadgesGrid}>
+                {achievements.map((achievement, index) => (
+                  <Badge
+                    key={index}
+                    icon={achievement.icon}
+                    title={achievement.title}
+                    unlocked={achievement.unlocked}
+                    accentColor={achievement.color as any}
+                  />
+                ))}
+              </View>
+            </Card>
+          </Section>
+        </Animated.View>
 
         <View style={{ height: 40 }} />
       </ContentContainer>
@@ -294,31 +362,65 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 4,
   },
-  streakCard: {
-    padding: Spacing.lg,
-  },
-  streakContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.lg,
-    marginBottom: Spacing.md,
-  },
-  streakIconContainer: {
-    width: 64,
-    height: 64,
+  progressHubCard: {
+    padding: Spacing.base,
+    paddingVertical: Spacing.xl,
     borderRadius: 32,
+  },
+  hubHeroSection: {
     alignItems: 'center',
     justifyContent: 'center',
+    paddingBottom: Spacing.xl,
+  },
+  hubStreakIconContainer: {
+    width: 72,
+    height: 72,
+    borderRadius: 20, // Squircle
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: `${neonGreen}10`,
     borderWidth: 1,
-    borderColor: `${neonGreen}40`,
+    borderColor: `${neonGreen}20`,
+    marginBottom: Spacing.lg,
+    overflow: 'hidden',
+    position: 'relative',
   },
-  streakText: {
-    flex: 1,
+  hubStreakTextContainer: {
+    alignItems: 'center',
+    marginBottom: Spacing.lg,
   },
-  streakFooter: {
+  hubStreakRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 8,
+  },
+  hubBestStreakPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-start',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  hubDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    width: '100%',
+    marginBottom: Spacing.xl,
+  },
+  hubBadgesGrid: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    width: '100%',
+  },
+  iconBacklight: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: neonGreen,
+    opacity: 0.1,
   },
   xpCard: {
     padding: Spacing.md,
@@ -339,16 +441,9 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 4,
   },
-  centeredBadgesContainer: {
+  emptyRecentMeal: {
+    padding: Spacing.xl,
     alignItems: 'center',
-    justifyContent: 'center',
-    width: '100%',
-    marginTop: Spacing.sm,
-  },
-  badgesGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.md,
     justifyContent: 'center',
   },
 });

@@ -20,7 +20,31 @@ export interface DraftTextItem extends DraftMealItemBase {
   text: string;
 }
 
-export type DraftMealItem = DraftPhotoItem | DraftTextItem;
+export interface DatabaseFoodItem {
+  id: string;
+  name: string;
+  brand?: string;
+  source: 'usda' | 'off';
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fiber?: number;
+  sodium?: number;
+  ingredients?: string;
+  servingSize: number;
+  servingUnit: string;
+  servingText?: string;
+  barcode?: string;
+  imageUrl?: string;
+}
+
+export interface DraftVerifiedItem extends DraftMealItemBase {
+  itemType: 'verified';
+  foodItem: DatabaseFoodItem;
+}
+
+export type DraftMealItem = DraftPhotoItem | DraftTextItem | DraftVerifiedItem;
 
 export interface MealCaptureDraft {
   version: 1;

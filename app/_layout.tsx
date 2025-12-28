@@ -3,6 +3,7 @@ import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
+import { View } from 'react-native';
 import 'react-native-reanimated';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
@@ -21,7 +22,7 @@ import {
 const ENABLE_LOADING_SCREEN = true;
 
 // Minimum time to show loading screen (in milliseconds)
-const MIN_LOADING_TIME = 5000; // 5 seconds
+const MIN_LOADING_TIME = 2000; // 2 seconds
 
 function RootLayoutNav() {
   const { session, isLoading: isAuthLoading } = useAuth();
@@ -43,18 +44,26 @@ function RootLayoutNav() {
   }, [session, isAuthLoading, segments]);
 
   return (
-    <Stack>
+    <Stack 
+      initialRouteName={session ? "(tabs)" : "(auth)"}
+      screenOptions={{
+        headerShown: false,
+        animation: 'fade',
+        animationDuration: 300,
+      }}
+    >
       <Stack.Screen name="(auth)" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="meal" options={{ headerShown: false }} />
       <Stack.Screen name="recipe" options={{ headerShown: false }} />
       <Stack.Screen name="settings" options={{ headerShown: false }} />
-      <Stack.Screen name="+not-found" />
+      <Stack.Screen name="+not-found" options={{ headerShown: true }} />
     </Stack>
   );
 }
 
-export default function RootLayout() {
+function RootLayoutContent() {
+  const { isLoading: isAuthLoading } = useAuth();
   const colorScheme = useColorScheme();
   // Always use dark theme to match mobile experience  
   const theme = DarkTheme;
@@ -72,8 +81,9 @@ export default function RootLayout() {
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
 
-  const [isAppReady, setIsAppReady] = useState(false);
   const [minTimeElapsed, setMinTimeElapsed] = useState(false);
+  const [isOverlayVisible, setIsOverlayVisible] = useState(true);
+  const [shouldRenderLoading, setShouldRenderLoading] = useState(true);
 
   // Track minimum display time
   useEffect(() => {
@@ -88,35 +98,51 @@ export default function RootLayout() {
     }
   }, []);
 
-  // Determine when app is ready (fonts loaded AND minimum time elapsed)
+  // Determine when app is ready (fonts loaded AND minimum time elapsed AND auth check finished)
+  const isAppReady = loaded && minTimeElapsed && !isAuthLoading;
+
+  // Trigger fade out when app is ready
   useEffect(() => {
-    if (loaded && minTimeElapsed) {
-      setIsAppReady(true);
+    if (isAppReady) {
+      // Small additional delay to ensure the Redirect logic in RootLayoutNav has fired
+      // and the stack has started mounting the target screen behind the overlay
+      const timer = setTimeout(() => {
+        setIsOverlayVisible(false);
+      }, 300);
+      return () => clearTimeout(timer);
     }
-  }, [loaded, minTimeElapsed]);
+  }, [isAppReady]);
 
-  // Show loading screen if enabled and app is not ready
-  if (ENABLE_LOADING_SCREEN && !isAppReady) {
-    return (
-      <>
-        <LoadingScreen />
-        <StatusBar style="light" />
-      </>
-    );
-  }
-
-  // If loading screen is disabled, show nothing while fonts load
+  // If fonts aren't loaded yet, show nothing (system splash screen handles this)
   if (!loaded) {
     return null;
   }
 
   return (
+    <ThemeProvider value={theme}>
+      <View style={{ flex: 1 }}>
+        {/* The actual app navigation renders here immediately behind the overlay */}
+        <RootLayoutNav />
+        
+        {/* The loading screen overlays everything until it's done fading */}
+        {ENABLE_LOADING_SCREEN && shouldRenderLoading && (
+          <LoadingScreen 
+            isVisible={isOverlayVisible} 
+            onFadeComplete={() => setShouldRenderLoading(false)}
+          />
+        )}
+        
+        <StatusBar style="light" />
+      </View>
+    </ThemeProvider>
+  );
+}
+
+export default function RootLayout() {
+  return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <AuthProvider>
-        <ThemeProvider value={theme}>
-          <RootLayoutNav />
-          <StatusBar style="light" />
-        </ThemeProvider>
+        <RootLayoutContent />
       </AuthProvider>
     </GestureHandlerRootView>
   );

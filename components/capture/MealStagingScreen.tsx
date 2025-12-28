@@ -22,8 +22,9 @@ import { IconSymbol } from '@/components/ui/IconSymbol';
 import { Input } from '@/components/ui/Input';
 import { Colors, glassBorder, glassSurface, neonGreen } from '@/constants/Colors';
 import { PageSpacing, Spacing } from '@/constants/Spacing';
-import { TextStyles } from '@/constants/Typography';
+import { FontFamilies, TextStyles } from '@/constants/Typography';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { AnalysisLoadingOverlay, AnalysisStatus } from './AnalysisLoadingOverlay';
 import type { DraftMealItem } from './types';
 
 const MAX_PHOTOS = 4 as const;
@@ -31,7 +32,7 @@ const MAX_PHOTOS = 4 as const;
 export interface MealStagingScreenProps {
   items: DraftMealItem[];
   contextText: string;
-  isAnalyzing: boolean;
+  analysisStatus: AnalysisStatus;
 
   heroPhotoLocalId: string | null;
   photoCount: number;
@@ -77,6 +78,10 @@ function MealItemRow(props: MealItemRowProps): React.ReactElement {
             <Text style={styles.itemTitle} numberOfLines={1}>
               Photo
             </Text>
+          ) : item.itemType === 'verified' ? (
+            <Text style={styles.itemTitle} numberOfLines={2}>
+              {item.foodItem.name}
+            </Text>
           ) : (
             <Text style={styles.itemTitle} numberOfLines={2}>
               {item.text}
@@ -113,7 +118,7 @@ export function MealStagingScreen(props: MealStagingScreenProps): React.ReactEle
   const {
     items,
     contextText,
-    isAnalyzing,
+    analysisStatus,
     heroPhotoLocalId,
     photoCount,
     onDiscardSession,
@@ -134,7 +139,8 @@ export function MealStagingScreen(props: MealStagingScreenProps): React.ReactEle
   const [showContextModal, setShowContextModal] = useState<boolean>(false);
   const [tempContext, setTempContext] = useState<string>(contextText);
 
-  const canAnalyze = items.length > 0 && !isAnalyzing;
+  const isAnalyzing = analysisStatus === 'analyzing' || analysisStatus === 'success';
+  const canAnalyze = items.length > 0 && analysisStatus === 'idle';
 
   const headerSubtitle = useMemo<string>(() => {
     if (items.length === 0) return 'Throw in photos or quick notes before we analyze.';
@@ -311,6 +317,8 @@ export function MealStagingScreen(props: MealStagingScreenProps): React.ReactEle
           </View>
         </TouchableWithoutFeedback>
       </Modal>
+
+      <AnalysisLoadingOverlay status={analysisStatus} />
     </View>
   );
 }
@@ -445,7 +453,9 @@ const styles = StyleSheet.create({
   itemTitle: {
     ...TextStyles.body,
     color: 'white',
-    fontWeight: '700',
+    fontFamily: FontFamilies.headingBold,
+    fontWeight: Platform.OS === 'web' ? '800' : undefined,
+    fontSize: 17,
   },
   heroButton: {
     flexDirection: 'row',

@@ -13,6 +13,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { StyleSheet, Switch, Text, TouchableOpacity, View, Alert, ActivityIndicator } from 'react-native';
+import Animated, { FadeInDown, Easing } from 'react-native-reanimated';
 
 export default function SettingsScreen() {
   const [showMetrics, setShowMetrics] = useState(true);
@@ -58,176 +59,186 @@ export default function SettingsScreen() {
       
       <ContentContainer>
         {/* Profile Section */}
-        <Section title="Profile">
-          <Card variant="glass" padding="none" style={styles.settingItem}>
-            <TouchableOpacity style={styles.settingItemContent}>
-              <View style={styles.settingItemLeft}>
-                <View style={[styles.iconContainer, { backgroundColor: `${neonGreen}20`, borderColor: `${neonGreen}40`, borderWidth: 1 }]}>
-                  <IconSymbol name="person" size={20} color={neonGreen} />
+        <Animated.View entering={FadeInDown.duration(600).delay(100).easing(Easing.out(Easing.quad))}>
+          <Section title="Profile">
+            <Card variant="glass" padding="none" style={styles.settingItem}>
+              <TouchableOpacity style={styles.settingItemContent}>
+                <View style={styles.settingItemLeft}>
+                  <View style={[styles.iconContainer, { backgroundColor: `${neonGreen}20`, borderColor: `${neonGreen}40`, borderWidth: 1 }]}>
+                    <IconSymbol name="person" size={20} color={neonGreen} />
+                  </View>
+                  <Text style={[TextStyles.body, { color: colors.text }]}>Edit Profile</Text>
                 </View>
-                <Text style={[TextStyles.body, { color: colors.text }]}>Edit Profile</Text>
-              </View>
-              <IconSymbol name="chevron.right" size={16} color={colors.icon} />
-            </TouchableOpacity>
-          </Card>
-          <Card variant="glass" padding="none" style={styles.settingItem}>
-            <TouchableOpacity
-              style={styles.settingItemContent}
-              onPress={() => router.push('/settings/nutrition-goals')}
-              accessibilityLabel="Set nutrition goals"
-              accessibilityHint="Opens the nutrition goals setup screen"
-            >
-              <View style={styles.settingItemLeft}>
-                <View style={[styles.iconContainer, { backgroundColor: `${neonGreen}20`, borderColor: `${neonGreen}40`, borderWidth: 1 }]}>
-                  <IconSymbol name="target" size={20} color={neonGreen} />
+                <IconSymbol name="chevron.right" size={16} color={colors.icon} />
+              </TouchableOpacity>
+            </Card>
+            <Card variant="glass" padding="none" style={styles.settingItem}>
+              <TouchableOpacity
+                style={styles.settingItemContent}
+                onPress={() => router.push('/settings/nutrition-goals')}
+                accessibilityLabel="Set nutrition goals"
+                accessibilityHint="Opens the nutrition goals setup screen"
+              >
+                <View style={styles.settingItemLeft}>
+                  <View style={[styles.iconContainer, { backgroundColor: `${neonGreen}20`, borderColor: `${neonGreen}40`, borderWidth: 1 }]}>
+                    <IconSymbol name="target" size={20} color={neonGreen} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[TextStyles.body, { color: colors.text }]}>
+                      Nutrition Goals
+                    </Text>
+                    <Text style={[TextStyles.bodySmall, { color: colors.icon }]}>
+                      {goalSubtitle}
+                    </Text>
+                  </View>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[TextStyles.body, { color: colors.text }]}>
-                    Nutrition Goals
-                  </Text>
-                  <Text style={[TextStyles.bodySmall, { color: colors.icon }]}>
-                    {goalSubtitle}
-                  </Text>
-                </View>
-              </View>
-              <IconSymbol name="chevron.right" size={16} color={colors.icon} />
-            </TouchableOpacity>
-          </Card>
-        </Section>
+                <IconSymbol name="chevron.right" size={16} color={colors.icon} />
+              </TouchableOpacity>
+            </Card>
+          </Section>
+        </Animated.View>
 
         {/* Preferences Section */}
-        <Section title="Preferences">
-          <Card variant="glass" padding="none" style={styles.settingItem}>
-            <View style={styles.settingItemContent}>
-              <View style={styles.settingItemLeft}>
-                <View style={[styles.iconContainer, { backgroundColor: `${neonGreen}20`, borderColor: `${neonGreen}40`, borderWidth: 1 }]}>
-                  <IconSymbol name="chart.bar" size={20} color={neonGreen} />
-                </View>
-                <Text style={[TextStyles.body, { color: colors.text }]}>Show Nutrition Metrics</Text>
-              </View>
-              <Switch
-                value={showMetrics}
-                onValueChange={setShowMetrics}
-                trackColor={{ false: glassBorder, true: neonGreen }}
-                thumbColor={showMetrics ? '#000000' : colors.icon}
-              />
-            </View>
-          </Card>
-          
-          <Card variant="glass" padding="none" style={styles.settingItem}>
-            <TouchableOpacity style={styles.settingItemContent}>
-              <View style={styles.settingItemLeft}>
-                <View style={[styles.iconContainer, { backgroundColor: `${neonGreen}20`, borderColor: `${neonGreen}40`, borderWidth: 1 }]}>
-                  <IconSymbol name="bell" size={20} color={neonGreen} />
-                </View>
-                <Text style={[TextStyles.body, { color: colors.text }]}>Notifications</Text>
-              </View>
-              <IconSymbol name="chevron.right" size={16} color={colors.icon} />
-            </TouchableOpacity>
-          </Card>
-          
-          <Card variant="glass" padding="none" style={styles.settingItem}>
-            <TouchableOpacity style={styles.settingItemContent}>
-              <View style={styles.settingItemLeft}>
-                <View style={[styles.iconContainer, { backgroundColor: `${neonGreen}20`, borderColor: `${neonGreen}40`, borderWidth: 1 }]}>
-                  <IconSymbol name="iphone" size={20} color={neonGreen} />
-                </View>
-                <Text style={[TextStyles.body, { color: colors.text }]}>Units & Display</Text>
-              </View>
-              <IconSymbol name="chevron.right" size={16} color={colors.icon} />
-            </TouchableOpacity>
-          </Card>
-        </Section>
-
-        {/* Data Section */}
-        <Section title="Data">
-          <Card variant="glass" padding="none" style={styles.settingItem}>
-            <TouchableOpacity style={styles.settingItemContent}>
-              <View style={styles.settingItemLeft}>
-                <View style={[styles.iconContainer, { backgroundColor: `${neonGreen}20`, borderColor: `${neonGreen}40`, borderWidth: 1 }]}>
-                  <IconSymbol name="square.and.arrow.up" size={20} color={neonGreen} />
-                </View>
-                <Text style={[TextStyles.body, { color: colors.text }]}>Export Data</Text>
-              </View>
-              <IconSymbol name="chevron.right" size={16} color={colors.icon} />
-            </TouchableOpacity>
-          </Card>
-          <Card variant="glass" padding="none" style={styles.settingItem}>
-            <TouchableOpacity style={styles.settingItemContent}>
-              <View style={styles.settingItemLeft}>
-                <View style={[styles.iconContainer, { backgroundColor: `${neonGreen}20`, borderColor: `${neonGreen}40`, borderWidth: 1 }]}>
-                  <IconSymbol name="trash" size={20} color={neonGreen} />
-                </View>
-                <Text style={[TextStyles.body, { color: colors.text }]}>Clear History</Text>
-              </View>
-              <IconSymbol name="chevron.right" size={16} color={colors.icon} />
-            </TouchableOpacity>
-          </Card>
-        </Section>
-
-        {/* About Section */}
-        <Section>
-          <Card variant="glass" padding="none" style={styles.settingItem}>
-            <TouchableOpacity style={styles.settingItemContent}>
-              <View style={styles.settingItemLeft}>
-                <View style={[styles.iconContainer, { backgroundColor: `${neonGreen}20`, borderColor: `${neonGreen}40`, borderWidth: 1 }]}>
-                  <IconSymbol name="info.circle" size={20} color={neonGreen} />
-                </View>
-                <Text style={[TextStyles.body, { color: colors.text }]}>About MealScanner</Text>
-              </View>
-              <IconSymbol name="chevron.right" size={16} color={colors.icon} />
-            </TouchableOpacity>
-          </Card>
-          <Card variant="glass" padding="none" style={styles.settingItem}>
-            <TouchableOpacity style={styles.settingItemContent}>
-              <View style={styles.settingItemLeft}>
-                <View style={[styles.iconContainer, { backgroundColor: `${neonGreen}20`, borderColor: `${neonGreen}40`, borderWidth: 1 }]}>
-                  <IconSymbol name="doc.text" size={20} color={neonGreen} />
-                </View>
-                <Text style={[TextStyles.body, { color: colors.text }]}>Privacy Policy</Text>
-              </View>
-              <IconSymbol name="chevron.right" size={16} color={colors.icon} />
-            </TouchableOpacity>
-          </Card>
-        </Section>
-
-        {/* Account Section */}
-        <Section title="Account">
-          {user && (
+        <Animated.View entering={FadeInDown.duration(600).delay(200).easing(Easing.out(Easing.quad))}>
+          <Section title="Preferences">
             <Card variant="glass" padding="none" style={styles.settingItem}>
               <View style={styles.settingItemContent}>
                 <View style={styles.settingItemLeft}>
                   <View style={[styles.iconContainer, { backgroundColor: `${neonGreen}20`, borderColor: `${neonGreen}40`, borderWidth: 1 }]}>
-                    <IconSymbol name="envelope" size={20} color={neonGreen} />
+                    <IconSymbol name="chart.bar" size={20} color={neonGreen} />
                   </View>
-                  <Text style={[TextStyles.bodySmall, { color: colors.icon }]} numberOfLines={1}>
-                    {user.email}
-                  </Text>
+                  <Text style={[TextStyles.body, { color: colors.text }]}>Show Nutrition Metrics</Text>
                 </View>
+                <Switch
+                  value={showMetrics}
+                  onValueChange={setShowMetrics}
+                  trackColor={{ false: glassBorder, true: neonGreen }}
+                  thumbColor={showMetrics ? '#000000' : colors.icon}
+                />
               </View>
             </Card>
-          )}
-          <Card variant="glass" padding="none" style={styles.settingItem}>
-            <TouchableOpacity 
-              style={styles.settingItemContent} 
-              onPress={handleSignOut}
-              disabled={isSigningOut}
-            >
-              <View style={styles.settingItemLeft}>
-                <View style={[styles.iconContainer, { backgroundColor: `${semanticColors.error}20`, borderColor: `${semanticColors.error}40`, borderWidth: 1 }]}>
-                  {isSigningOut ? (
-                    <ActivityIndicator size="small" color={semanticColors.error} />
-                  ) : (
-                    <IconSymbol name="rectangle.portrait.and.arrow.right" size={20} color={semanticColors.error} />
-                  )}
+            
+            <Card variant="glass" padding="none" style={styles.settingItem}>
+              <TouchableOpacity style={styles.settingItemContent}>
+                <View style={styles.settingItemLeft}>
+                  <View style={[styles.iconContainer, { backgroundColor: `${neonGreen}20`, borderColor: `${neonGreen}40`, borderWidth: 1 }]}>
+                    <IconSymbol name="bell" size={20} color={neonGreen} />
+                  </View>
+                  <Text style={[TextStyles.body, { color: colors.text }]}>Notifications</Text>
                 </View>
-                <Text style={[TextStyles.body, { color: semanticColors.error }]}>
-                  {isSigningOut ? 'Signing Out...' : 'Sign Out'}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          </Card>
-        </Section>
+                <IconSymbol name="chevron.right" size={16} color={colors.icon} />
+              </TouchableOpacity>
+            </Card>
+            
+            <Card variant="glass" padding="none" style={styles.settingItem}>
+              <TouchableOpacity style={styles.settingItemContent}>
+                <View style={styles.settingItemLeft}>
+                  <View style={[styles.iconContainer, { backgroundColor: `${neonGreen}20`, borderColor: `${neonGreen}40`, borderWidth: 1 }]}>
+                    <IconSymbol name="iphone" size={20} color={neonGreen} />
+                  </View>
+                  <Text style={[TextStyles.body, { color: colors.text }]}>Units & Display</Text>
+                </View>
+                <IconSymbol name="chevron.right" size={16} color={colors.icon} />
+              </TouchableOpacity>
+            </Card>
+          </Section>
+        </Animated.View>
+
+        {/* Data Section */}
+        <Animated.View entering={FadeInDown.duration(600).delay(300).easing(Easing.out(Easing.quad))}>
+          <Section title="Data">
+            <Card variant="glass" padding="none" style={styles.settingItem}>
+              <TouchableOpacity style={styles.settingItemContent}>
+                <View style={styles.settingItemLeft}>
+                  <View style={[styles.iconContainer, { backgroundColor: `${neonGreen}20`, borderColor: `${neonGreen}40`, borderWidth: 1 }]}>
+                    <IconSymbol name="square.and.arrow.up" size={20} color={neonGreen} />
+                  </View>
+                  <Text style={[TextStyles.body, { color: colors.text }]}>Export Data</Text>
+                </View>
+                <IconSymbol name="chevron.right" size={16} color={colors.icon} />
+              </TouchableOpacity>
+            </Card>
+            <Card variant="glass" padding="none" style={styles.settingItem}>
+              <TouchableOpacity style={styles.settingItemContent}>
+                <View style={styles.settingItemLeft}>
+                  <View style={[styles.iconContainer, { backgroundColor: `${neonGreen}20`, borderColor: `${neonGreen}40`, borderWidth: 1 }]}>
+                    <IconSymbol name="trash" size={20} color={neonGreen} />
+                  </View>
+                  <Text style={[TextStyles.body, { color: colors.text }]}>Clear History</Text>
+                </View>
+                <IconSymbol name="chevron.right" size={16} color={colors.icon} />
+              </TouchableOpacity>
+            </Card>
+          </Section>
+        </Animated.View>
+
+        {/* About Section */}
+        <Animated.View entering={FadeInDown.duration(600).delay(400).easing(Easing.out(Easing.quad))}>
+          <Section>
+            <Card variant="glass" padding="none" style={styles.settingItem}>
+              <TouchableOpacity style={styles.settingItemContent}>
+                <View style={styles.settingItemLeft}>
+                  <View style={[styles.iconContainer, { backgroundColor: `${neonGreen}20`, borderColor: `${neonGreen}40`, borderWidth: 1 }]}>
+                    <IconSymbol name="info.circle" size={20} color={neonGreen} />
+                  </View>
+                  <Text style={[TextStyles.body, { color: colors.text }]}>About MealScanner</Text>
+                </View>
+                <IconSymbol name="chevron.right" size={16} color={colors.icon} />
+              </TouchableOpacity>
+            </Card>
+            <Card variant="glass" padding="none" style={styles.settingItem}>
+              <TouchableOpacity style={styles.settingItemContent}>
+                <View style={styles.settingItemLeft}>
+                  <View style={[styles.iconContainer, { backgroundColor: `${neonGreen}20`, borderColor: `${neonGreen}40`, borderWidth: 1 }]}>
+                    <IconSymbol name="doc.text" size={20} color={neonGreen} />
+                  </View>
+                  <Text style={[TextStyles.body, { color: colors.text }]}>Privacy Policy</Text>
+                </View>
+                <IconSymbol name="chevron.right" size={16} color={colors.icon} />
+              </TouchableOpacity>
+            </Card>
+          </Section>
+        </Animated.View>
+
+        {/* Account Section */}
+        <Animated.View entering={FadeInDown.duration(600).delay(500).easing(Easing.out(Easing.quad))}>
+          <Section title="Account">
+            {user && (
+              <Card variant="glass" padding="none" style={styles.settingItem}>
+                <View style={styles.settingItemContent}>
+                  <View style={styles.settingItemLeft}>
+                    <View style={[styles.iconContainer, { backgroundColor: `${neonGreen}20`, borderColor: `${neonGreen}40`, borderWidth: 1 }]}>
+                      <IconSymbol name="envelope" size={20} color={neonGreen} />
+                    </View>
+                    <Text style={[TextStyles.bodySmall, { color: colors.icon }]} numberOfLines={1}>
+                      {user.email}
+                    </Text>
+                  </View>
+                </View>
+              </Card>
+            )}
+            <Card variant="glass" padding="none" style={styles.settingItem}>
+              <TouchableOpacity 
+                style={styles.settingItemContent} 
+                onPress={handleSignOut}
+                disabled={isSigningOut}
+              >
+                <View style={styles.settingItemLeft}>
+                  <View style={[styles.iconContainer, { backgroundColor: `${semanticColors.error}20`, borderColor: `${semanticColors.error}40`, borderWidth: 1 }]}>
+                    {isSigningOut ? (
+                      <ActivityIndicator size="small" color={semanticColors.error} />
+                    ) : (
+                      <IconSymbol name="rectangle.portrait.and.arrow.right" size={20} color={semanticColors.error} />
+                    )}
+                  </View>
+                  <Text style={[TextStyles.body, { color: semanticColors.error }]}>
+                    {isSigningOut ? 'Signing Out...' : 'Sign Out'}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            </Card>
+          </Section>
+        </Animated.View>
       </ContentContainer>
     </PageContainer>
   );

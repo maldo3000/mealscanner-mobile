@@ -2,7 +2,6 @@ import React from 'react';
 import { View, StyleSheet, Platform, Pressable } from 'react-native';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { BlurView } from 'expo-blur';
-import * as Haptics from 'expo-haptics';
 import { AnimatedTabIcon } from './AnimatedTabIcon';
 import { glassBorder } from '@/constants/Colors';
 
@@ -39,10 +38,6 @@ export function CustomTabBar({ state, descriptors, navigation }: CustomTabBarPro
   }
 
   const handleTabPress = (routeKey: string, routeName: string, routeParams: object | undefined, isFocused: boolean) => {
-    if (Platform.OS === 'ios') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-
     const event = navigation.emit({
       type: 'tabPress',
       target: routeKey,

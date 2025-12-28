@@ -1,5 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View, ViewProps } from 'react-native';
+import Animated, { LinearTransition, Easing } from 'react-native-reanimated';
 
 import { Colors } from '@/constants/Colors';
 import { PageSpacing, Spacing } from '@/constants/Spacing';
@@ -27,7 +28,8 @@ export function Section({
   const colors = Colors[colorScheme ?? 'dark'];
 
   return (
-    <View
+    <Animated.View
+      layout={LinearTransition.duration(400).easing(Easing.out(Easing.quad))}
       style={[
         styles.section,
         { marginBottom: gap },
@@ -46,7 +48,7 @@ export function Section({
         </Text>
       )}
       {children}
-    </View>
+    </Animated.View>
   );
 }
 

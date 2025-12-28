@@ -11,6 +11,7 @@ import Animated, {
   withRepeat,
   withSequence,
   withDelay,
+  Easing,
 } from 'react-native-reanimated';
 import Svg, { Circle, G } from 'react-native-svg';
 
@@ -151,6 +152,25 @@ interface NutritionHeroProps {
 export function NutritionHero({ stats, weeklyCalories, selectedDateIndex, onSelectDate, currentStreak }: NutritionHeroProps) {
   const { activeGoal } = useNutritionGoals();
   
+  // Animation for calorie update pulse
+  const calorieScale = useSharedValue(1);
+  const prevCalories = React.useRef(stats.totalCalories);
+
+  useEffect(() => {
+    // Only animate if calories increased (e.g. after logging a meal)
+    if (stats.totalCalories > prevCalories.current) {
+      calorieScale.value = withSequence(
+        withTiming(1.12, { duration: 150, easing: Easing.out(Easing.quad) }),
+        withSpring(1, { damping: 12, stiffness: 100 })
+      );
+    }
+    prevCalories.current = stats.totalCalories;
+  }, [stats.totalCalories]);
+
+  const calorieAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: calorieScale.value }],
+  }));
+
   const targets = activeGoal?.dailyTargets || {
     calories: 2000,
     protein: 150,
@@ -212,7 +232,7 @@ export function NutritionHero({ stats, weeklyCalories, selectedDateIndex, onSele
       </View>
 
       <View style={styles.mainContent}>
-        <View style={styles.calorieSection}>
+        <Animated.View style={[styles.calorieSection, calorieAnimatedStyle]}>
           <CircularProgress 
             size={200} 
             strokeWidth={20} 
@@ -229,7 +249,7 @@ export function NutritionHero({ stats, weeklyCalories, selectedDateIndex, onSele
               </Text>
             </View>
           </CircularProgress>
-        </View>
+        </Animated.View>
 
         <View style={styles.horizontalMacros}>
           <MacroPill 

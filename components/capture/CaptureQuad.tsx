@@ -34,13 +34,12 @@ function QuadOption(props: QuadOptionProps): React.ReactElement {
       style={({ pressed }) => [
         styles.option,
         {
-          backgroundColor: accent ? 'rgba(16, 185, 129, 0.05)' : glassSurface,
-          borderColor: accent ? neonGreen : glassBorder,
-          opacity: pressed ? 0.92 : 1,
+          backgroundColor: (pressed || accent) ? 'rgba(16, 185, 129, 0.1)' : glassSurface,
+          borderColor: (pressed || accent) ? neonGreen : glassBorder,
           transform: [{ scale: pressed ? 0.98 : 1 }],
-          shadowColor: accent ? neonGreen : '#000',
-          shadowOpacity: accent ? 0.2 : 0.1,
-          shadowRadius: accent ? 12 : 8,
+          shadowColor: (pressed || accent) ? neonGreen : '#000',
+          shadowOpacity: (pressed || accent) ? 0.3 : 0.1,
+          shadowRadius: (pressed || accent) ? 12 : 8,
           shadowOffset: { width: 0, height: 4 },
         },
       ]}
@@ -48,15 +47,19 @@ function QuadOption(props: QuadOptionProps): React.ReactElement {
       accessibilityLabel={title}
       accessibilityHint={subtitle}
     >
-      <View style={[styles.optionIcon, { backgroundColor: accent ? `${neonGreen}25` : 'rgba(255,255,255,0.08)' }]}>
-        <IconSymbol name={icon as never} size={28} color={accent ? neonGreen : colors.icon} />
-      </View>
-      <View style={styles.optionTextContainer}>
-        <Text style={[TextStyles.h4, { color: colors.text, textAlign: 'center' }]}>{title}</Text>
-        <Text style={[TextStyles.bodySmall, { color: colors.icon, marginTop: 8, textAlign: 'center', lineHeight: 18 }]}>
-          {subtitle}
-        </Text>
-      </View>
+      {({ pressed }) => (
+        <>
+          <View style={[styles.optionIcon, { backgroundColor: (pressed || accent) ? `${neonGreen}25` : 'rgba(255,255,255,0.08)' }]}>
+            <IconSymbol name={icon as never} size={28} color={(pressed || accent) ? neonGreen : colors.icon} />
+          </View>
+          <View style={styles.optionTextContainer}>
+            <Text style={[TextStyles.h4, { color: colors.text, textAlign: 'center' }]}>{title}</Text>
+            <Text style={[TextStyles.bodySmall, { color: colors.icon, marginTop: 8, textAlign: 'center', lineHeight: 18 }]}>
+              {subtitle}
+            </Text>
+          </View>
+        </>
+      )}
     </Pressable>
   );
 }
@@ -72,16 +75,12 @@ export function CaptureQuad(props: CaptureQuadProps): React.ReactElement {
       contentContainerStyle={styles.scrollContent}
       showsVerticalScrollIndicator={false}
     >
-      <View style={styles.header}>
-        <Text style={[TextStyles.h1, { color: colors.text }]}>Capture</Text>
-      </View>
       <View style={styles.grid}>
         <View style={styles.row}>
           <QuadOption
             title="Snap"
             subtitle="Open the camera and take a photo"
             icon="camera"
-            accent={true}
             onPress={onSnap}
           />
           <QuadOption title="Describe" subtitle="Type or speak what you ate" icon="mic" onPress={onDescribe} />
@@ -115,10 +114,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingTop: Spacing.xl,
     flexGrow: 1,
-  },
-  header: {
-    marginBottom: Spacing.xl,
-    paddingHorizontal: Spacing.xs,
   },
   grid: {
     gap: 16,
