@@ -10,23 +10,45 @@ import { TextStyles } from '@/constants/Typography';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { useNutritionGoals } from '@/hooks/useNutritionGoals';
 import { useAuth } from '@/context/AuthContext';
+import { useSubscription } from '@/context/SubscriptionContext';
+import { Paywall } from '@/components/subscription/Paywall';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { StyleSheet, Switch, Text, TouchableOpacity, View, Alert, ActivityIndicator } from 'react-native';
+import { StyleSheet, Switch, Text, TouchableOpacity, View, Alert, ActivityIndicator, Linking } from 'react-native';
 import Animated, { FadeInDown, Easing } from 'react-native-reanimated';
 
 export default function SettingsScreen() {
   const [showMetrics, setShowMetrics] = useState(true);
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
+  const [paywallVisible, setPaywallVisible] = useState(false);
   const router = useRouter();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
   const { activeGoal } = useNutritionGoals();
   const { signOut, user } = useAuth();
+  const { isPro, isBetaTester, restorePurchases, showCustomerCenter, isLoading: isSubscriptionLoading } = useSubscription();
 
   const goalSubtitle = activeGoal
     ? `${activeGoal.name} • ${Math.round(activeGoal.dailyTargets.calories)} kcal`
     : 'Not set yet';
+
+  const subscriptionSubtitle = isPro
+    ? isBetaTester
+      ? 'Beta Tester • Full Access'
+      : 'Pro • Full Access'
+    : 'Free • Limited Features';
+
+  const handleRestorePurchases = async () => {
+    setIsRestoring(true);
+    try {
+      await restorePurchases();
+    } catch (error) {
+      console.error('🛒 Restore error:', error);
+    } finally {
+      setIsRestoring(false);
+    }
+  };
 
   const handleSignOut = () => {
     Alert.alert(
@@ -95,6 +117,72 @@ export default function SettingsScreen() {
                 <IconSymbol name="chevron.right" size={16} color={colors.icon} />
               </TouchableOpacity>
             </Card>
+          </Section>
+        </Animated.View>
+
+        {/* Subscription Section */}
+        <Animated.View entering={FadeInDown.duration(600).delay(150).easing(Easing.out(Easing.quad))}>
+          <Section title="Subscription">
+            <Card variant="glass" padding="none" style={styles.settingItem}>
+              <TouchableOpacity
+                style={styles.settingItemContent}
+                onPress={() => {
+                  if (isPro) {
+                    showCustomerCenter();
+                  } else {
+                    setPaywallVisible(true);
+                  }
+                }}
+                accessibilityLabel={isPro ? "Manage subscription" : "Upgrade to Pro"}
+                accessibilityHint={isPro ? "Opens subscription management" : "Opens upgrade options"}
+              >
+                <View style={styles.settingItemLeft}>
+                  <View style={[styles.iconContainer, { backgroundColor: `${neonGreen}20`, borderColor: `${neonGreen}40`, borderWidth: 1 }]}>
+                    <IconSymbol name="crown.fill" size={20} color={neonGreen} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[TextStyles.body, { color: colors.text }]}>
+                      {isPro ? 'MealScanner Pro' : 'Upgrade to Pro'}
+                    </Text>
+                    <Text style={[TextStyles.bodySmall, { color: colors.icon }]}>
+                      {isSubscriptionLoading ? 'Loading...' : subscriptionSubtitle}
+                    </Text>
+                  </View>
+                </View>
+                {isPro ? (
+                  <IconSymbol name="chevron.right" size={16} color={colors.icon} />
+                ) : (
+                  <View style={styles.proBadge}>
+                    <Text style={styles.proBadgeText}>PRO</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </Card>
+
+            {!isPro && (
+              <Card variant="glass" padding="none" style={styles.settingItem}>
+                <TouchableOpacity
+                  style={styles.settingItemContent}
+                  onPress={handleRestorePurchases}
+                  disabled={isRestoring}
+                  accessibilityLabel="Restore purchases"
+                  accessibilityHint="Restores previous purchases from the App Store"
+                >
+                  <View style={styles.settingItemLeft}>
+                    <View style={[styles.iconContainer, { backgroundColor: `${neonGreen}20`, borderColor: `${neonGreen}40`, borderWidth: 1 }]}>
+                      {isRestoring ? (
+                        <ActivityIndicator size="small" color={neonGreen} />
+                      ) : (
+                        <IconSymbol name="arrow.clockwise" size={20} color={neonGreen} />
+                      )}
+                    </View>
+                    <Text style={[TextStyles.body, { color: colors.text }]}>
+                      {isRestoring ? 'Restoring...' : 'Restore Purchases'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              </Card>
+            )}
           </Section>
         </Animated.View>
 
@@ -187,12 +275,29 @@ export default function SettingsScreen() {
               </TouchableOpacity>
             </Card>
             <Card variant="glass" padding="none" style={styles.settingItem}>
-              <TouchableOpacity style={styles.settingItemContent}>
+              <TouchableOpacity 
+                style={styles.settingItemContent}
+                onPress={() => Linking.openURL(process.env.EXPO_PUBLIC_PRIVACY_POLICY_URL || 'https://gist.github.com/maldo3000/01cb8245058b25733d89fb3c16cca7b5')}
+              >
                 <View style={styles.settingItemLeft}>
                   <View style={[styles.iconContainer, { backgroundColor: `${neonGreen}20`, borderColor: `${neonGreen}40`, borderWidth: 1 }]}>
                     <IconSymbol name="doc.text" size={20} color={neonGreen} />
                   </View>
                   <Text style={[TextStyles.body, { color: colors.text }]}>Privacy Policy</Text>
+                </View>
+                <IconSymbol name="chevron.right" size={16} color={colors.icon} />
+              </TouchableOpacity>
+            </Card>
+            <Card variant="glass" padding="none" style={styles.settingItem}>
+              <TouchableOpacity 
+                style={styles.settingItemContent}
+                onPress={() => Linking.openURL(process.env.EXPO_PUBLIC_TERMS_URL || 'https://gist.github.com/maldo3000/d239c3302e64e053b31ea79611f86265')}
+              >
+                <View style={styles.settingItemLeft}>
+                  <View style={[styles.iconContainer, { backgroundColor: `${neonGreen}20`, borderColor: `${neonGreen}40`, borderWidth: 1 }]}>
+                    <IconSymbol name="doc.text" size={20} color={neonGreen} />
+                  </View>
+                  <Text style={[TextStyles.body, { color: colors.text }]}>Terms of Service</Text>
                 </View>
                 <IconSymbol name="chevron.right" size={16} color={colors.icon} />
               </TouchableOpacity>
@@ -240,6 +345,12 @@ export default function SettingsScreen() {
           </Section>
         </Animated.View>
       </ContentContainer>
+
+      {/* Paywall Modal */}
+      <Paywall
+        visible={paywallVisible}
+        onClose={() => setPaywallVisible(false)}
+      />
     </PageContainer>
   );
 }
@@ -266,5 +377,17 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  proBadge: {
+    backgroundColor: neonGreen,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  proBadgeText: {
+    ...TextStyles.caption,
+    color: '#000',
+    fontWeight: '700',
+    fontSize: 11,
   },
 }); 

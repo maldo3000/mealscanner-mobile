@@ -16,13 +16,16 @@ const ROUTE_ICON_MAP: Record<string, string> = {
 
 const INACTIVE_COLOR = 'rgba(255, 255, 255, 0.6)';
 
-interface CustomTabBarProps extends BottomTabBarProps {}
+interface CustomTabBarProps extends BottomTabBarProps {
+  /** Called when the capture/log button is pressed instead of navigating */
+  onCapturePress?: () => void;
+}
 
 /**
  * Custom floating tab bar with blur effect on iOS
  * Renders a pill-shaped navigation bar at the bottom of the screen
  */
-export function CustomTabBar({ state, descriptors, navigation }: CustomTabBarProps) {
+export function CustomTabBar({ state, descriptors, navigation, onCapturePress }: CustomTabBarProps) {
   // Check if tab bar should be hidden (e.g., during camera mode)
   const currentRoute = state.routes[state.index];
   const currentOptions = descriptors[currentRoute.key]?.options;
@@ -38,6 +41,12 @@ export function CustomTabBar({ state, descriptors, navigation }: CustomTabBarPro
   }
 
   const handleTabPress = (routeKey: string, routeName: string, routeParams: object | undefined, isFocused: boolean) => {
+    // Intercept the log/capture tab to show action sheet instead of navigating
+    if (routeName === 'log' && onCapturePress) {
+      onCapturePress();
+      return;
+    }
+
     const event = navigation.emit({
       type: 'tabPress',
       target: routeKey,

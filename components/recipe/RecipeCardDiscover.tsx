@@ -4,7 +4,7 @@ import { Card } from '@/components/ui/Card';
 import { ThumbnailImage } from '@/components/ui/OptimizedImage';
 import { SourceBadge } from './SourceBadge';
 import { Colors, neonGreen, glassSurface, glassBorder } from '@/constants/Colors';
-import { TextStyles } from '@/constants/Typography';
+import { TextStyles, FontFamilies } from '@/constants/Typography';
 import { Spacing } from '@/constants/Spacing';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import type { Recipe } from './types';
@@ -56,7 +56,17 @@ export function RecipeCardDiscover({ recipe, onPress }: RecipeCardDiscoverProps)
         </View>
         
         <View style={styles.content}>
-          <Text style={[TextStyles.bodySmall, { color: colors.text, fontWeight: '600' }]} numberOfLines={2}>
+          <Text 
+            style={[
+              TextStyles.bodySmall, 
+              { 
+                color: colors.text, 
+                fontFamily: FontFamilies.headingBold,
+                fontSize: 15,
+              }
+            ]} 
+            numberOfLines={2}
+          >
             {recipe.name}
           </Text>
         </View>

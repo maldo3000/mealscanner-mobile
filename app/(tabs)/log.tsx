@@ -5,7 +5,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useCameraPermissions } from 'expo-camera';
-import { useNavigation, useRouter } from 'expo-router';
+import { useNavigation, useRouter, useLocalSearchParams } from 'expo-router';
 
 import { PageContainer } from '@/components/layout/PageContainer';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -19,7 +19,10 @@ import { DescribeInputSheet } from '@/components/capture/DescribeInputSheet';
 import { MealStagingScreen } from '@/components/capture/MealStagingScreen';
 import { FoodSearchModal } from '@/components/capture/FoodSearchModal';
 import { AnalysisStatus } from '@/components/capture/AnalysisLoadingOverlay';
+import { UpgradePrompt, ScanCounter } from '@/components/subscription/UpgradePrompt';
+import { Paywall } from '@/components/subscription/Paywall';
 import { useMealCaptureDraft } from '@/hooks/useMealCaptureDraft';
+import { useFeatureAccess } from '@/hooks/useFeatureAccess';
 import { Colors, primaryGreen, neonGreen } from '@/constants/Colors';
 import { Spacing, PageSpacing } from '@/constants/Spacing';
 import { TextStyles } from '@/constants/Typography';
@@ -28,10 +31,11 @@ import {
   analyzeMealMulti,
   analyzeRecipeFromImage,
   getCurrentUser,
+  saveDatabaseMeal,
   supabase,
   uploadMealImage,
 } from '@/lib/supabase';
-import type { AnalyzeMealMultiItemInput, AnalyzeMealMultiRequest } from '@/lib/supabase';
+import type { AnalyzeMealMultiItemInput, AnalyzeMealMultiRequest, DatabaseFoodMealData } from '@/lib/supabase';
 import type { User } from '@supabase/supabase-js';
 import type { CaptureIntent, DatabaseFoodItem } from '@/components/capture/types';
 
@@ -53,15 +57,18 @@ export default function LogScreen(): React.ReactElement {
   const colors = Colors[colorScheme ?? 'light'];
   const router = useRouter();
   const navigation = useNavigation();
+  const params = useLocalSearchParams<{ action?: string }>();
 
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>('idle');
   const [isProcessingRecipe, setIsProcessingRecipe] = useState<boolean>(false);
+  const [paywallVisible, setPaywallVisible] = useState<boolean>(false);
 
   const [permission, requestPermission] = useCameraPermissions();
 
   const draft = useMealCaptureDraft();
+  const { canScan, isPro, scanLimitState, incrementScan, showPaywall } = useFeatureAccess();
 
   // Determine which screen to show
   const [pendingIntent, setPendingIntent] = useState<CaptureIntent | null>(null);
@@ -107,6 +114,26 @@ export default function LogScreen(): React.ReactElement {
       authListener.subscription.unsubscribe();
     };
   }, []);
+
+  // Handle action parameter from capture action sheet
+  useEffect(() => {
+    if (!params.action || !user || !draft.isReady) return;
+
+    const action = params.action;
+    // Clear the action param to prevent re-triggering
+    router.setParams({ action: undefined });
+
+    // Map action to intent
+    if (action === 'snap') {
+      void handleIntent('snap');
+    } else if (action === 'describe') {
+      void handleIntent('describe');
+    } else if (action === 'log') {
+      void handleIntent('search');
+    } else if (action === 'recipe') {
+      void handleIntent('extract_recipe');
+    }
+  }, [params.action, user, draft.isReady, handleIntent, router]);
 
   const checkUser = async (): Promise<void> => {
     setAuthLoading(true);
@@ -225,6 +252,62 @@ export default function LogScreen(): React.ReactElement {
     setSearchOpen(false);
   }, []);
 
+  // Quick Log - saves database food directly without AI analysis
+  const handleQuickLog = useCallback(
+    async (item: DatabaseFoodItem, servingMultiplier: number, customServingGrams?: number): Promise<void> => {
+      if (!user) {
+        Alert.alert('Error', 'You must be signed in to log food');
+        return;
+      }
+
+      try {
+        // Map DatabaseFoodItem to DatabaseFoodMealData format
+        const foodData: DatabaseFoodMealData = {
+          id: item.id,
+          name: item.name,
+          brand: item.brand,
+          source: item.source,
+          calories: item.calories,
+          protein: item.protein,
+          carbs: item.carbs,
+          fat: item.fat,
+          fiber: item.fiber,
+          sodium: item.sodium,
+          ingredients: item.ingredients,
+          servingSize: item.servingSize,
+          servingUnit: item.servingUnit,
+          servingText: item.servingText,
+          barcode: item.barcode,
+          imageUrl: item.imageUrl,
+        };
+
+        const { data, error } = await saveDatabaseMeal(
+          user.id,
+          foodData,
+          servingMultiplier,
+          customServingGrams
+        );
+
+        if (error) throw error;
+
+        // Close the search modal
+        setSearchOpen(false);
+
+        // Navigate to the meal detail page or journal
+        if (data?.id) {
+          router.push(`/meal/${data.id}`);
+        } else {
+          router.push('/(tabs)/journal');
+        }
+      } catch (error) {
+        console.error('❌ Quick log failed:', error);
+        const message = error instanceof Error ? error.message : 'Failed to log food';
+        Alert.alert('Error', message);
+      }
+    },
+    [user, router]
+  );
+
   // Quick add from staging
   const handleQuickSnap = useCallback(async (): Promise<void> => {
     if (!permission?.granted) {
@@ -271,6 +354,18 @@ export default function LogScreen(): React.ReactElement {
   // Analyze meal
   const handleAnalyze = useCallback(async (): Promise<void> => {
     if (!user || draft.items.length === 0) return;
+
+    // Check scan limit for free users
+    const scanAccess = canScan();
+    if (!scanAccess.allowed) {
+      // Show paywall when limit is reached
+      const success = await showPaywall();
+      if (!success) {
+        setPaywallVisible(true);
+      }
+      return;
+    }
+
     setAnalysisStatus('analyzing');
 
     try {
@@ -334,12 +429,16 @@ export default function LogScreen(): React.ReactElement {
         userId: user.id,
         contextText: draft.contextText.trim() || undefined,
         items: inputs,
+        isPro,
       };
 
       const { data, error } = await analyzeMealMulti(payload);
       if (error) throw error;
 
       const mealId = (data as { meal_id?: string } | null)?.meal_id;
+
+      // Increment scan count for free users
+      await incrementScan();
 
       // Show success state briefly before navigating
       setAnalysisStatus('success');
@@ -366,7 +465,7 @@ export default function LogScreen(): React.ReactElement {
     } finally {
       setAnalysisStatus('idle');
     }
-  }, [draft, router, user]);
+  }, [draft, router, user, canScan, showPaywall, incrementScan]);
 
   // Extract Recipe flow
   const handleRecipePhotoCaptured = useCallback(
@@ -508,7 +607,13 @@ export default function LogScreen(): React.ReactElement {
   }
 
   if (screenState.type === 'search_entry') {
-    return <FoodSearchModal onCancel={handleSearchCancel} onSelectItem={handleFoodItemSelected} />;
+    return (
+      <FoodSearchModal 
+        onCancel={handleSearchCancel} 
+        onSelectItem={handleFoodItemSelected}
+        onQuickLog={handleQuickLog}
+      />
+    );
   }
 
   if (screenState.type === 'image_preview') {
@@ -576,12 +681,29 @@ export default function LogScreen(): React.ReactElement {
   // Quad (default)
   return (
     <PageContainer>
-      <PageHeader title="Capture" />
+      <PageHeader 
+        title="Capture" 
+        rightAction={
+          <ScanCounter
+            scansRemaining={scanLimitState.scansRemaining}
+            scansAllowed={scanLimitState.scansAllowed}
+            isPro={isPro}
+            onPress={() => setPaywallVisible(true)}
+          />
+        }
+      />
       <CaptureQuad
         onSnap={() => handleIntent('snap')}
         onDescribe={() => handleIntent('describe')}
         onSearch={() => handleIntent('search')}
         onExtractRecipe={() => handleIntent('extract_recipe')}
+      />
+      
+      {/* Paywall Modal */}
+      <Paywall
+        visible={paywallVisible}
+        onClose={() => setPaywallVisible(false)}
+        feature="scans"
       />
     </PageContainer>
   );

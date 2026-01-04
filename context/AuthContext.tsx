@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+import { resetUser } from '@/lib/revenueCat';
 
 interface AuthContextType {
   session: Session | null;
@@ -37,7 +38,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+      await resetUser();
+    } catch (error) {
+      console.error('Error signing out:', error);
+      throw error;
+    }
   };
 
   return (
@@ -54,6 +61,10 @@ export function useAuth() {
   }
   return context;
 }
+
+
+
+
 
 
 

@@ -19,7 +19,8 @@ import { RulerSlider } from '@/components/onboarding/RulerSlider';
 import { Colors, neonGreen, textMuted, bgPrimary, glassBorder, glassSurface } from '@/constants/Colors';
 import { TextStyles } from '@/constants/Typography';
 import { FoodIllustration, FoodType } from '@/components/illustrations/FoodIllustrations';
-import { supabase } from '@/lib/supabase';
+import { supabase, signInWithApple, signInWithGoogle } from '@/lib/supabase';
+import { Paywall } from '@/components/subscription/Paywall';
 
 const { width } = Dimensions.get('window');
 
@@ -95,6 +96,7 @@ export default function OnboardingScreen() {
   const [password, setPassword] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [showPaywall, setShowPaywall] = useState(false);
 
   // Display values based on unit system
   const displayHeight = useMetric ? quizData.height : Math.round(quizData.height / 2.54); // inches for imperial
@@ -118,14 +120,61 @@ export default function OnboardingScreen() {
         options: {
           data: {
             ...quizData
-          }
+          },
+          emailRedirectTo: 'mealscanner://'
         }
       });
       
       if (error) throw error;
       
+      if (data.user && !data.session) {
+        // Email verification required
+        router.push({ pathname: '/(auth)/verify', params: { email } });
+      }
+      // If data.session exists, RootLayoutNav will handle redirect
+    } catch (e: any) {
+      setAuthError(e.message);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleSocialSignUp = async (provider: 'google' | 'apple') => {
+    setAuthLoading(true);
+    setAuthError(null);
+    try {
+      const { data, error } = provider === 'apple' 
+        ? await signInWithApple() 
+        : await signInWithGoogle();
+        
+      if (error) throw error;
+      
+      // If data is null and no error, it means user canceled
+      if (!data) return;
+
+      // Update profile and goals with onboarding data if it's a new user
       if (data.user) {
-        // The RootLayoutNav effect will handle the redirect
+        // Map onboarding goal to database goal_type
+        const goalMap: Record<string, string> = {
+          'lose_weight': 'weight_loss',
+          'build_muscle': 'muscle_gain',
+          'plant_based': 'health',
+          'track_habits': 'maintenance'
+        };
+
+        // Save user goals
+        await supabase.from('user_goals').upsert({
+          user_id: data.user.id,
+          goal_type: goalMap[quizData.goal] || 'health',
+          activity_level: quizData.activityLevel,
+          dietary_restrictions: quizData.dietaryPreferences,
+          updated_at: new Date().toISOString()
+        });
+
+        // Update profile
+        await supabase.from('profiles').update({
+          full_name: data.user.user_metadata?.full_name || data.user.email?.split('@')[0],
+        }).eq('id', data.user.id);
       }
     } catch (e: any) {
       setAuthError(e.message);
@@ -134,11 +183,7 @@ export default function OnboardingScreen() {
     }
   };
 
-  const handleSocialSignUp = (provider: 'google' | 'apple') => {
-    console.log(`Social Sign Up with ${provider}`);
-  };
-
-  const totalSteps = 9; // Physicals, Goal, Source, Activity, Dietary, Magic, Health, Notifications, Account
+  const totalSteps = 10; // Physicals, Goal, Source, Activity, Dietary, Magic, Pro, Health, Notifications, Account
 
   const handleNext = () => {
     if (currentStep < totalSteps - 1) {
@@ -408,7 +453,50 @@ export default function OnboardingScreen() {
       case 5: // Magic Moment
         return <MagicMoment onComplete={handleNext} data={quizData} />;
 
-      case 6: // Apple Health
+      case 6: // Pro Prompt
+        return (
+          <View style={styles.stepContent}>
+            <View style={styles.proBadge}>
+              <FontAwesome name="star" size={14} color="#000" />
+              <Text style={styles.proBadgeText}>PREMIUM</Text>
+            </View>
+            <Text style={styles.stepTitle}>Unlock your full potential</Text>
+            <Text style={styles.stepDesc}>
+              Pro members are 3x more likely to reach their {quizData.goal.replace('_', ' ')} goal in the first 30 days.
+            </Text>
+            
+            <View style={styles.proFeaturesContainer}>
+              {[
+                'Unlimited AI meal scans (vs 3/day)',
+                'Custom AI recipe generation',
+                'Detailed micronutrient tracking',
+                'Priority AI analysis'
+              ].map((feature, i) => (
+                <View key={i} style={styles.proFeatureRow}>
+                  <View style={styles.featureIconSmall}>
+                    <FontAwesome name="check" size={12} color={neonGreen} />
+                  </View>
+                  <Text style={styles.proFeatureText}>{feature}</Text>
+                </View>
+              ))}
+            </View>
+
+            <Button 
+              variant="primary" 
+              fullWidth 
+              onPress={() => setShowPaywall(true)}
+              style={styles.proButton}
+            >
+              Start 7-Day Free Trial
+            </Button>
+            
+            <TouchableOpacity onPress={handleNext} style={styles.skipProButton}>
+              <Text style={styles.skipProText}>Continue with basic plan</Text>
+            </TouchableOpacity>
+          </View>
+        );
+
+      case 7: // Apple Health (Was 6)
         return (
           <View style={styles.stepContent}>
             <FontAwesome name="heartbeat" size={80} color={neonGreen} style={styles.stepIcon} />
@@ -425,7 +513,7 @@ export default function OnboardingScreen() {
           </View>
         );
 
-      case 7: // Notifications
+      case 8: // Notifications (Was 7)
         return (
           <View style={styles.stepContent}>
             <FontAwesome name="bell" size={80} color={neonGreen} style={styles.stepIcon} />
@@ -442,7 +530,7 @@ export default function OnboardingScreen() {
           </View>
         );
 
-      case 8: // Account Creation
+      case 9: // Account Creation (Was 8)
         return (
           <View style={styles.stepContent}>
             <Text style={styles.stepTitle}>Save your progress</Text>
@@ -537,6 +625,14 @@ export default function OnboardingScreen() {
             </Button>
           </SafeAreaView>
         )}
+
+        <Paywall 
+          visible={showPaywall} 
+          onClose={() => {
+            setShowPaywall(false);
+            handleNext();
+          }} 
+        />
       </View>
     </View>
   );
@@ -909,6 +1005,67 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 16,
     fontSize: 14,
+  },
+  proBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: neonGreen,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    marginBottom: 16,
+    gap: 6,
+  },
+  proBadgeText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#000',
+  },
+  proFeaturesContainer: {
+    backgroundColor: glassSurface,
+    borderWidth: 1,
+    borderColor: glassBorder,
+    borderRadius: 24,
+    padding: 24,
+    marginBottom: 32,
+    width: '100%',
+  },
+  proFeatureRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    gap: 12,
+  },
+  featureIconSmall: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(74, 222, 128, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  proFeatureText: {
+    ...TextStyles.body,
+    color: '#FFF',
+    fontSize: 15,
+  },
+  proButton: {
+    shadowColor: neonGreen,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  skipProButton: {
+    marginTop: 20,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  skipProText: {
+    ...TextStyles.body,
+    color: textMuted,
+    fontSize: 14,
+    textDecorationLine: 'underline',
   },
 });
 

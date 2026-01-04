@@ -1,6 +1,17 @@
 import { createClient } from '@supabase/supabase-js'
 import * as FileSystemLegacy from 'expo-file-system/legacy'
 import { Platform } from 'react-native'
+import * as AppleAuthentication from 'expo-apple-authentication'
+import { GoogleSignin } from '@react-native-google-signin/google-signin'
+import * as Crypto from 'expo-crypto'
+
+// Configure Google Sign-In
+if (Platform.OS !== 'web') {
+  GoogleSignin.configure({
+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+  })
+}
 
 // Only import AsyncStorage on native platforms
 let AsyncStorage: any = null
@@ -63,6 +74,73 @@ export const signInWithEmail = async (email: string) => {
     options: {
       shouldCreateUser: true,
     },
+  })
+  return { data, error }
+}
+
+// Social Authentication
+export const signInWithApple = async () => {
+  try {
+    const rawNonce = await Crypto.getRandomBytesAsync(32)
+    const nonce = Array.from(rawNonce)
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('')
+
+    const hashedNonce = await Crypto.digestStringAsync(
+      Crypto.CryptoDigestAlgorithm.SHA256,
+      nonce
+    )
+
+    const appleCredential = await AppleAuthentication.signInAsync({
+      requestedScopes: [
+        AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+        AppleAuthentication.AppleAuthenticationScope.EMAIL,
+      ],
+      nonce: hashedNonce,
+    })
+
+    const { data, error } = await supabase.auth.signInWithIdToken({
+      provider: 'apple',
+      token: appleCredential.identityToken!,
+      nonce,
+    })
+
+    return { data, error }
+  } catch (e: any) {
+    if (e.code === 'ERR_CANCELED') {
+      return { data: null, error: null }
+    }
+    return { data: null, error: e }
+  }
+}
+
+export const signInWithGoogle = async () => {
+  try {
+    await GoogleSignin.hasPlayServices()
+    const userInfo = await GoogleSignin.signIn()
+    
+    // For newer versions of the library, the idToken might be in userInfo.data
+    const idToken = (userInfo as any).data?.idToken || userInfo.idToken
+
+    if (!idToken) {
+      throw new Error('No ID token present!')
+    }
+
+    const { data, error } = await supabase.auth.signInWithIdToken({
+      provider: 'google',
+      token: idToken,
+    })
+
+    return { data, error }
+  } catch (e: any) {
+    return { data: null, error: e }
+  }
+}
+
+export const resendVerificationEmail = async (email: string) => {
+  const { data, error } = await supabase.auth.resend({
+    type: 'signup',
+    email,
   })
   return { data, error }
 }
@@ -351,6 +429,7 @@ export interface AnalyzeMealMultiRequest {
   mealId?: string
   contextText?: string
   items: AnalyzeMealMultiItemInput[]
+  isPro?: boolean
 }
 
 export const analyzeMealMulti = async (payload: AnalyzeMealMultiRequest) => {
@@ -993,6 +1072,117 @@ export const transcribeAudioDirect = async (audioUri: string, userId: string, la
     return { data: null, error }
   }
 }
+
+// Database Food Direct Logging (bypass AI analysis)
+export interface DatabaseFoodMealData {
+  id: string;
+  name: string;
+  brand?: string;
+  source: 'usda' | 'off';
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fiber?: number;
+  sodium?: number;
+  ingredients?: string;
+  servingSize: number;
+  servingUnit: string;
+  servingText?: string;
+  barcode?: string;
+  imageUrl?: string;
+}
+
+/**
+ * Saves a database food item directly to the meals table without AI analysis.
+ * Used for quick logging of foods from USDA or OpenFoodFacts.
+ */
+export const saveDatabaseMeal = async (
+  userId: string,
+  foodItem: DatabaseFoodMealData,
+  servingMultiplier: number = 1,
+  customServingGrams?: number,
+  mealType?: string
+) => {
+  try {
+    // Calculate actual nutrition based on serving
+    // If customServingGrams is provided, use that; otherwise use servingSize * multiplier
+    const actualServingGrams = customServingGrams ?? (foodItem.servingSize * servingMultiplier);
+    const ratio = actualServingGrams / foodItem.servingSize;
+
+    const totalCalories = Math.round(foodItem.calories * ratio);
+    const totalProtein = Math.round(foodItem.protein * ratio);
+    const totalCarbs = Math.round(foodItem.carbs * ratio);
+    const totalFat = Math.round(foodItem.fat * ratio);
+    const totalFiber = foodItem.fiber ? Math.round(foodItem.fiber * ratio) : undefined;
+
+    // Create description from name and brand
+    const description = foodItem.brand 
+      ? `${foodItem.name} (${foodItem.brand})`
+      : foodItem.name;
+
+    // Parse ingredients if provided as a string
+    const ingredientsList = foodItem.ingredients 
+      ? foodItem.ingredients.split(',').map(i => i.trim()).filter(Boolean).slice(0, 20)
+      : undefined;
+
+    // Determine meal type if not provided
+    const derivedMealType = mealType || (() => {
+      const hour = new Date().getHours();
+      if (hour < 11) return 'Breakfast';
+      if (hour < 16) return 'Lunch';
+      if (hour < 19) return 'Dinner';
+      return 'Snack';
+    })();
+
+    const mealData = {
+      user_id: userId,
+      description,
+      calories: totalCalories,
+      macros: {
+        protein: totalProtein,
+        carbs: totalCarbs,
+        fat: totalFat,
+        fiber: totalFiber,
+      },
+      ingredients: ingredientsList,
+      serving_estimate: `${actualServingGrams}${foodItem.servingUnit}`,
+      meal_type: derivedMealType,
+      processing_status: 'completed' as const,
+      // Store source info in ai_analysis field for reference
+      ai_analysis: {
+        source_type: 'database',
+        database_source: foodItem.source,
+        database_id: foodItem.id,
+        barcode: foodItem.barcode,
+        original_serving_size: foodItem.servingSize,
+        original_serving_unit: foodItem.servingUnit,
+        serving_multiplier: servingMultiplier,
+        custom_serving_grams: customServingGrams,
+      },
+      image_url: foodItem.imageUrl,
+    };
+
+    console.log('📦 Saving database meal:', { description, calories: totalCalories, source: foodItem.source });
+
+    const { data, error } = await supabase
+      .from('meals')
+      .insert([mealData])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('❌ Database meal save error:', error);
+      throw error;
+    }
+
+    console.log('✅ Database meal saved with ID:', data.id);
+    return { data, error: null };
+  } catch (error) {
+    console.error('❌ saveDatabaseMeal error:', error);
+    return { data: null, error };
+  }
+};
 
 // Recipe Generator Functions
 export const generateRecipeSuggestions = async (

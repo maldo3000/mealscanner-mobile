@@ -14,6 +14,9 @@ import { PageSpacing, Spacing } from '@/constants/Spacing';
 import { TextStyles } from '@/constants/Typography';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { useNutritionGoals } from '@/hooks/useNutritionGoals';
+import { useFeatureAccess } from '@/hooks/useFeatureAccess';
+import { UpgradePrompt } from '@/components/subscription/UpgradePrompt';
+import { Paywall } from '@/components/subscription/Paywall';
 import { getCurrentUser, getUserRecipes, searchRecipes } from '@/lib/supabase';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState, useMemo } from 'react';
@@ -100,6 +103,9 @@ export default function RecipesScreen() {
   const [user, setUser] = useState<any>(null);
   const [showGeneratorModal, setShowGeneratorModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'discover' | 'kitchen'>('discover');
+  const [paywallVisible, setPaywallVisible] = useState(false);
+
+  const { canGenerateRecipes, isPro, showPaywall } = useFeatureAccess();
 
   // Unified kitchen recipes (all user-added recipes)
   const kitchenRecipes = recipes;
@@ -178,12 +184,26 @@ export default function RecipesScreen() {
     }
   };
 
-  const handleSuggestionPress = (type: 'search' | 'generate') => {
+  const handleSuggestionPress = async (type: 'search' | 'generate') => {
     setShowSearchSuggestions(false);
     if (type === 'generate') {
-      setShowGeneratorModal(true);
+      await handleOpenGenerator();
     }
     // For 'search', it already filtered the list
+  };
+
+  const handleOpenGenerator = async () => {
+    // Check if user has Pro access for recipe generation
+    const access = canGenerateRecipes();
+    if (!access.allowed) {
+      // Show paywall when trying to generate without Pro
+      const success = await showPaywall();
+      if (!success) {
+        setPaywallVisible(true);
+      }
+      return;
+    }
+    setShowGeneratorModal(true);
   };
 
   const handleRecipePress = (recipe: Recipe) => {
@@ -234,6 +254,9 @@ export default function RecipesScreen() {
   const renderDiscoverTab = () => (
     <View style={styles.tabContent}>
       <SectionHeader title="Suggested for You" />
+      <Text style={[TextStyles.bodySmall, { color: colors.icon, marginBottom: Spacing.md, marginTop: -Spacing.xs }]}>
+        Browse our preselected and curated recipes
+      </Text>
       <FlatList
         data={MOCK_DISCOVER_RECIPES}
         renderItem={({ item }) => (
@@ -283,13 +306,13 @@ export default function RecipesScreen() {
       {!loading && user && (
         <TouchableOpacity
           style={[styles.generateButton, { backgroundColor: neonGreen }]}
-          onPress={() => setShowGeneratorModal(true)}
+          onPress={handleOpenGenerator}
           activeOpacity={0.8}
         >
             <View style={styles.generateIconContainer}>
           <IconSymbol name="sparkles" size={20} color="#000000" />
             </View>
-            <View>
+            <View style={{ flex: 1 }}>
               <Text style={[TextStyles.button, { color: '#000000' }]}>
             Generate Recipe
           </Text>
@@ -297,6 +320,11 @@ export default function RecipesScreen() {
                 {proteinGoal ? `Based on your ${proteinGoal}g protein goal` : 'Custom AI creation'}
               </Text>
             </View>
+            {!isPro && (
+              <View style={styles.proBadge}>
+                <Text style={styles.proBadgeText}>PRO</Text>
+              </View>
+            )}
         </TouchableOpacity>
       )}
 
@@ -353,10 +381,17 @@ export default function RecipesScreen() {
           onClose={() => setShowGeneratorModal(false)}
           onRecipeGenerated={() => {
             loadUserAndRecipes();
-            setActiveTab('ai');
+            setActiveTab('kitchen');
           }}
         />
       )}
+
+      {/* Paywall Modal */}
+      <Paywall
+        visible={paywallVisible}
+        onClose={() => setPaywallVisible(false)}
+        feature="recipes"
+      />
     </PageContainer>
   );
 }
@@ -499,6 +534,18 @@ const styles = StyleSheet.create({
   loadingContainer: {
     padding: 40,
     alignItems: 'center',
+  },
+  proBadge: {
+    backgroundColor: '#000',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  proBadgeText: {
+    ...TextStyles.caption,
+    color: neonGreen,
+    fontWeight: '700',
+    fontSize: 10,
   },
 });
 

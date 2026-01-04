@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/Input';
 import { Colors, neonGreen, textMuted, bgPrimary, glassBorder, glassSurface } from '@/constants/Colors';
 import { TextStyles } from '@/constants/Typography';
 import { FontAwesome } from '@expo/vector-icons';
-import { supabase } from '@/lib/supabase';
+import { supabase, signInWithApple, signInWithGoogle } from '@/lib/supabase';
 import { PageContainer } from '@/components/layout/PageContainer';
 
 export default function LoginScreen() {
@@ -24,18 +24,30 @@ export default function LoginScreen() {
     setLoading(true);
     setError(null);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) setError(error.message);
+    if (error) {
+      if (error.message.includes('Email not confirmed')) {
+        router.push({ pathname: '/(auth)/verify', params: { email } });
+      } else {
+        setError(error.message);
+      }
+    }
     setLoading(false);
   };
 
   const handleAppleSignIn = async () => {
-    // Placeholder for Apple Sign In logic
-    console.log('Apple Sign In');
+    setLoading(true);
+    setError(null);
+    const { error } = await signInWithApple();
+    if (error) setError(error.message);
+    setLoading(false);
   };
 
   const handleGoogleSignIn = async () => {
-    // Placeholder for Google Sign In logic
-    console.log('Google Sign In');
+    setLoading(true);
+    setError(null);
+    const { error } = await signInWithGoogle();
+    if (error) setError(error.message);
+    setLoading(false);
   };
 
   return (
@@ -201,6 +213,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 });
+
+
+
+
 
 
 

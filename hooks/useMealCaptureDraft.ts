@@ -134,37 +134,25 @@ export function useMealCaptureDraft(): UseMealCaptureDraftResult {
   const canAddPhoto = photoCount < MAX_PHOTOS;
 
   const ensureSession = useCallback(async (): Promise<MealCaptureDraft> => {
-    let result: MealCaptureDraft | null = null;
-    
-    setDraft((prev) => {
-      if (prev) {
-        result = prev;
-        return prev;
-      }
-      result = {
-        version: 1,
-        sessionId: createSessionId(),
-        createdAtMs: Date.now(),
-        updatedAtMs: Date.now(),
-        contextText: '',
-        items: [],
-      };
-      return result;
-    });
+    if (draft) return draft;
 
-    // Wait for the state update if needed (though setDraft is async, our result variable is set synchronously in the callback)
-    // To be safe, we also persist it if it was just created
-    if (result && !draft) {
-      await writeDraft(result);
-    }
-    
-    return result!;
+    const newDraft: MealCaptureDraft = {
+      version: 1,
+      sessionId: createSessionId(),
+      createdAtMs: Date.now(),
+      updatedAtMs: Date.now(),
+      contextText: '',
+      items: [],
+    };
+
+    setDraft(newDraft);
+    await writeDraft(newDraft);
+    return newDraft;
   }, [draft]);
 
   const discardSession = useCallback(async (): Promise<void> => {
     const prevDraft = draft;
     setDraft(null);
-    await writeDraft(null);
 
     if (prevDraft?.sessionId) {
       const sessionDir = `${DRAFTS_DIR}/${prevDraft.sessionId}`;
@@ -181,8 +169,6 @@ export function useMealCaptureDraft(): UseMealCaptureDraftResult {
 
   const mutate = useCallback(
     async (mutator: (prev: MealCaptureDraft) => MealCaptureDraft): Promise<void> => {
-      let updatedDraft: MealCaptureDraft | null = null;
-      
       setDraft((prev) => {
         const base = prev || {
           version: 1,
@@ -192,17 +178,22 @@ export function useMealCaptureDraft(): UseMealCaptureDraftResult {
           contextText: '',
           items: [],
         };
-        updatedDraft = mutator(base);
-        return updatedDraft;
+        const updated = mutator(base);
+        // Persist the updated draft. Since writeDraft is async and we're in a synchronous
+        // updater, we fire it and don't await here, OR we move persistence to a useEffect.
+        // For now, let's keep it simple and move persistence to an effect for consistency.
+        return updated;
       });
-
-      // After state is updated, persist to storage
-      if (updatedDraft) {
-        await writeDraft(updatedDraft);
-      }
     },
     []
   );
+
+  // Persistence effect
+  useEffect(() => {
+    if (isReady) {
+      void writeDraft(draft);
+    }
+  }, [draft, isReady]);
 
   const setContextTextSafe = useCallback(
     async (next: string): Promise<void> => {

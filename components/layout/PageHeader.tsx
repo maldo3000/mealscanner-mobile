@@ -35,8 +35,8 @@ export function PageHeader({
       style={[
         styles.header,
         {
-          paddingTop: PageSpacing.containerPadding,
-          paddingBottom: PageSpacing.containerPadding,
+          paddingTop: Spacing.lg,
+          paddingBottom: Spacing.md,
           borderBottomWidth: showBottomBorder ? 1 : 0,
           borderBottomColor: colors.border,
         },

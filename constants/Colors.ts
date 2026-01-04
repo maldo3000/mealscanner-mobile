@@ -30,9 +30,9 @@ export const bgSoft = glassSurface;
 export const textMain = textWhite;
 
 // Accent colors (Glowing versions)
-export const accentYellow = '#fde047';
-export const accentCoral = '#f472b6';
-export const accentSky = '#38bdf8';
+export const accentYellow = '#fde047'; // Vibrant Yellow
+export const accentCoral = '#fb7185'; // Brighter Rose/Coral
+export const accentSky = '#38bdf8'; // Vibrant Sky Blue
 export const accentLavender = '#c084fc';
 
 // Semantic color tokens
@@ -48,11 +48,11 @@ export const semanticColors = {
 
 // Glass effect opacity variants
 export const glassOpacity = {
-  surface: 0.05, // rgba(255, 255, 255, 0.05)
-  border: 0.1, // rgba(255, 255, 255, 0.1)
-  highlight: 0.15, // rgba(255, 255, 255, 0.15)
-  overlay: 0.7, // rgba(0, 0, 0, 0.7)
-  backdrop: 0.9, // rgba(0, 0, 0, 0.9)
+  surface: 0.05,
+  border: 0.1,
+  highlight: 0.15,
+  overlay: 0.7,
+  backdrop: 0.9,
 } as const;
 
 // Helper function to create glass colors with opacity

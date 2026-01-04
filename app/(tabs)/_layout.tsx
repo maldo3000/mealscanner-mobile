@@ -1,10 +1,11 @@
 import { Slot, Tabs, usePathname, useRouter } from 'expo-router';
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { AnimatedTabIcon } from '@/components/ui/AnimatedTabIcon';
 import { CustomTabBar } from '@/components/ui/CustomTabBar';
+import { CaptureActionSheet } from '@/components/capture/CaptureActionSheet';
 import { Colors, bgPrimary } from '@/constants/Colors';
 import { TextStyles } from '@/constants/Typography';
 import { useColorScheme } from '@/hooks/useColorScheme';
@@ -121,6 +122,23 @@ function SidebarLayout() {
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
+  const router = useRouter();
+  const [captureSheetVisible, setCaptureSheetVisible] = useState(false);
+
+  // Handle capture action selection from the action sheet
+  const handleCaptureAction = useCallback((action: 'snap' | 'describe' | 'log' | 'recipe') => {
+    setCaptureSheetVisible(false);
+    // Navigate to log screen with the action parameter
+    router.push({ pathname: '/(tabs)/log', params: { action } });
+  }, [router]);
+
+  const handleOpenCaptureSheet = useCallback(() => {
+    setCaptureSheetVisible(true);
+  }, []);
+
+  const handleCloseCaptureSheet = useCallback(() => {
+    setCaptureSheetVisible(false);
+  }, []);
 
   // Use sidebar layout on web, bottom tabs on mobile
   if (Platform.OS === 'web') {
@@ -128,64 +146,78 @@ export default function TabLayout() {
   }
 
   return (
-    <Tabs
-      tabBar={(props) => <CustomTabBar {...props} />}
-      screenOptions={{
-        headerShown: false,
-        tabBarShowLabel: false,
-      }}>
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ color, focused }) => (
-            <AnimatedTabIcon focused={focused} color={color} name="house" />
-          ),
-        }}
+    <>
+      <Tabs
+        tabBar={(props) => (
+          <CustomTabBar {...props} onCapturePress={handleOpenCaptureSheet} />
+        )}
+        screenOptions={{
+          headerShown: false,
+          tabBarShowLabel: false,
+        }}>
+        <Tabs.Screen
+          name="index"
+          options={{
+            title: 'Home',
+            tabBarIcon: ({ color, focused }) => (
+              <AnimatedTabIcon focused={focused} color={color} name="house" />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="journal"
+          options={{
+            title: 'Journal',
+            tabBarIcon: ({ color, focused }) => (
+              <AnimatedTabIcon focused={focused} color={color} name="book" />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="log"
+          options={{
+            title: 'Capture',
+            tabBarIcon: ({ color, focused }) => (
+              <AnimatedTabIcon focused={focused} color={color} name="plus" size={24} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="recipes"
+          options={{
+            title: 'Recipes',
+            tabBarIcon: ({ color, focused }) => (
+              <AnimatedTabIcon focused={focused} color={color} name="book.closed" />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="settings"
+          options={{
+            title: 'Profile',
+            tabBarIcon: ({ color, focused }) => (
+              <AnimatedTabIcon focused={focused} color={color} name="person" />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="auth"
+          options={{
+            href: null,
+          }}
+        />
+      </Tabs>
+
+      {/* Capture Action Sheet Overlay */}
+      <CaptureActionSheet
+        visible={captureSheetVisible}
+        onClose={handleCloseCaptureSheet}
+        onSnap={() => handleCaptureAction('snap')}
+        onDescribe={() => handleCaptureAction('describe')}
+        onLog={() => handleCaptureAction('log')}
+        onCaptureRecipe={() => handleCaptureAction('recipe')}
       />
-      <Tabs.Screen
-        name="journal"
-        options={{
-          title: 'Journal',
-          tabBarIcon: ({ color, focused }) => (
-            <AnimatedTabIcon focused={focused} color={color} name="book" />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="log"
-        options={{
-          title: 'Capture',
-          tabBarIcon: ({ color, focused }) => (
-            <AnimatedTabIcon focused={focused} color={color} name="plus" size={24} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="recipes"
-        options={{
-          title: 'Recipes',
-          tabBarIcon: ({ color, focused }) => (
-            <AnimatedTabIcon focused={focused} color={color} name="book.closed" />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="settings"
-        options={{
-          title: 'Profile',
-          tabBarIcon: ({ color, focused }) => (
-            <AnimatedTabIcon focused={focused} color={color} name="person" />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="auth"
-        options={{
-          href: null,
-        }}
-      />
-    </Tabs>
+    </>
   );
 }
 

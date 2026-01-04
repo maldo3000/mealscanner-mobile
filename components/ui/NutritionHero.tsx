@@ -1,21 +1,21 @@
-import React, { useEffect } from 'react';
-import { StyleSheet, Text, View, Dimensions, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState, useRef } from 'react';
+import { StyleSheet, Text, View, Dimensions, TouchableOpacity, ScrollView, LayoutChangeEvent } from 'react-native';
 import Animated, { 
-  useAnimatedProps, 
   useSharedValue, 
   withSpring, 
-  withTiming,
   useAnimatedStyle,
   interpolate,
-  Extrapolate,
+  useAnimatedProps,
+  withTiming,
   withRepeat,
   withSequence,
   withDelay,
   Easing,
+  Extrapolate,
 } from 'react-native-reanimated';
-import Svg, { Circle, G } from 'react-native-svg';
+import Svg, { Defs, LinearGradient, Stop, Path, Circle, G } from 'react-native-svg';
 
-import { Colors, neonGreen, glassBorder, glassSurface, accentSky, accentCoral, accentYellow, primaryGreen } from '@/constants/Colors';
+import { Colors, neonGreen, glassBorder, glassSurface, accentSky, accentCoral, accentYellow, textMuted, primaryGreen } from '@/constants/Colors';
 import { TextStyles } from '@/constants/Typography';
 import { Spacing } from '@/constants/Spacing';
 import { useNutritionGoals } from '@/hooks/useNutritionGoals';
@@ -143,34 +143,18 @@ interface NutritionHeroProps {
     totalCarbs: number;
     totalFat: number;
   };
-  weeklyCalories: number[];
-  selectedDateIndex: number;
-  onSelectDate: (index: number) => void;
+  weeklyCalories: number[][]; // 3 weeks
+  selectedDateIndex: number; // 0-6
+  selectedWeekIndex: number; // 0-2
+  onSelectDate: (weekIndex: number, dateIndex: number) => void;
   currentStreak: number;
 }
 
-export function NutritionHero({ stats, weeklyCalories, selectedDateIndex, onSelectDate, currentStreak }: NutritionHeroProps) {
+export function NutritionHero({ stats, weeklyCalories, selectedDateIndex, selectedWeekIndex, onSelectDate, currentStreak }: NutritionHeroProps) {
   const { activeGoal } = useNutritionGoals();
+  const scrollViewRef = useRef<ScrollView>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
   
-  // Animation for calorie update pulse
-  const calorieScale = useSharedValue(1);
-  const prevCalories = React.useRef(stats.totalCalories);
-
-  useEffect(() => {
-    // Only animate if calories increased (e.g. after logging a meal)
-    if (stats.totalCalories > prevCalories.current) {
-      calorieScale.value = withSequence(
-        withTiming(1.12, { duration: 150, easing: Easing.out(Easing.quad) }),
-        withSpring(1, { damping: 12, stiffness: 100 })
-      );
-    }
-    prevCalories.current = stats.totalCalories;
-  }, [stats.totalCalories]);
-
-  const calorieAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: calorieScale.value }],
-  }));
-
   const targets = activeGoal?.dailyTargets || {
     calories: 2000,
     protein: 150,
@@ -178,222 +162,303 @@ export function NutritionHero({ stats, weeklyCalories, selectedDateIndex, onSele
     fat: 70,
   };
 
-  const calProgress = Math.min(stats.totalCalories / targets.calories, 1.2);
-  const proteinProgress = Math.min(stats.totalProtein / (targets.protein || 1), 1.2);
-  const carbsProgress = Math.min(stats.totalCarbs / (targets.carbs || 1), 1.2);
-  const fatProgress = Math.min(stats.totalFat / (targets.fat || 1), 1.2);
+  const safeStats = stats || {
+    totalCalories: 0,
+    totalProtein: 0,
+    totalCarbs: 0,
+    totalFat: 0,
+  };
 
-  const isWinState = calProgress >= 1;
-
-  const winAnimation = useSharedValue(0);
+  const calorieScale = useSharedValue(1);
+  const prevCalories = useRef(safeStats.totalCalories);
 
   useEffect(() => {
-    if (isWinState) {
-      winAnimation.value = withRepeat(
-        withSequence(
-          withTiming(1, { duration: 1000 }),
-          withTiming(0.6, { duration: 1000 })
-        ),
-        -1,
-        true
-      );
-    } else {
-      winAnimation.value = 0;
+    if (safeStats.totalCalories > prevCalories.current) {
+      calorieScale.value = withSpring(1.05, { damping: 10, stiffness: 100 }, () => {
+        calorieScale.value = withSpring(1);
+      });
     }
-  }, [isWinState]);
+    prevCalories.current = safeStats.totalCalories;
+  }, [safeStats.totalCalories]);
 
-  const winStyle = useAnimatedStyle(() => ({
-    opacity: winAnimation.value,
-    transform: [{ scale: interpolate(winAnimation.value, [0, 1], [1, 1.05]) }],
+  const calorieAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: calorieScale.value }],
   }));
 
+  const getDynamicSentence = () => {
+    if (safeStats.totalCalories === 0) return "Ready to fuel your day?";
+    const calRatio = safeStats.totalCalories / targets.calories;
+    if (calRatio > 0.9 && calRatio < 1.1) return "Perfectly on target";
+    if (calRatio >= 1.1) return "A high fuel day";
+    
+    const proteinRatio = safeStats.totalProtein / (targets.protein || 1);
+    const carbsRatio = safeStats.totalCarbs / (targets.carbs || 1);
+    const fatRatio = safeStats.totalFat / (targets.fat || 1);
+
+    if (proteinRatio > carbsRatio && proteinRatio > fatRatio) return "Protein-forward so far";
+    if (carbsRatio > proteinRatio && carbsRatio > fatRatio) return "Carb-rich start";
+    
+    return "Balanced start";
+  };
+
+  const getShorthandDate = () => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const dayOfWeek = today.getDay();
+    const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    
+    const currentMonday = new Date(today);
+    currentMonday.setDate(today.getDate() + diffToMonday);
+    
+    const offsetDays = (selectedWeekIndex - 2) * 7;
+    const selectedMonday = new Date(currentMonday);
+    selectedMonday.setDate(currentMonday.getDate() + offsetDays);
+    
+    const selectedDate = new Date(selectedMonday);
+    selectedDate.setDate(selectedMonday.getDate() + selectedDateIndex);
+    
+    return selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
   const daysOfWeek = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-  const fullDayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-  const maxWeeklyCal = Math.max(...weeklyCalories, targets.calories, 1);
   const todayIndex = (new Date().getDay() + 6) % 7;
 
+  const onContainerLayout = (event: LayoutChangeEvent) => {
+    const { width } = event.nativeEvent.layout;
+    // Account for current padding (28 * 2) to get the true content width
+    setContainerWidth(width - 28 * 2);
+  };
+
+  useEffect(() => {
+    if (containerWidth > 0) {
+      setTimeout(() => {
+        scrollViewRef.current?.scrollTo({ x: containerWidth * 2, animated: false });
+      }, 100);
+    }
+  }, [containerWidth]);
+
+  const calProgress = Math.min(safeStats.totalCalories / targets.calories, 1.2);
+  const isWinState = calProgress >= 1;
+
   return (
-    <GlassCard variant="glass" style={styles.container}>
+    <GlassCard variant="glass" style={styles.container} onLayout={onContainerLayout}>
+      {/* Background Arc Gradient */}
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+        <Svg width="100%" height="100%" viewBox="0 0 400 400">
+          <Defs>
+            <LinearGradient id="arcGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+              <Stop offset="0%" stopColor={neonGreen} stopOpacity="0.12" />
+              <Stop offset="70%" stopColor={neonGreen} stopOpacity="0.02" />
+              <Stop offset="100%" stopColor="transparent" stopOpacity="0" />
+            </LinearGradient>
+          </Defs>
+          <Path 
+            d="M0,0 Q200,100 400,0 L400,200 Q200,250 0,200 Z" 
+            fill="url(#arcGradient)"
+            transform="translate(0, -10)"
+          />
+        </Svg>
+      </View>
+
       <View style={styles.header}>
-        <View>
-          <Text style={[TextStyles.h3, { color: Colors.dark.text }]}>
-            {selectedDateIndex === todayIndex ? "Today's Fuel" : `${fullDayNames[selectedDateIndex]}'s Fuel`}
-          </Text>
-          <Text style={[TextStyles.bodySmall, { color: Colors.dark.icon }]}>
-            {isWinState ? 'Target reached! 🚀' : 'Keep going to hit your goal'}
-          </Text>
-        </View>
-        <View style={styles.streakBadge}>
-          <Text style={[TextStyles.h4, { color: accentYellow, marginRight: 4 }]}>{currentStreak}</Text>
-          <View style={styles.flameContainer}>
-            <IconSymbol name="flame.fill" size={28} color={accentYellow} />
+        <View style={styles.headerRow}>
+          <View>
+            <Text style={[TextStyles.h2, { color: '#FFFFFF', fontSize: 26 }]}>
+              {getShorthandDate()}
+            </Text>
+            <Text style={[TextStyles.bodySmall, { color: 'rgba(255, 255, 255, 0.6)', fontSize: 13 }]}>
+              Your intake so far
+            </Text>
+          </View>
+          <View style={styles.streakBadge}>
+            <IconSymbol name="flame.fill" size={14} color={neonGreen} />
+            <Text style={[TextStyles.caption, { color: neonGreen, fontWeight: '700', marginLeft: 4, fontSize: 11 }]}>
+              {currentStreak}
+            </Text>
           </View>
         </View>
       </View>
 
-      <View style={styles.mainContent}>
-        <Animated.View style={[styles.calorieSection, calorieAnimatedStyle]}>
+      <View style={styles.heroSection}>
+        <Animated.View style={[styles.ringContainer, calorieAnimatedStyle]}>
           <CircularProgress 
-            size={200} 
-            strokeWidth={20} 
+            size={160} 
+            strokeWidth={14} 
             progress={calProgress} 
             color={neonGreen}
             showGlow={isWinState}
           >
             <View style={styles.calorieTextContainer}>
-              <Text style={[TextStyles.h1, { color: Colors.dark.text, fontSize: 36, fontWeight: '800' }]}>
-                {Math.round(stats.totalCalories)}
+              <Text style={[TextStyles.h1, { color: '#FFFFFF', fontSize: 40, fontWeight: '800', lineHeight: 48 }]}>
+                {Math.round(safeStats.totalCalories)}
               </Text>
-              <Text style={[TextStyles.bodySmall, { color: Colors.dark.icon, marginTop: -4 }]}>
-                / {Math.round(targets.calories)} kcal
+              <Text style={[TextStyles.bodySmall, { color: 'rgba(255, 255, 255, 0.6)', marginTop: -2, fontSize: 12 }]}>
+                / {Math.round(targets.calories)}
               </Text>
             </View>
           </CircularProgress>
         </Animated.View>
 
-        <View style={styles.horizontalMacros}>
-          <MacroPill 
-            label="Protein" 
-            value={stats.totalProtein} 
-            target={targets.protein || 0} 
-            progress={proteinProgress}
-            color={accentSky}
-          />
-          <MacroPill 
-            label="Carbs" 
-            value={stats.totalCarbs} 
-            target={targets.carbs || 0} 
-            progress={carbsProgress}
-            color={accentYellow}
-          />
-          <MacroPill 
-            label="Fat" 
-            value={stats.totalFat} 
-            target={targets.fat || 0} 
-            progress={fatProgress}
-            color={accentCoral}
-          />
+        <View style={styles.dynamicSentenceContainer}>
+          <Text style={[TextStyles.body, { color: 'rgba(255, 255, 255, 0.7)', fontStyle: 'italic', textAlign: 'center', fontSize: 15 }]}>
+            {getDynamicSentence()}
+          </Text>
         </View>
       </View>
 
-      <View style={styles.weeklyDivider} />
+      <View style={styles.macrosContainer}>
+        <MacroLine 
+          label="Protein" 
+          value={safeStats.totalProtein} 
+          target={targets.protein || 0} 
+          color={accentSky}
+        />
+        <MacroLine 
+          label="Carbs" 
+          value={safeStats.totalCarbs} 
+          target={targets.carbs || 0} 
+          color={accentYellow}
+        />
+        <MacroLine 
+          label="Fat" 
+          value={safeStats.totalFat} 
+          target={targets.fat || 0} 
+          color={accentCoral}
+        />
+      </View>
 
       <View style={styles.weeklySection}>
-        <Text style={[TextStyles.caption, { color: Colors.dark.icon, marginBottom: Spacing.sm }]}>Weekly Overview</Text>
-        <View style={styles.weeklyChart}>
-          {weeklyCalories.map((cals, i) => {
-            const heightPercentage = (cals / maxWeeklyCal) * 100;
-            const isSelected = i === selectedDateIndex;
-            const isToday = i === todayIndex;
-            
-            return (
-              <TouchableOpacity 
-                key={i} 
-                style={styles.weeklyDayColumn}
-                onPress={() => onSelectDate(i)}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.weeklyBarContainer, { height: 60 }]}>
-                  {/* Track background */}
-                  <View style={[styles.weeklyBarTrack, { backgroundColor: `${neonGreen}10` }]} />
-                  <View 
-                    style={[
-                      styles.weeklyBar, 
-                      { 
-                        height: `${Math.max(heightPercentage, 8)}%`, 
-                        backgroundColor: isSelected ? neonGreen : (isToday ? primaryGreen : glassBorder),
-                        opacity: isSelected || isToday ? 1 : 0.6,
-                        shadowColor: isSelected || isToday ? neonGreen : 'transparent',
-                        shadowOffset: { width: 0, height: 0 },
-                        shadowOpacity: 0.5,
-                        shadowRadius: 4,
-                      }
-                    ]} 
-                  />
+        <Text style={[TextStyles.bodySmall, { color: '#FFFFFF', marginBottom: Spacing.md, fontSize: 13, opacity: 0.9 }]}>Weekly Overview</Text>
+        
+        {containerWidth > 0 && (
+          <ScrollView 
+            horizontal 
+            ref={scrollViewRef}
+            showsHorizontalScrollIndicator={false}
+            snapToInterval={containerWidth}
+            decelerationRate="fast"
+            style={styles.dotsScrollView}
+          >
+            {weeklyCalories.map((weekData, weekIdx) => (
+              <View key={weekIdx} style={[styles.weekContainer, { width: containerWidth }]}>
+                <View style={styles.dotsContainer}>
+                  {weekData.map((cals, i) => {
+                    const isToday = weekIdx === 2 && i === todayIndex;
+                    const isSelected = weekIdx === selectedWeekIndex && i === selectedDateIndex;
+                    const hasActivity = cals > 0;
+                    
+                    return (
+                      <TouchableOpacity 
+                        key={i} 
+                        onPress={() => onSelectDate(weekIdx, i)}
+                        style={styles.dotColumn}
+                      >
+                        <View style={styles.dotWrapper}>
+                          <View 
+                            style={[
+                              styles.dot, 
+                              { 
+                                backgroundColor: isSelected ? neonGreen : '#FFFFFF',
+                                opacity: isSelected ? 1 : (hasActivity ? 0.8 : 0.2),
+                                transform: [{ scale: isSelected ? 1.4 : 1 }]
+                              }
+                            ]} 
+                          />
+                          {isToday && <View style={styles.todayUnderline} />}
+                        </View>
+                        <Text style={[
+                          TextStyles.caption, 
+                          { 
+                            fontSize: 10, 
+                            marginTop: 10,
+                            color: isSelected ? neonGreen : 'rgba(255, 255, 255, 0.5)',
+                            fontWeight: isSelected ? '700' : '400'
+                          }
+                        ]}>
+                          {daysOfWeek[i]}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
-                <Text style={[
-                  TextStyles.caption, 
-                  { 
-                    color: isSelected ? neonGreen : (isToday ? primaryGreen : Colors.dark.icon), 
-                    fontSize: 10, 
-                    marginTop: 6,
-                    fontWeight: isSelected ? '700' : '500'
-                  }
-                ]}>
-                  {daysOfWeek[i]}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+              </View>
+            ))}
+          </ScrollView>
+        )}
       </View>
     </GlassCard>
   );
 }
 
-interface MacroPillProps {
+interface MacroLineProps {
   label: string;
   value: number;
   target: number;
-  progress: number;
   color: string;
 }
 
-function MacroPill({ label, value, target, progress, color }: MacroPillProps) {
+function MacroLine({ label, value, target, color }: MacroLineProps) {
+  const progress = Math.min(value / (target || 1), 1);
+  
   return (
-    <View style={styles.macroPill}>
-      <Text style={[TextStyles.caption, { color: Colors.dark.icon, fontSize: 10, marginBottom: 2 }]}>{label}</Text>
-      <View style={[styles.macroPillTrack, { backgroundColor: glassSurface }]}>
-        <Animated.View 
+    <View style={styles.macroLineWrapper}>
+      <View style={styles.macroLineHeader}>
+        <Text style={[TextStyles.caption, { color: 'rgba(255, 255, 255, 0.6)', fontSize: 11 }]}>{label}</Text>
+        <Text style={[TextStyles.caption, { color: '#FFFFFF', fontWeight: '700', fontSize: 11 }]}>
+          {Math.round(value)}g
+        </Text>
+      </View>
+      <View style={styles.macroLineTrack}>
+        <View 
           style={[
-            styles.macroPillFill, 
+            styles.macroLineFill, 
             { 
-              width: `${Math.min(progress * 100, 100)}%`, 
+              width: `${progress * 100}%`, 
               backgroundColor: color,
+              shadowColor: color,
+              shadowOffset: { width: 0, height: 0 },
+              shadowOpacity: 0.8,
+              shadowRadius: 6,
+              elevation: 4,
             }
           ]} 
         />
       </View>
-      <Text style={[TextStyles.caption, { color: Colors.dark.text, fontSize: 11, fontWeight: '600', marginTop: 2 }]}>
-        {Math.round(value)}g
-      </Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    padding: Spacing.lg,
+    padding: 28, // Middle ground between lg (24) and xl (32)
     width: '100%',
+    borderRadius: 32,
+    overflow: 'hidden',
   },
   header: {
+    marginBottom: Spacing.lg,
+  },
+  headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.xl,
+    alignItems: 'flex-start',
   },
   streakBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.2)',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(253, 224, 71, 0.2)',
+    borderColor: 'rgba(74, 222, 128, 0.2)',
   },
-  flameContainer: {
-    shadowColor: accentYellow,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 10,
-    elevation: 5,
-  },
-  mainContent: {
+  heroSection: {
     alignItems: 'center',
-    gap: Spacing.xl,
+    marginBottom: Spacing.xl,
+    gap: Spacing.md,
   },
-  calorieSection: {
+  ringContainer: {
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -401,60 +466,68 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  horizontalMacros: {
+  dynamicSentenceContainer: {
+    marginTop: -Spacing.xs,
+  },
+  macrosContainer: {
+    width: '100%',
+    gap: Spacing.sm,
+    marginBottom: Spacing.xl,
+  },
+  macroLineWrapper: {
+    width: '100%',
+  },
+  macroLineHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    width: '100%',
-    paddingHorizontal: Spacing.sm,
+    marginBottom: 4,
   },
-  macroPill: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  macroPillTrack: {
-    width: '80%',
-    height: 4,
-    borderRadius: 2,
+  macroLineTrack: {
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
     overflow: 'hidden',
   },
-  macroPillFill: {
+  macroLineFill: {
     height: '100%',
-    borderRadius: 2,
-  },
-  weeklyDivider: {
-    height: 1,
-    backgroundColor: glassBorder,
-    marginVertical: Spacing.xl,
+    borderRadius: 2.5,
   },
   weeklySection: {
-    width: '100%',
+    marginTop: Spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.05)',
+    paddingTop: Spacing.md,
   },
-  weeklyChart: {
+  dotsScrollView: {
+  },
+  weekContainer: {
+  },
+  dotsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    height: 85,
+    alignItems: 'center',
   },
-  weeklyDayColumn: {
+  dotColumn: {
     alignItems: 'center',
     flex: 1,
   },
-  weeklyBarContainer: {
-    width: 20,
-    justifyContent: 'flex-end',
+  dotWrapper: {
     alignItems: 'center',
-    position: 'relative',
+    height: 12,
+    justifyContent: 'center',
   },
-  weeklyBarTrack: {
+  dot: {
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+  },
+  todayUnderline: {
     position: 'absolute',
-    top: 0,
-    bottom: 0,
-    width: '100%',
-    borderRadius: 10,
-  },
-  weeklyBar: {
-    width: '100%',
-    borderRadius: 10,
+    bottom: -5,
+    width: 5,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: neonGreen,
   },
   glowEffect: {
     shadowOffset: { width: 0, height: 0 },
@@ -467,4 +540,3 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 });
-

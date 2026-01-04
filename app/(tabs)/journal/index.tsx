@@ -21,8 +21,11 @@ import {
     TextInput,
     TouchableOpacity,
     View,
-    Platform
+    Platform,
+    Animated as RNAnimated
 } from 'react-native';
+import { Swipeable } from 'react-native-gesture-handler';
+import * as Haptics from 'expo-haptics';
 import Animated, { Easing, FadeInDown } from 'react-native-reanimated';
 
 interface Meal {
@@ -183,86 +186,120 @@ export default function MealsScreen() {
     protein: acc.protein + (meal.macros?.protein || 0),
     fat: acc.fat + (meal.macros?.fat || 0),
     carbs: acc.carbs + (meal.macros?.carbs || 0),
-  }), { calories: 0, protein: 0, fat: 0, carbs: 0 });
+    }), { calories: 0, protein: 0, fat: 0, carbs: 0 });
+
+  const renderRightActions = (
+    progress: RNAnimated.AnimatedInterpolation<number>, 
+    dragX: RNAnimated.AnimatedInterpolation<number>,
+    mealId: string
+  ) => {
+    const scale = progress.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0.8, 1],
+      extrapolate: 'clamp',
+    });
+
+    const opacity = progress.interpolate({
+      inputRange: [0, 0.5, 1],
+      outputRange: [0, 0, 1],
+      extrapolate: 'clamp',
+    });
+
+    return (
+      <View style={styles.rightActionContainer}>
+        <RNAnimated.View style={[styles.deleteAction, { transform: [{ scale }], opacity }]}>
+          <TouchableOpacity
+            style={styles.deleteActionContent}
+            activeOpacity={0.8}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              handleDeleteMeal(mealId);
+            }}
+          >
+            <IconSymbol name="trash.fill" size={20} color="white" />
+            <Text style={styles.deleteActionText}>Delete</Text>
+          </TouchableOpacity>
+        </RNAnimated.View>
+      </View>
+    );
+  };
 
   const renderCompactMealRow = ({ item: meal, index }: { item: Meal, index: number }) => (
     <Animated.View entering={FadeInDown.delay(index * 40).duration(500).easing(Easing.out(Easing.quad))}>
-      <TouchableOpacity
-        style={styles.compactRow}
-        onPress={() => router.push(`/meal/${meal.id}`)}
-        activeOpacity={0.7}
+      <Swipeable
+        renderRightActions={(progress, dragX) => renderRightActions(progress, dragX, meal.id)}
+        friction={2}
+        rightThreshold={40}
+        containerStyle={styles.swipeableContainer}
       >
-        <View style={styles.compactImageContainer}>
-          {meal.image_url ? (
-            <ThumbnailImage 
-              source={{ uri: meal.image_url }} 
-              style={styles.compactImage} 
-            />
-          ) : (
-            <View style={[styles.compactImagePlaceholder, { backgroundColor: colors.border }]}>
-              <IconSymbol name="fork.knife" size={24} color={colors.icon} />
-            </View>
-          )}
-        </View>
+        <TouchableOpacity
+          style={[styles.compactRow, { backgroundColor: colors.background }]} // Match original background perfectly
+          onPress={() => router.push(`/meal/${meal.id}`)}
+          activeOpacity={0.7}
+        >
+          <View style={styles.compactImageContainer}>
+            {meal.image_url ? (
+              <ThumbnailImage 
+                source={{ uri: meal.image_url }} 
+                style={styles.compactImage} 
+              />
+            ) : (
+              <View style={[styles.compactImagePlaceholder, { backgroundColor: colors.border }]}>
+                <IconSymbol name="fork.knife" size={24} color={colors.icon} />
+              </View>
+            )}
+          </View>
 
-        <View style={styles.compactContent}>
-          <Text 
-            style={[
-              TextStyles.body, 
-              { 
-                color: colors.text, 
-                fontFamily: FontFamilies.headingBold,
-                fontWeight: Platform.OS === 'web' ? '800' : undefined,
-                fontSize: 17,
-                marginBottom: 2 
-              }
-            ]} 
-            numberOfLines={2}
-          >
-            {meal.description}
-          </Text>
-          
-          <Text style={[TextStyles.bodySmall, { color: colors.icon, marginBottom: 8 }]}>
-            {formatDate(meal.created_at)}
-          </Text>
-          
-          <View style={styles.compactMeta}>
-            <View style={styles.macroBadge}>
-              <Text style={[TextStyles.bodySmall, { color: primaryGreen, fontWeight: '700' }]}>
-                {meal.calories || '0'}
-              </Text>
-              <Text style={[TextStyles.caption, { color: colors.icon, fontSize: 10 }]}>kcal</Text>
-            </View>
-            <View style={styles.macroBadge}>
-              <Text style={[TextStyles.bodySmall, { color: colors.text, fontWeight: '600' }]}>
-                {meal.macros?.protein || '0'}g
-              </Text>
-              <Text style={[TextStyles.caption, { color: colors.icon, fontSize: 10 }]}>pro</Text>
-            </View>
-            <View style={styles.macroBadge}>
-              <Text style={[TextStyles.bodySmall, { color: colors.text, fontWeight: '600' }]}>
-                {meal.macros?.carbs || '0'}g
-              </Text>
-              <Text style={[TextStyles.caption, { color: colors.icon, fontSize: 10 }]}>carb</Text>
-            </View>
-            <View style={styles.macroBadge}>
-              <Text style={[TextStyles.bodySmall, { color: colors.text, fontWeight: '600' }]}>
-                {meal.macros?.fat || '0'}g
-              </Text>
-              <Text style={[TextStyles.caption, { color: colors.icon, fontSize: 10 }]}>fat</Text>
+          <View style={styles.compactContent}>
+            <Text 
+              style={[
+                TextStyles.body, 
+                { 
+                  color: colors.text, 
+                  fontFamily: FontFamilies.headingBold,
+                  fontWeight: Platform.OS === 'web' ? '800' : undefined,
+                  fontSize: 17,
+                  marginBottom: 2 
+                }
+              ]} 
+              numberOfLines={2}
+            >
+              {meal.description}
+            </Text>
+            
+            <Text style={[TextStyles.bodySmall, { color: colors.icon, marginBottom: 8 }]}>
+              {formatDate(meal.created_at)}
+            </Text>
+            
+            <View style={styles.compactMeta}>
+              <View style={styles.macroBadge}>
+                <Text style={[TextStyles.bodySmall, { color: primaryGreen, fontWeight: '700' }]}>
+                  {meal.calories || '0'}
+                </Text>
+                <Text style={[TextStyles.caption, { color: colors.icon, fontSize: 10 }]}>kcal</Text>
+              </View>
+              <View style={styles.macroBadge}>
+                <Text style={[TextStyles.bodySmall, { color: colors.text, fontWeight: '600' }]}>
+                  {meal.macros?.protein || '0'}g
+                </Text>
+                <Text style={[TextStyles.caption, { color: colors.icon, fontSize: 10 }]}>pro</Text>
+              </View>
+              <View style={styles.macroBadge}>
+                <Text style={[TextStyles.bodySmall, { color: colors.text, fontWeight: '600' }]}>
+                  {meal.macros?.carbs || '0'}g
+                </Text>
+                <Text style={[TextStyles.caption, { color: colors.icon, fontSize: 10 }]}>carb</Text>
+              </View>
+              <View style={styles.macroBadge}>
+                <Text style={[TextStyles.bodySmall, { color: colors.text, fontWeight: '600' }]}>
+                  {meal.macros?.fat || '0'}g
+                </Text>
+                <Text style={[TextStyles.caption, { color: colors.icon, fontSize: 10 }]}>fat</Text>
+              </View>
             </View>
           </View>
-        </View>
-
-        {/* Delete Action */}
-        <TouchableOpacity 
-          style={styles.rowDeleteButton}
-          onPress={() => handleDeleteMeal(meal.id)}
-          activeOpacity={0.6}
-        >
-          <IconSymbol name="trash" size={16} color="rgba(239, 68, 68, 0.6)" />
         </TouchableOpacity>
-      </TouchableOpacity>
+      </Swipeable>
     </Animated.View>
   );
 
@@ -483,6 +520,9 @@ const styles = StyleSheet.create({
   compactList: {
     paddingBottom: 100,
   },
+  swipeableContainer: {
+    overflow: 'hidden',
+  },
   compactRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -526,10 +566,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
     marginLeft: 96,
   },
-  rowDeleteButton: {
-    padding: 8,
-    marginLeft: 4,
-  },
   skeletonRow: {
     flexDirection: 'row',
     paddingVertical: Spacing.md,
@@ -545,5 +581,29 @@ const styles = StyleSheet.create({
   captureButton: {
     marginTop: 8,
   },
+  rightActionContainer: {
+    width: 90,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+  },
+  deleteAction: {
+    backgroundColor: '#FF3B30',
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 80,
+    height: '80%', // Slightly shorter than the row for better aesthetic
+    borderRadius: 20,
+  },
+  deleteActionContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  deleteActionText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '700',
+    fontFamily: FontFamilies.headingBold,
+  },
 });
-

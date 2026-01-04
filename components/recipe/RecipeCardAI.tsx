@@ -4,7 +4,7 @@ import { ThumbnailImage } from '@/components/ui/OptimizedImage';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { SourceBadge } from './SourceBadge';
 import { Colors, neonGreen, accentSky } from '@/constants/Colors';
-import { TextStyles } from '@/constants/Typography';
+import { TextStyles, FontFamilies } from '@/constants/Typography';
 import { Spacing } from '@/constants/Spacing';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import type { Recipe } from './types';
@@ -47,7 +47,17 @@ export function RecipeCardAI({ recipe, onPress }: RecipeCardAIProps) {
         
         <View style={styles.content}>
           <View style={styles.header}>
-            <Text style={[TextStyles.body, { color: colors.text, fontWeight: '600' }]} numberOfLines={2}>
+            <Text 
+              style={[
+                TextStyles.body, 
+                { 
+                  color: colors.text, 
+                  fontFamily: FontFamilies.headingBold,
+                  fontSize: 17,
+                }
+              ]} 
+              numberOfLines={2}
+            >
               {recipe.name}
             </Text>
             

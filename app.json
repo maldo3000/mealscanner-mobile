@@ -34,7 +34,8 @@
       ],
       "runtimeVersion": {
         "policy": "appVersion"
-      }
+      },
+      "package": "app.mealscanner"
     },
     "web": {
       "bundler": "metro",
@@ -60,7 +61,9 @@
       ],
       "expo-secure-store",
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      "@react-native-google-signin/google-signin",
+      "expo-apple-authentication"
     ],
     "experiments": {
       "typedRoutes": true

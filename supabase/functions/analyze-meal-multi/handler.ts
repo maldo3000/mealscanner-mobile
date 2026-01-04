@@ -31,6 +31,7 @@ export interface AnalyzeMealMultiRequest {
   mealId?: string
   contextText?: string
   items: MealMultiItemInput[]
+  isPro?: boolean
   llm?: LLMConfig
 }
 
@@ -100,8 +101,9 @@ function buildUserPrompt(params: {
   contextText?: string
   items: MealMultiItemInput[]
   userGoals?: Record<string, unknown> | null
+  isPro?: boolean
 }): string {
-  const { contextText, items, userGoals } = params
+  const { contextText, items, userGoals, isPro } = params
 
   const textItemsDescription = items
     .map((item, index) => {
@@ -129,6 +131,12 @@ function buildUserPrompt(params: {
     .filter((x): x is string => typeof x === 'string')
     .join('\n')
 
+  const feedbackRules = isPro 
+    ? `- For 'feedback', provide a descriptive qualitative health assessment of the meal.
+- For 'recommendations', provide 2-3 actionable nutrition tips.`
+    : `- For 'feedback', provide a very short 1-sentence summary only.
+- For 'recommendations', return an empty array []. DO NOT provide recommendations for free users.`
+
   return `
 You are a professional nutritionist. Analyze a meal that is composed of multiple items (some are photos, some are text entries, and some are verified database items).
 
@@ -136,6 +144,7 @@ Important rules:
 - For 'verified' items, use the EXACT nutrition provided in the description for your final response. Do not re-estimate them.
 - For other items (photo/text), provide your best estimate for *per-unit* nutrition.
 - Quantity is an integer multiplier for the entire item.
+${feedbackRules}
 - Return strict JSON only (no markdown).
 
 Overall meal context (applies to the whole set):
@@ -422,7 +431,7 @@ export async function handleAnalyzeMealMulti(req: Request): Promise<Response> {
     const systemPrompt =
       'You are a professional nutritionist with expertise in meal analysis. You will receive multiple meal items (photos and text entries).'
 
-    const userPrompt = buildUserPrompt({ contextText, items: normalizedItemsWithHero, userGoals: userGoals ?? null })
+    const userPrompt = buildUserPrompt({ contextText, items: normalizedItemsWithHero, userGoals: userGoals ?? null, isPro })
 
     const content: NonNullable<ChatMessage['content']> = [{ type: 'text', text: userPrompt }]
     normalizedItemsWithHero.forEach((item, index) => {

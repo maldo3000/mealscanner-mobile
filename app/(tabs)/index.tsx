@@ -62,16 +62,17 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [currentStreak, setCurrentStreak] = useState(0);
   const [longestStreak, setLongestStreak] = useState(0);
-  const [weeklyCalories, setWeeklyCalories] = useState<number[]>([0, 0, 0, 0, 0, 0, 0]);
+  const [weeklyCalories, setWeeklyCalories] = useState<number[][]>([
+    [0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0],
+  ]);
   const [selectedDateIndex, setSelectedDateIndex] = useState<number>((new Date().getDay() + 6) % 7);
-  const [weeklyStats, setWeeklyStats] = useState<TodayStats[]>([
-    { mealsCount: 0, totalCalories: 0, totalProtein: 0, totalFat: 0, totalCarbs: 0 },
-    { mealsCount: 0, totalCalories: 0, totalProtein: 0, totalFat: 0, totalCarbs: 0 },
-    { mealsCount: 0, totalCalories: 0, totalProtein: 0, totalFat: 0, totalCarbs: 0 },
-    { mealsCount: 0, totalCalories: 0, totalProtein: 0, totalFat: 0, totalCarbs: 0 },
-    { mealsCount: 0, totalCalories: 0, totalProtein: 0, totalFat: 0, totalCarbs: 0 },
-    { mealsCount: 0, totalCalories: 0, totalProtein: 0, totalFat: 0, totalCarbs: 0 },
-    { mealsCount: 0, totalCalories: 0, totalProtein: 0, totalFat: 0, totalCarbs: 0 },
+  const [selectedWeekIndex, setSelectedDateWeekIndex] = useState<number>(2); // Default to current week (index 2)
+  const [weeklyStats, setWeeklyStats] = useState<TodayStats[][]>([
+    Array(7).fill({ mealsCount: 0, totalCalories: 0, totalProtein: 0, totalFat: 0, totalCarbs: 0 }),
+    Array(7).fill({ mealsCount: 0, totalCalories: 0, totalProtein: 0, totalFat: 0, totalCarbs: 0 }),
+    Array(7).fill({ mealsCount: 0, totalCalories: 0, totalProtein: 0, totalFat: 0, totalCarbs: 0 }),
   ]);
   const [allMeals, setAllMeals] = useState<Meal[]>([]);
 
@@ -116,14 +117,16 @@ export default function HomeScreen() {
   const resetState = () => {
     setCurrentStreak(0);
     setLongestStreak(0);
-    setWeeklyCalories([0, 0, 0, 0, 0, 0, 0]);
-    setWeeklyStats(Array(7).fill({
-      mealsCount: 0,
-      totalCalories: 0,
-      totalProtein: 0,
-      totalFat: 0,
-      totalCarbs: 0,
-    }));
+    setWeeklyCalories([
+      [0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0],
+    ]);
+    setWeeklyStats([
+      Array(7).fill({ mealsCount: 0, totalCalories: 0, totalProtein: 0, totalFat: 0, totalCarbs: 0 }),
+      Array(7).fill({ mealsCount: 0, totalCalories: 0, totalProtein: 0, totalFat: 0, totalCarbs: 0 }),
+      Array(7).fill({ mealsCount: 0, totalCalories: 0, totalProtein: 0, totalFat: 0, totalCarbs: 0 }),
+    ]);
     setAllMeals([]);
   };
 
@@ -148,40 +151,68 @@ export default function HomeScreen() {
       setCurrentStreak(calculateCurrentStreak(meals));
       setLongestStreak(calculateLongestStreak(meals));
       
-      // Calculate weekly stats
-      const newWeeklyStats = Array.from({ length: 7 }, () => ({
-        mealsCount: 0,
-        totalCalories: 0,
-        totalProtein: 0,
-        totalFat: 0,
-        totalCarbs: 0,
-      }));
+      // Calculate 3-week stats (2 Weeks Ago, Last Week, Current Week)
+      const newWeeklyStats = [
+        Array.from({ length: 7 }, () => ({ mealsCount: 0, totalCalories: 0, totalProtein: 0, totalFat: 0, totalCarbs: 0 })),
+        Array.from({ length: 7 }, () => ({ mealsCount: 0, totalCalories: 0, totalProtein: 0, totalFat: 0, totalCarbs: 0 })),
+        Array.from({ length: 7 }, () => ({ mealsCount: 0, totalCalories: 0, totalProtein: 0, totalFat: 0, totalCarbs: 0 })),
+      ];
 
       const now = new Date();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const dayOfWeek = today.getDay();
       const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-      const monday = new Date(today);
-      monday.setDate(today.getDate() + diffToMonday);
+      
+      const currentMonday = new Date(today);
+      currentMonday.setDate(today.getDate() + diffToMonday);
+      
+      const lastMonday = new Date(currentMonday);
+      lastMonday.setDate(currentMonday.getDate() - 7);
+      
+      const twoWeeksAgoMonday = new Date(currentMonday);
+      twoWeeksAgoMonday.setDate(currentMonday.getDate() - 14);
       
       meals.forEach(meal => {
         const mealDate = new Date(meal.created_at);
         const mealDay = new Date(mealDate.getFullYear(), mealDate.getMonth(), mealDate.getDate());
         
-        if (mealDay >= monday) {
+        // Current Week
+        if (mealDay >= currentMonday) {
           const index = (mealDay.getDay() + 6) % 7;
           if (index >= 0 && index < 7) {
-            newWeeklyStats[index].mealsCount += 1;
-            newWeeklyStats[index].totalCalories += meal.calories || 0;
-            newWeeklyStats[index].totalProtein += meal.macros?.protein || 0;
-            newWeeklyStats[index].totalFat += meal.macros?.fat || 0;
-            newWeeklyStats[index].totalCarbs += meal.macros?.carbs || 0;
+            newWeeklyStats[2][index].mealsCount += 1;
+            newWeeklyStats[2][index].totalCalories += meal.calories || 0;
+            newWeeklyStats[2][index].totalProtein += meal.macros?.protein || 0;
+            newWeeklyStats[2][index].totalFat += meal.macros?.fat || 0;
+            newWeeklyStats[2][index].totalCarbs += meal.macros?.carbs || 0;
+          }
+        }
+        // Last Week
+        else if (mealDay >= lastMonday && mealDay < currentMonday) {
+          const index = (mealDay.getDay() + 6) % 7;
+          if (index >= 0 && index < 7) {
+            newWeeklyStats[1][index].mealsCount += 1;
+            newWeeklyStats[1][index].totalCalories += meal.calories || 0;
+            newWeeklyStats[1][index].totalProtein += meal.macros?.protein || 0;
+            newWeeklyStats[1][index].totalFat += meal.macros?.fat || 0;
+            newWeeklyStats[1][index].totalCarbs += meal.macros?.carbs || 0;
+          }
+        }
+        // 2 Weeks Ago
+        else if (mealDay >= twoWeeksAgoMonday && mealDay < lastMonday) {
+          const index = (mealDay.getDay() + 6) % 7;
+          if (index >= 0 && index < 7) {
+            newWeeklyStats[0][index].mealsCount += 1;
+            newWeeklyStats[0][index].totalCalories += meal.calories || 0;
+            newWeeklyStats[0][index].totalProtein += meal.macros?.protein || 0;
+            newWeeklyStats[0][index].totalFat += meal.macros?.fat || 0;
+            newWeeklyStats[0][index].totalCarbs += meal.macros?.carbs || 0;
           }
         }
       });
 
       setWeeklyStats(newWeeklyStats);
-      setWeeklyCalories(newWeeklyStats.map(s => s.totalCalories));
+      setWeeklyCalories(newWeeklyStats.map(week => week.map(s => s.totalCalories)));
 
     } catch (error) {
       console.error('Error loading home data:', error);
@@ -240,12 +271,16 @@ export default function HomeScreen() {
       >
         {/* Hero Section */}
         <Animated.View entering={FadeInDown.duration(600).delay(100).easing(Easing.out(Easing.quad))}>
-          <Section gap={PageSpacing.cardGap}>
+          <Section gap={Spacing.lg}>
             <NutritionHero 
-              stats={weeklyStats[selectedDateIndex]} 
+              stats={weeklyStats[selectedWeekIndex][selectedDateIndex]} 
               weeklyCalories={weeklyCalories} 
               selectedDateIndex={selectedDateIndex}
-              onSelectDate={setSelectedDateIndex}
+              selectedWeekIndex={selectedWeekIndex}
+              onSelectDate={(weekIdx, dateIdx) => {
+                setSelectedDateWeekIndex(weekIdx);
+                setSelectedDateIndex(dateIdx);
+              }}
               currentStreak={currentStreak}
             />
           </Section>

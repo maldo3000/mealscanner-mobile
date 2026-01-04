@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Image, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, Image, SafeAreaView, Linking, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Button } from '@/components/ui/Button';
 import { Colors, neonGreen, textMuted, bgPrimary } from '@/constants/Colors';
@@ -22,7 +22,7 @@ export default function LandingScreen() {
               Snap, Analyze,{"\n"}Eat Smarter
             </Text>
             <Text style={styles.subheadline}>
-              Your AI-powered nutrition companion for a healthier, botanical lifestyle.
+              Your AI-powered nutrition companion for a healthier lifestyle.
             </Text>
           </View>
 
@@ -47,6 +47,25 @@ export default function LandingScreen() {
                 Already have an account? <Text style={{ color: neonGreen }}>Sign In</Text>
               </Text>
             </Button>
+          </View>
+
+          <View style={styles.legalFooter}>
+            <Text style={styles.legalText}>
+              By continuing, you agree to our{' '}
+              <Text 
+                style={styles.legalLink} 
+                onPress={() => Linking.openURL(process.env.EXPO_PUBLIC_TERMS_URL || 'https://gist.github.com/maldo3000/d239c3302e64e053b31ea79611f86265')}
+              >
+                Terms of Service
+              </Text>
+              {' '}and{' '}
+              <Text 
+                style={styles.legalLink} 
+                onPress={() => Linking.openURL(process.env.EXPO_PUBLIC_PRIVACY_POLICY_URL || 'https://gist.github.com/maldo3000/01cb8245058b25733d89fb3c16cca7b5')}
+              >
+                Privacy Policy
+              </Text>
+            </Text>
           </View>
         </View>
       </PageContainer>
@@ -107,7 +126,24 @@ const styles = StyleSheet.create({
     color: textMuted,
     fontSize: 15,
   },
+  legalFooter: {
+    marginTop: 20,
+    paddingHorizontal: 10,
+  },
+  legalText: {
+    ...TextStyles.caption,
+    color: textMuted,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  legalLink: {
+    color: neonGreen,
+    textDecorationLine: 'underline',
+  },
 });
+
+
+
 
 
 

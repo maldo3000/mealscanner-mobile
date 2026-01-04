@@ -7,11 +7,10 @@ import { View } from 'react-native';
 import 'react-native-reanimated';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
-import '../global.css';
-
 import { LoadingScreen } from '@/components/LoadingScreen';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { SubscriptionProvider } from '@/context/SubscriptionContext';
 import {
   SourceSans3_400Regular,
   SourceSans3_600SemiBold,
@@ -70,7 +69,7 @@ function RootLayoutContent() {
   
   const [loaded] = useFonts({
     // Telegraf for headings (local asset files)
-    Telegraf_800UltraBold: require('../assets/fonts/Telegraf UltraBold 800.otf'),
+    Telegraf_800UltraBold: require('../assets/fonts/Telegraf-UltraBold-800.otf'),
     Telegraf_400Regular: require('../assets/fonts/TelegrafRegular_272984568a25d8528fe2de8b20b29011.otf'),
     
     // Source Sans 3 for body + UI text
@@ -142,7 +141,9 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <AuthProvider>
-        <RootLayoutContent />
+        <SubscriptionProvider>
+          <RootLayoutContent />
+        </SubscriptionProvider>
       </AuthProvider>
     </GestureHandlerRootView>
   );

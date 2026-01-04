@@ -8,13 +8,16 @@ import { Input } from '@/components/ui/Input';
 import { NutritionCard } from '@/components/ui/NutritionCard';
 import { ThumbnailImage } from '@/components/ui/OptimizedImage';
 import { ParallaxImage } from '@/components/ui/ParallaxImage';
-import { bgPrimary, Colors, neonGreen } from '@/constants/Colors';
+import { bgPrimary, Colors, neonGreen, primaryGreen } from '@/constants/Colors';
 import { Shadows } from '@/constants/Layout';
 import { PageSpacing, Spacing } from '@/constants/Spacing';
 import { TextStyles } from '@/constants/Typography';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { useNutritionGoals } from '@/hooks/useNutritionGoals';
+import { useFeatureAccess } from '@/hooks/useFeatureAccess';
+import { UpgradePrompt } from '@/components/subscription/UpgradePrompt';
+import { Paywall } from '@/components/subscription/Paywall';
 import { analyzeMealMulti, deleteMeal, getMealById, getMealItems, setMealHeroItem, transcribeAudioDirect, updateMeal } from '@/lib/supabase';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
@@ -34,6 +37,7 @@ import {
     View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AnalysisLoadingOverlay, AnalysisStatus } from '@/components/capture/AnalysisLoadingOverlay';
 
 interface Meal {
   id: string;
@@ -69,6 +73,7 @@ export default function MealDetailScreen() {
   const colors = Colors[colorScheme ?? 'light'];
   const insets = useSafeAreaInsets();
   const { activeGoal } = useNutritionGoals();
+  const { isPro, canScan, showPaywall } = useFeatureAccess();
   
   const [meal, setMeal] = useState<Meal | null>(null);
   const [mealItems, setMealItems] = useState<Array<{
@@ -92,7 +97,7 @@ export default function MealDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [showReanalyzeModal, setShowReanalyzeModal] = useState(false);
   const [tempContextText, setTempContextText] = useState('');
-  const [reanalyzing, setReanalyzing] = useState(false);
+  const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>('idle');
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [showEditMetaModal, setShowEditMetaModal] = useState(false);
@@ -272,7 +277,11 @@ export default function MealDetailScreen() {
 
   const handleReanalyze = async () => {
     if (!meal) return;
-    setReanalyzing(true);
+    
+    // Close modal immediately and show high-quality loading overlay
+    setShowReanalyzeModal(false);
+    setAnalysisStatus('analyzing');
+    
     try {
       const itemsPayload = mealItems.map((it, idx) => ({
         itemType: it.item_type,
@@ -288,17 +297,23 @@ export default function MealDetailScreen() {
         mealId: meal.id,
         contextText: tempContextText.trim() ? tempContextText.trim() : undefined,
         items: itemsPayload,
+        isPro,
       };
 
       const { error } = await analyzeMealMulti(payload);
       if (error) throw error;
 
-      setShowReanalyzeModal(false);
-      await loadMealDetail();
+      // Show success state briefly
+      setAnalysisStatus('success');
+      
+      // Delay to show success animation before refreshing
+      setTimeout(async () => {
+        await loadMealDetail();
+        setAnalysisStatus('idle');
+      }, 1500);
     } catch (e) {
+      setAnalysisStatus('idle');
       Alert.alert('Error', 'Failed to reanalyze meal. Please try again.');
-    } finally {
-      setReanalyzing(false);
     }
   };
 
@@ -515,6 +530,10 @@ export default function MealDetailScreen() {
     );
   }
 
+  // Check if this is a database-sourced meal (not AI-analyzed)
+  const isDatabaseMeal = meal.ai_analysis?.source_type === 'database';
+  const databaseSource = meal.ai_analysis?.database_source as 'usda' | 'off' | undefined;
+
   // Calculate daily percentages based on active nutrition goal (fallback to defaults)
   const dailyCalories = activeGoal?.dailyTargets.calories ?? 2000;
   const dailyProtein = activeGoal?.dailyTargets.proteinGrams ?? 150;
@@ -557,18 +576,21 @@ export default function MealDetailScreen() {
                 </View>
               </View>
             </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.headerButtonEdit}
-              onPress={openReanalyze}
-              activeOpacity={0.8}
-            >
-              <View style={styles.iconContainer}>
-                <View style={styles.iconBackground} />
-                <View style={styles.iconGlow}>
-                  <IconSymbol name="arrow.clockwise" size={18} color={neonGreen} style={styles.iconThick} />
+            {/* Hide reanalyze button for database-sourced meals */}
+            {!isDatabaseMeal && (
+              <TouchableOpacity 
+                style={styles.headerButtonEdit}
+                onPress={openReanalyze}
+                activeOpacity={0.8}
+              >
+                <View style={styles.iconContainer}>
+                  <View style={styles.iconBackground} />
+                  <View style={styles.iconGlow}>
+                    <IconSymbol name="arrow.clockwise" size={18} color={neonGreen} style={styles.iconThick} />
+                  </View>
                 </View>
-              </View>
-            </TouchableOpacity>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity 
               style={styles.headerButtonDelete}
               onPress={handleDelete}
@@ -644,11 +666,35 @@ export default function MealDetailScreen() {
 
         {/* Title Card - Elevated */}
         <AnimatedCard delay={100} style={styles.titleCard}>
+          {/* Database Source Badge - show for database-sourced meals */}
+          {isDatabaseMeal && databaseSource && (
+            <View style={styles.databaseSourceRow}>
+              <View style={[styles.databaseSourceBadge, { backgroundColor: databaseSource === 'usda' ? primaryGreen : neonGreen }]}>
+                <IconSymbol 
+                  name={databaseSource === 'usda' ? 'leaf.fill' : 'barcode'} 
+                  size={14} 
+                  color="#000000" 
+                />
+                <Text style={[TextStyles.caption, { color: '#000000', fontWeight: '700' }]}>
+                  {databaseSource === 'usda' ? 'USDA Verified' : 'Open Food Facts'}
+                </Text>
+              </View>
+            </View>
+          )}
+
           <View style={styles.titleHeader}>
             <Text style={[TextStyles.h3, { color: colors.text, flex: 1 }]}>
               {getMealTitle()}
             </Text>
-            {!!meal.health_score && (
+            {/* Show health score for AI meals, or "Quick Logged" badge for database meals */}
+            {isDatabaseMeal ? (
+              <View style={[styles.healthBadge, { backgroundColor: '#3B82F6' }]}>
+                <IconSymbol name="bolt.fill" size={14} color="white" />
+                <Text style={[TextStyles.bodySmall, { color: 'white', fontWeight: '600' }]}>
+                  Quick Logged
+                </Text>
+              </View>
+            ) : !!meal.health_score && (
               <View style={[styles.healthBadge, getHealthScoreStyle(meal.health_score)]}>
                 <IconSymbol name="checkmark.seal" size={16} color="white" />
                 <Text style={[TextStyles.bodySmall, { color: 'white', fontWeight: '600' }]}>
@@ -658,7 +704,8 @@ export default function MealDetailScreen() {
             )}
           </View>
 
-          {(!!meal.ai_analysis?.description || meal.processing_status === 'processing') && (
+          {/* Only show AI description for non-database meals */}
+          {!isDatabaseMeal && (!!meal.ai_analysis?.description || meal.processing_status === 'processing') && (
             <View style={styles.descriptionContainer}>
               <Text style={styles.descriptionText}>
                 {meal.ai_analysis?.description || 'AI is currently analyzing your meal details...'}
@@ -813,22 +860,33 @@ export default function MealDetailScreen() {
           </AnimatedCard>
         )}
 
-        {/* Health Assessment - Quote Style */}
-        {meal.qualitative_feedback && (
-          <AnimatedCard delay={450} style={styles.quoteCard}>
-            <View style={styles.quoteHeader}>
-              <IconSymbol name="brain.head.profile" size={24} color={colors.tint} />
-              <Text style={[TextStyles.h4, { color: colors.text }]}>
-                Health Assessment
-              </Text>
-            </View>
-            <View style={styles.quoteContent}>
-              <IconSymbol name="quote.opening" size={20} color={colors.tint} style={styles.quoteIcon} />
-              <Text style={[TextStyles.body, { color: colors.text, lineHeight: 24, fontStyle: 'italic' }]}>
-                {meal.qualitative_feedback}
-              </Text>
-            </View>
-          </AnimatedCard>
+        {/* Health Assessment - Quote Style (only for AI-analyzed meals) */}
+        {!isDatabaseMeal && (
+          isPro ? (
+            meal.qualitative_feedback && (
+              <AnimatedCard delay={450} style={styles.quoteCard}>
+                <View style={styles.quoteHeader}>
+                  <IconSymbol name="brain.head.profile" size={24} color={colors.tint} />
+                  <Text style={[TextStyles.h4, { color: colors.text }]}>
+                    Health Assessment
+                  </Text>
+                </View>
+                <View style={styles.quoteContent}>
+                  <IconSymbol name="quote.opening" size={20} color={colors.tint} style={styles.quoteIcon} />
+                  <Text style={[TextStyles.body, { color: colors.text, lineHeight: 24, fontStyle: 'italic' }]}>
+                    {meal.qualitative_feedback}
+                  </Text>
+                </View>
+              </AnimatedCard>
+            )
+          ) : (
+            <UpgradePrompt 
+              feature="nutrition" 
+              title="Unlock Health Assessment"
+              message="Upgrade to Pro to see a qualitative health assessment of your meal."
+              style={{ marginBottom: PageSpacing.sectionGap }}
+            />
+          )
         )}
 
         {/* Ingredients - Tag Style */}
@@ -859,53 +917,64 @@ export default function MealDetailScreen() {
           </AnimatedCard>
         )}
 
-        {/* Recommendations */}
-        {meal.ai_analysis?.recommendations && meal.ai_analysis.recommendations.length > 0 && (
-          <AnimatedCard delay={600}>
-            <View style={styles.sectionHeader}>
-              <IconSymbol name="lightbulb" size={24} color={colors.tint} />
-              <Text style={[TextStyles.h4, { color: colors.text }]}>
-                Recommendations
-              </Text>
-            </View>
-            
-            <View style={styles.recommendationsList}>
-              {meal.ai_analysis.recommendations.map((rec: any, index: number) => (
-                <View 
-                  key={index} 
-                  style={[
-                    styles.recommendationItem, 
-                    { 
-                      backgroundColor: colors.background,
-                      borderLeftWidth: 3,
-                      borderLeftColor: rec.priority === 3 ? '#EF4444' : 
-                                      rec.priority === 2 ? '#F59E0B' : '#10B981',
-                    }
-                  ]}
-                >
-                  <View style={styles.recommendationHeader}>
-                    <View style={[
-                      styles.priorityBadge, 
-                      { 
-                        backgroundColor: rec.priority === 3 ? '#EF4444' : 
-                                        rec.priority === 2 ? '#F59E0B' : '#10B981' 
-                      }
-                    ]}>
-                      <Text style={[TextStyles.caption, { color: 'white', fontWeight: '600' }]}>
-                        {rec.priority === 3 ? 'High' : rec.priority === 2 ? 'Med' : 'Low'}
-                      </Text>
-                    </View>
-                    <Text style={[TextStyles.bodySmall, { color: colors.icon }]}>
-                      {rec.type?.charAt(0).toUpperCase() + rec.type?.slice(1) || 'General'}
-                    </Text>
-                  </View>
-                  <Text style={[TextStyles.body, { color: colors.text, marginTop: Spacing.sm }]}>
-                    {rec.content}
+        {/* Recommendations (only for AI-analyzed meals) */}
+        {!isDatabaseMeal && (
+          isPro ? (
+            meal.ai_analysis?.recommendations && meal.ai_analysis.recommendations.length > 0 && (
+              <AnimatedCard delay={600}>
+                <View style={styles.sectionHeader}>
+                  <IconSymbol name="lightbulb" size={24} color={colors.tint} />
+                  <Text style={[TextStyles.h4, { color: colors.text }]}>
+                    Recommendations
                   </Text>
                 </View>
-              ))}
-            </View>
-          </AnimatedCard>
+                
+                <View style={styles.recommendationsList}>
+                  {meal.ai_analysis.recommendations.map((rec: any, index: number) => (
+                    <View 
+                      key={index} 
+                      style={[
+                        styles.recommendationItem, 
+                        { 
+                          backgroundColor: colors.background,
+                          borderLeftWidth: 3,
+                          borderLeftColor: rec.priority === 3 ? '#EF4444' : 
+                                          rec.priority === 2 ? '#F59E0B' : '#10B981',
+                        }
+                      ]}
+                    >
+                      <View style={styles.recommendationHeader}>
+                        <View style={[
+                          styles.priorityBadge, 
+                          { 
+                            backgroundColor: rec.priority === 3 ? '#EF4444' : 
+                                            rec.priority === 2 ? '#F59E0B' : '#10B981' 
+                          }
+                        ]}>
+                          <Text style={[TextStyles.caption, { color: 'white', fontWeight: '600' }]}>
+                            {rec.priority === 3 ? 'High' : rec.priority === 2 ? 'Med' : 'Low'}
+                          </Text>
+                        </View>
+                        <Text style={[TextStyles.bodySmall, { color: colors.icon }]}>
+                          {rec.type?.charAt(0).toUpperCase() + rec.type?.slice(1) || 'General'}
+                        </Text>
+                      </View>
+                      <Text style={[TextStyles.body, { color: colors.text, marginTop: Spacing.sm }]}>
+                        {rec.content}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </AnimatedCard>
+            )
+          ) : (
+            <UpgradePrompt 
+              feature="nutrition" 
+              title="Unlock Pro Recommendations"
+              message="Upgrade to Pro to get actionable nutrition tips for your meals."
+              style={{ marginBottom: PageSpacing.sectionGap }}
+            />
+          )
         )}
 
         {/* Processing Status */}
@@ -953,7 +1022,6 @@ export default function MealDetailScreen() {
                     onPress={() => setShowReanalyzeModal(false)}
                     style={styles.modalCloseButton}
                     activeOpacity={0.8}
-                    disabled={reanalyzing}
                   >
                     <IconSymbol name="xmark" size={22} color={colors.icon} />
                   </TouchableOpacity>
@@ -974,7 +1042,7 @@ export default function MealDetailScreen() {
                     !isKeyboardVisible && (
                       <TouchableOpacity
                         onPress={handleVoiceInput}
-                        disabled={isTranscribing || reanalyzing}
+                        disabled={isTranscribing}
                         activeOpacity={0.7}
                         style={styles.voiceInputButton}
                       >
@@ -1014,10 +1082,8 @@ export default function MealDetailScreen() {
                     variant="primary"
                     onPress={handleReanalyze}
                     style={styles.modalActionBtn}
-                    disabled={reanalyzing}
-                    icon={reanalyzing ? <ActivityIndicator size="small" color="#000000" /> : undefined}
                   >
-                    {reanalyzing ? 'Reanalyzing…' : 'Reanalyze'}
+                    Reanalyze
                   </Button>
                 </View>
               </View>
@@ -1127,6 +1193,7 @@ export default function MealDetailScreen() {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
+      <AnalysisLoadingOverlay status={analysisStatus} />
     </PageContainer>
   );
 }
@@ -1213,6 +1280,18 @@ const styles = StyleSheet.create({
     marginTop: -20,
     marginBottom: PageSpacing.sectionGap,
     paddingTop: Spacing.xl,
+  },
+  databaseSourceRow: {
+    flexDirection: 'row',
+    marginBottom: Spacing.md,
+  },
+  databaseSourceBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: 12,
+    gap: Spacing.xs,
   },
   titleHeader: {
     flexDirection: 'row',
