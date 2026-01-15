@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useMemo } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { FREE_TIER_LIMITS } from '@/lib/revenueCat';
 import { useSubscription } from '@/context/SubscriptionContext';
+import { useAuth } from '@/context/AuthContext';
 
-const SCAN_COUNT_KEY = '@mealscanner/daily_scan_count';
-const SCAN_DATE_KEY = '@mealscanner/scan_date';
+const SCAN_COUNT_BASE_KEY = '@mealscanner/daily_scan_count';
+const SCAN_DATE_BASE_KEY = '@mealscanner/scan_date';
 
 interface ScanLimitState {
   /** Number of scans used today */
@@ -41,10 +42,20 @@ function getTodayKey(): string {
  * Pro users have unlimited scans
  */
 export function useScanLimit(): UseScanLimitReturn {
+  const { user } = useAuth();
   const { isPro, isLoading: isSubscriptionLoading } = useSubscription();
   
   const [scansUsed, setScansUsed] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Generate unique keys for the specific user
+  const { countKey, dateKey } = useMemo(() => {
+    const userId = user?.id || 'guest';
+    return {
+      countKey: `${SCAN_COUNT_BASE_KEY}_${userId}`,
+      dateKey: `${SCAN_DATE_BASE_KEY}_${userId}`,
+    };
+  }, [user?.id]);
 
   const scansAllowed = isPro ? Infinity : FREE_TIER_LIMITS.DAILY_SCANS;
   const scansRemaining = isPro ? Infinity : Math.max(0, scansAllowed - scansUsed);
@@ -56,8 +67,8 @@ export function useScanLimit(): UseScanLimitReturn {
   const loadScanCount = useCallback(async () => {
     try {
       const [storedDate, storedCount] = await Promise.all([
-        AsyncStorage.getItem(SCAN_DATE_KEY),
-        AsyncStorage.getItem(SCAN_COUNT_KEY),
+        AsyncStorage.getItem(dateKey),
+        AsyncStorage.getItem(countKey),
       ]);
 
       const today = getTodayKey();
@@ -68,8 +79,8 @@ export function useScanLimit(): UseScanLimitReturn {
       } else {
         // New day, reset counter
         await AsyncStorage.multiSet([
-          [SCAN_DATE_KEY, today],
-          [SCAN_COUNT_KEY, '0'],
+          [dateKey, today],
+          [countKey, '0'],
         ]);
         setScansUsed(0);
       }
@@ -79,9 +90,9 @@ export function useScanLimit(): UseScanLimitReturn {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [countKey, dateKey]);
 
-  // Load scan count on mount and when subscription status changes
+  // Load scan count on mount and when subscription status or user changes
   useEffect(() => {
     if (!isSubscriptionLoading) {
       loadScanCount();
@@ -97,8 +108,8 @@ export function useScanLimit(): UseScanLimitReturn {
       const newCount = scansUsed + 1;
 
       await AsyncStorage.multiSet([
-        [SCAN_DATE_KEY, today],
-        [SCAN_COUNT_KEY, newCount.toString()],
+        [dateKey, today],
+        [countKey, newCount.toString()],
       ]);
 
       setScansUsed(newCount);
@@ -106,21 +117,21 @@ export function useScanLimit(): UseScanLimitReturn {
     } catch (error) {
       console.error('Failed to increment scan count:', error);
     }
-  }, [isPro, scansUsed]);
+  }, [isPro, scansUsed, countKey, dateKey]);
 
   const resetScanCount = useCallback(async () => {
     try {
       const today = getTodayKey();
       await AsyncStorage.multiSet([
-        [SCAN_DATE_KEY, today],
-        [SCAN_COUNT_KEY, '0'],
+        [dateKey, today],
+        [countKey, '0'],
       ]);
       setScansUsed(0);
       console.log('📊 Scan count reset');
     } catch (error) {
       console.error('Failed to reset scan count:', error);
     }
-  }, []);
+  }, [countKey, dateKey]);
 
   const refresh = useCallback(async () => {
     setIsLoading(true);

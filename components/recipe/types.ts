@@ -13,6 +13,7 @@ export type Recipe = {
   source_meal_id?: string;
   source_type: 'image' | 'text' | 'discover';
   ai_analysis?: {
+    visual_analysis?: string;
     reasoning?: string;
     suggested_for?: string;
     goal_match?: string;
@@ -22,6 +23,9 @@ export type Recipe = {
     protein?: number;
     carbs?: number;
     fat?: number;
+    fiber?: number;
+    sugar?: number;
+    sodium?: number;
   };
   tags?: string[];
   is_favorite: boolean;

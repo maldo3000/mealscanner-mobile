@@ -1,9 +1,10 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Card } from '@/components/ui/Card';
+import { IconSymbol } from '@/components/ui/IconSymbol';
 import { ThumbnailImage } from '@/components/ui/OptimizedImage';
 import { SourceBadge } from './SourceBadge';
-import { Colors, neonGreen, glassSurface, glassBorder } from '@/constants/Colors';
+import { Colors, glassSurface, accentSky, herbarium } from '@/constants/Colors';
 import { TextStyles, FontFamilies } from '@/constants/Typography';
 import { Spacing } from '@/constants/Spacing';
 import { useColorScheme } from '@/hooks/useColorScheme';
@@ -12,17 +13,26 @@ import type { Recipe } from './types';
 interface RecipeCardDiscoverProps {
   recipe: Recipe;
   onPress: () => void;
+  isLocked?: boolean;
+  size?: 'default' | 'large';
 }
 
-export function RecipeCardDiscover({ recipe, onPress }: RecipeCardDiscoverProps) {
+const formatMacro = (val: number | undefined | null) => {
+  if (val === undefined || val === null) return '0';
+  return Number(val.toFixed(1)).toString();
+};
+
+export function RecipeCardDiscover({ recipe, onPress, isLocked = false, size = 'default' }: RecipeCardDiscoverProps) {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
+
+  const isLarge = size === 'large';
 
   return (
     <TouchableOpacity 
       onPress={onPress} 
       activeOpacity={0.85} 
-      style={styles.container}
+      style={isLarge ? styles.containerLarge : styles.container}
     >
       <Card variant="glass" padding="none" style={styles.card}>
         <View style={styles.imageContainer}>
@@ -37,38 +47,56 @@ export function RecipeCardDiscover({ recipe, onPress }: RecipeCardDiscoverProps)
             </View>
           )}
           
-          <View style={styles.badgeOverlay}>
-            <SourceBadge source="discover" size={14} />
-          </View>
-
-          <View style={styles.pillsContainer}>
-            {recipe.nutrition_per_serving?.calories && (
-              <View style={styles.pill}>
-                <Text style={styles.pillText}>{Math.round(recipe.nutrition_per_serving.calories)} kcal</Text>
+          {/* Lock overlay for Pro recipes */}
+          {isLocked && (
+            <View style={styles.lockOverlay}>
+              <View style={styles.lockBadge}>
+                <IconSymbol name="lock.fill" size={16} color="#FFFFFF" />
+                <Text style={styles.lockText}>PRO</Text>
               </View>
-            )}
-            {recipe.total_time && (
-              <View style={styles.pill}>
-                <Text style={styles.pillText}>{recipe.total_time}</Text>
-              </View>
-            )}
-          </View>
+            </View>
+          )}
+          
+          {!isLocked && (
+            <View style={styles.badgeOverlay}>
+              <SourceBadge source="discover" size={14} />
+            </View>
+          )}
         </View>
         
         <View style={styles.content}>
-          <Text 
-            style={[
-              TextStyles.bodySmall, 
-              { 
-                color: colors.text, 
-                fontFamily: FontFamilies.headingBold,
-                fontSize: 15,
-              }
-            ]} 
-            numberOfLines={2}
-          >
-            {recipe.name}
-          </Text>
+          <View style={styles.titleRow}>
+            <Text 
+              style={[
+                TextStyles.bodySmall, 
+                { 
+                  color: colors.text, 
+                  fontFamily: FontFamilies.headingBold,
+                  fontSize: 15,
+                  flex: 1,
+                }
+              ]} 
+              numberOfLines={2}
+            >
+              {recipe.name}
+            </Text>
+            {isLocked && (
+              <IconSymbol name="lock.fill" size={12} color={accentSky} style={styles.titleLock} />
+            )}
+          </View>
+          
+          {/* Info below title */}
+          <View style={styles.chipsContainer}>
+            {recipe.nutrition_per_serving?.calories && (
+              <Text style={styles.chipText}>{formatMacro(recipe.nutrition_per_serving.calories)} kcal</Text>
+            )}
+            {recipe.nutrition_per_serving?.calories && recipe.total_time && (
+              <Text style={styles.chipText}>•</Text>
+            )}
+            {recipe.total_time && (
+              <Text style={styles.chipText}>{recipe.total_time}</Text>
+            )}
+          </View>
         </View>
       </Card>
     </TouchableOpacity>
@@ -79,6 +107,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     margin: Spacing.xs,
+  },
+  containerLarge: {
+    width: 200,
+    marginRight: Spacing.md,
   },
   card: {
     overflow: 'hidden',
@@ -106,33 +138,57 @@ const styles = StyleSheet.create({
     top: 8,
     right: 8,
   },
-  pillsContainer: {
+  lockOverlay: {
     position: 'absolute',
-    bottom: 8,
-    left: 8,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lockBadge: {
     flexDirection: 'row',
-    gap: 4,
+    alignItems: 'center',
+    backgroundColor: accentSky,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    gap: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
   },
-  pill: {
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  pillText: {
+  lockText: {
     ...TextStyles.caption,
     color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: 'bold',
+    fontWeight: '800',
+    fontSize: 11,
+    letterSpacing: 0.5,
   },
   content: {
     padding: Spacing.sm,
-    minHeight: 48,
-    justifyContent: 'center',
+    height: 72,
+    justifyContent: 'space-between',
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 4,
+  },
+  titleLock: {
+    marginTop: 2,
+  },
+  chipsContainer: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  chipText: {
+    fontFamily: FontFamilies.body,
+    color: herbarium.textMuted,
+    fontSize: 12,
   },
 });
-
-
-

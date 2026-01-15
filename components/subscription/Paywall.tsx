@@ -9,6 +9,7 @@ import {
   ScrollView,
   Linking,
 } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { IconSymbol } from '@/components/ui/IconSymbol';
@@ -294,7 +295,11 @@ export function Paywall({ visible, onClose, title, subtitle, feature }: PaywallP
         </ScrollView>
 
         {/* Fixed Footer with Absolute Positioning */}
-        <View style={[styles.footer, { paddingBottom: insets.bottom + Spacing.md }]}>
+        <BlurView 
+          intensity={60} 
+          tint="dark"
+          style={[styles.footer, { paddingBottom: insets.bottom + Spacing.md }]}
+        >
           <Button
             variant="primary"
             onPress={handlePurchase}
@@ -327,7 +332,7 @@ export function Paywall({ visible, onClose, title, subtitle, feature }: PaywallP
           <Text style={[TextStyles.caption, { color: colors.icon, textAlign: 'center', marginTop: Spacing.xs }]}>
             Cancel anytime. Subscription renews automatically.
           </Text>
-        </View>
+        </BlurView>
       </View>
     </Modal>
   );
@@ -451,10 +456,11 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     paddingHorizontal: PageSpacing.containerPadding,
-    paddingTop: Spacing.lg, // Reduced from xl
-    backgroundColor: 'rgba(0,0,0,0.9)', // Deep semi-transparent background
+    paddingTop: Spacing.lg,
+    backgroundColor: 'rgba(2, 44, 34, 0.7)', // Match app's glass theme
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.1)',
+    borderTopColor: glassBorder,
+    overflow: 'hidden',
   },
   restoreButton: {
     alignItems: 'center',

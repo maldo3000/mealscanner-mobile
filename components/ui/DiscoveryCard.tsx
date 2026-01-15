@@ -16,9 +16,12 @@ interface DiscoveryCardProps {
   imageUrl?: string;
   recipeId?: string;
   mealId?: string;
+  style?: any;
+  titleStyle?: any;
+  subtitleStyle?: any;
 }
 
-export function DiscoveryCard({ type, title, subtitle, imageUrl, recipeId, mealId }: DiscoveryCardProps) {
+export function DiscoveryCard({ type, title, subtitle, imageUrl, recipeId, mealId, style, titleStyle, subtitleStyle }: DiscoveryCardProps) {
   const router = useRouter();
 
   const handlePress = () => {
@@ -32,7 +35,7 @@ export function DiscoveryCard({ type, title, subtitle, imageUrl, recipeId, mealI
   };
 
   return (
-    <GlassCard variant="glass" style={styles.container} padding="none">
+    <GlassCard variant="glass" style={[styles.container, style]} padding="none">
       <TouchableOpacity 
         style={styles.touchable}
         onPress={handlePress}
@@ -59,7 +62,7 @@ export function DiscoveryCard({ type, title, subtitle, imageUrl, recipeId, mealI
             </View>
           </View>
         ) : (
-          <View style={[styles.imageWrapper, styles.placeholderImage]}>
+          <View style={[styles.imageWrapper, styles.placeholderImage, style && { backgroundColor: style.backgroundColor }]}>
             <IconSymbol name={type === 'recipe' ? 'fork.knife' : type === 'meal' ? 'clock.fill' : 'info.circle'} size={32} color={glassBorder} />
           </View>
         )}
@@ -73,13 +76,14 @@ export function DiscoveryCard({ type, title, subtitle, imageUrl, recipeId, mealI
                 fontFamily: FontFamilies.headingBold,
                 fontWeight: Platform.OS === 'web' ? '800' : undefined,
                 fontSize: 18,
-              }
+              },
+              titleStyle
             ]} 
             numberOfLines={1}
           >
             {title}
           </Text>
-          <Text style={[TextStyles.bodySmall, { color: Colors.dark.icon, marginTop: 4 }]} numberOfLines={2}>
+          <Text style={[TextStyles.bodySmall, { color: Colors.dark.icon, marginTop: 4 }, subtitleStyle]} numberOfLines={2}>
             {subtitle}
           </Text>
 

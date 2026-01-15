@@ -1,30 +1,31 @@
 import { PageContainer } from '@/components/layout/PageContainer';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { RecipeGeneratorModal } from '@/components/RecipeGeneratorModal';
-import { SourceBadge } from '@/components/recipe/SourceBadge';
+import { RecipeFilters } from '@/components/recipe/RecipeFilters';
+import { RecipeFilterSheet } from '@/components/recipe/RecipeFilterSheet';
 import { RecipeCardDiscover } from '@/components/recipe/RecipeCardDiscover';
-import { RecipeCardAI } from '@/components/recipe/RecipeCardAI';
+import { CategoryCard } from '@/components/recipe/CategoryCard';
 import type { Recipe } from '@/components/recipe/types';
-import { Card } from '@/components/ui/Card';
 import { IconSymbol } from '@/components/ui/IconSymbol';
-import { ThumbnailImage } from '@/components/ui/OptimizedImage';
-import { Tag } from '@/components/ui/Tag';
-import { Colors, glassBorder, glassSurface, neonGreen, accentSky } from '@/constants/Colors';
+import { Colors, glassBorder, glassSurface, neonGreen, accentSky, herbarium } from '@/constants/Colors';
 import { PageSpacing, Spacing } from '@/constants/Spacing';
-import { TextStyles } from '@/constants/Typography';
+import { TextStyles, FontFamilies } from '@/constants/Typography';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { useNutritionGoals } from '@/hooks/useNutritionGoals';
+import { useRecipes, type PrebakedRecipe } from '@/hooks/useRecipes';
 import { useFeatureAccess } from '@/hooks/useFeatureAccess';
 import { UpgradePrompt } from '@/components/subscription/UpgradePrompt';
 import { Paywall } from '@/components/subscription/Paywall';
-import { getCurrentUser, getUserRecipes, searchRecipes } from '@/lib/supabase';
+import { getCurrentUser } from '@/lib/supabase';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState, useMemo } from 'react';
-import Animated, { FadeInDown, LinearTransition, Easing, FadeIn, FadeOut } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInDown, FadeOut, Easing } from 'react-native-reanimated';
+import {
+  CALORIE_RANGES,
+  DIET_TYPES,
+} from '@/constants/recipeCategories';
 import {
     FlatList,
-    Platform,
-    RefreshControl,
     StyleSheet,
     Text,
     TextInput,
@@ -33,60 +34,11 @@ import {
     ScrollView
 } from 'react-native';
 
-const MOCK_DISCOVER_RECIPES: Recipe[] = [
-  {
-    id: 'd1',
-    user_id: 'system',
-    name: 'High Protein Salmon Bowl',
-    image_url: 'https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=800',
-    total_time: '20 mins',
-    source_type: 'discover',
-    is_favorite: false,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    nutrition_per_serving: { calories: 450, protein: 35 },
-    tags: ['High Protein', 'Under 30 Mins'],
-  },
-  {
-    id: 'd2',
-    user_id: 'system',
-    name: 'Keto Avocado Salad',
-    image_url: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=800',
-    total_time: '15 mins',
-    source_type: 'discover',
-    is_favorite: false,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    nutrition_per_serving: { calories: 320, protein: 8 },
-    tags: ['Keto', 'Quick'],
-  },
-  {
-    id: 'd3',
-    user_id: 'system',
-    name: 'Quinoa Veggie Power Bowl',
-    image_url: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800',
-    total_time: '25 mins',
-    source_type: 'discover',
-    is_favorite: false,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    nutrition_per_serving: { calories: 380, protein: 12 },
-    tags: ['Vegetarian', 'Fiber Rich'],
-  },
-  {
-    id: 'd4',
-    user_id: 'system',
-    name: 'Lemon Herb Grilled Chicken',
-    image_url: 'https://images.unsplash.com/photo-1532550907401-a500c9a57435?w=800',
-    total_time: '30 mins',
-    source_type: 'discover',
-    is_favorite: false,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    nutrition_per_serving: { calories: 290, protein: 42 },
-    tags: ['Low Carb', 'High Protein'],
-  }
-];
+// Feature flag to enable/disable AI recipe generation
+const ENABLE_RECIPE_GENERATION = false;
+
+// Featured recipe IDs - hand-picked from the catalog
+const FEATURED_RECIPE_IDS = ['r001', 'r002', 'r003', 'r004', 'r005', 'r006'];
 
 export default function RecipesScreen() {
   const colorScheme = useColorScheme();
@@ -94,94 +46,84 @@ export default function RecipesScreen() {
   const router = useRouter();
   const { activeGoal } = useNutritionGoals();
   
+  // Pre-baked recipes from JSON catalog with filtering
+  const {
+    filteredRecipes: prebakedRecipes,
+    recipes: allRecipes,
+    tagCategories,
+    filters,
+    loading: recipesLoading,
+    setFilters,
+    toggleTag,
+    setMaxCalories,
+    setSortBy,
+    setSearchQuery: setRecipeSearchQuery,
+    clearFilters,
+    getRecipeById,
+  } = useRecipes();
+
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearchSuggestions, setShowSearchSuggestions] = useState(false);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
-  const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [showGeneratorModal, setShowGeneratorModal] = useState(false);
-  const [activeTab, setActiveTab] = useState<'discover' | 'kitchen'>('discover');
   const [paywallVisible, setPaywallVisible] = useState(false);
+  const [filterSheetVisible, setFilterSheetVisible] = useState(false);
 
-  const { canGenerateRecipes, isPro, showPaywall } = useFeatureAccess();
-
-  // Unified kitchen recipes (all user-added recipes)
-  const kitchenRecipes = recipes;
+  const { canGenerateRecipes, isPro } = useFeatureAccess();
 
   const goalName = activeGoal?.name || 'General Health';
   const proteinGoal = activeGoal?.dailyTargets?.proteinGrams;
+  
+  // Calculate remaining calories for smart filtering
+  const remainingCalories = useMemo(() => {
+    if (!activeGoal?.dailyTargets?.calories) return null;
+    return activeGoal.dailyTargets.calories;
+  }, [activeGoal]);
 
-  // Fetch user and recipes on component mount
+  // Get featured recipes
+  const featuredRecipes = useMemo(() => {
+    return FEATURED_RECIPE_IDS
+      .map(id => getRecipeById(id))
+      .filter((recipe): recipe is PrebakedRecipe => recipe !== undefined);
+  }, [getRecipeById]);
+
+  // Get remaining recipes (excluding featured ones)
+  const remainingRecipes = useMemo(() => {
+    return prebakedRecipes.filter(recipe => !FEATURED_RECIPE_IDS.includes(recipe.id));
+  }, [prebakedRecipes]);
+
+  // Check if a filter is currently active
+  const isFilterActive = (filterValue: string): boolean => {
+    return filters.tags.some(tag => tag.toLowerCase() === filterValue.toLowerCase());
+  };
+
+  // Check if a calorie range is active
+  const isCalorieRangeActive = (max: number): boolean => {
+    return filters.maxCalories === max;
+  };
+
+  // Fetch user on component mount
   useEffect(() => {
-    loadUserAndRecipes();
+    loadUser();
   }, []);
 
-  // Filter recipes based on search query
-  const filteredRecipes = recipes.filter(recipe =>
-    recipe.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (recipe.cuisine_type && recipe.cuisine_type.toLowerCase().includes(searchQuery.toLowerCase())) ||
-    (recipe.tags && recipe.tags.some(tag => 
-      tag.toLowerCase().includes(searchQuery.toLowerCase())
-    ))
-  );
-
-  const loadUserAndRecipes = async () => {
+  const loadUser = async () => {
     try {
       setLoading(true);
-      console.log('🍳 Recipes: Starting to load user and recipes...');
-      
-      // Get current user
       const { user: currentUser } = await getCurrentUser();
-      console.log('🍳 Recipes: Current user:', currentUser?.id);
       setUser(currentUser);
-      
-      if (currentUser) {
-        // Fetch user's recipes
-        console.log('🍳 Recipes: Fetching recipes for user:', currentUser.id);
-        const { data: recipesData, error } = await getUserRecipes(currentUser.id);
-        
-        if (error) {
-          console.error('🍳 Recipes: Error fetching recipes:', error);
-        } else {
-          console.log('🍳 Recipes: Received recipes data:', recipesData);
-          console.log('🍳 Recipes: Number of recipes:', recipesData?.length || 0);
-          setRecipes(recipesData || []);
-        }
-      } else {
-        console.log('🍳 Recipes: No current user found');
-      }
     } catch (error) {
-      console.error('🍳 Recipes: Error loading user and recipes:', error);
+      console.error('Error loading user:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    await loadUserAndRecipes();
-    setRefreshing(false);
-  };
-
-  const handleSearch = async (query: string) => {
+  const handleSearch = (query: string) => {
     setSearchQuery(query);
     setShowSearchSuggestions(query.length > 0);
-    
-    if (query.trim() && user) {
-      try {
-        const { data: searchResults } = await searchRecipes(user.id, query.trim());
-        if (searchResults) {
-          setRecipes(searchResults);
-        }
-      } catch (error) {
-        console.error('Search error:', error);
-      }
-    } else if (!query.trim()) {
-      loadUserAndRecipes();
-      setShowSearchSuggestions(false);
-    }
+    setRecipeSearchQuery(query);
   };
 
   const handleSuggestionPress = async (type: 'search' | 'generate') => {
@@ -189,33 +131,59 @@ export default function RecipesScreen() {
     if (type === 'generate') {
       await handleOpenGenerator();
     }
-    // For 'search', it already filtered the list
   };
 
   const handleOpenGenerator = async () => {
-    // Check if user has Pro access for recipe generation
     const access = canGenerateRecipes();
     if (!access.allowed) {
-      // Show paywall when trying to generate without Pro
-      const success = await showPaywall();
-      if (!success) {
-        setPaywallVisible(true);
-      }
+      setPaywallVisible(true);
       return;
     }
     setShowGeneratorModal(true);
   };
 
-  const handleRecipePress = (recipe: Recipe) => {
-    // Navigate to recipe detail screen
-    console.log('🍳 Recipes: Navigating to recipe detail with ID:', recipe.id);
-    console.log('🍳 Recipes: Recipe object:', JSON.stringify(recipe, null, 2));
+  const handleRecipePress = (recipe: Recipe | PrebakedRecipe) => {
+    const isPrebaked = 'tier' in recipe;
+    if (isPrebaked && (recipe as PrebakedRecipe).tier === 'pro' && !isPro) {
+      setPaywallVisible(true);
+      return;
+    }
     router.push(`/recipe/${recipe.id}`);
   };
 
+  const handleCategoryPress = (filter: string) => {
+    toggleTag(filter);
+  };
+
+  const handleCalorieRangePress = (max: number) => {
+    if (filters.maxCalories === max) {
+      setMaxCalories(null);
+    } else {
+      setMaxCalories(max);
+    }
+  };
+  
+  // Convert PrebakedRecipe to Recipe format for card display
+  const prebakedToRecipe = (prebaked: PrebakedRecipe): Recipe => ({
+    id: prebaked.id,
+    user_id: 'system',
+    name: prebaked.name,
+    description: prebaked.description,
+    image_url: prebaked.image_url,
+    total_time: prebaked.total_time,
+    source_type: 'discover',
+    is_favorite: false,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    nutrition_per_serving: prebaked.nutrition_per_serving,
+    tags: prebaked.tags.map(tag => 
+      tag.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
+    ),
+  });
+
   const SectionHeader = ({ title }: { title: string }) => (
     <View style={styles.sectionHeader}>
-      <Text style={styles.sectionTitle}>{title.toUpperCase()}</Text>
+      <Text style={styles.sectionTitle}>{title}</Text>
     </View>
   );
 
@@ -223,7 +191,7 @@ export default function RecipesScreen() {
     if (!showSearchSuggestions || !searchQuery) return null;
 
     return (
-    <Animated.View 
+      <Animated.View 
         entering={FadeIn.duration(200)} 
         exiting={FadeOut.duration(200)}
         style={[styles.suggestionsOverlay, { backgroundColor: colors.background }]}
@@ -234,88 +202,166 @@ export default function RecipesScreen() {
         >
           <IconSymbol name="magnifyingglass" size={20} color={colors.icon} />
           <Text style={[TextStyles.body, { color: colors.text }]}>
-            Search my recipes for <Text style={{ fontWeight: 'bold' }}>"{searchQuery}"</Text>
+            Search recipes for <Text style={{ fontWeight: 'bold' }}>"{searchQuery}"</Text>
           </Text>
         </TouchableOpacity>
         
-        <TouchableOpacity 
-          style={[styles.suggestionItem, { borderTopWidth: 1, borderTopColor: glassBorder }]}
-          onPress={() => handleSuggestionPress('generate')}
-        >
-          <IconSymbol name="sparkles" size={20} color={accentSky} />
-          <Text style={[TextStyles.body, { color: colors.text }]}>
-            ✨ Generate a new <Text style={{ fontWeight: 'bold' }}>{searchQuery}</Text> recipe for my goal ({goalName})
-          </Text>
-        </TouchableOpacity>
+        {ENABLE_RECIPE_GENERATION && (
+          <TouchableOpacity 
+            style={[styles.suggestionItem, { borderTopWidth: 1, borderTopColor: glassBorder }]}
+            onPress={() => handleSuggestionPress('generate')}
+          >
+            <IconSymbol name="sparkles" size={20} color={accentSky} />
+            <Text style={[TextStyles.body, { color: colors.text }]}>
+              Generate a new <Text style={{ fontWeight: 'bold' }}>{searchQuery}</Text> recipe for my goal ({goalName})
+            </Text>
+          </TouchableOpacity>
+        )}
       </Animated.View>
     );
   };
 
-  const renderDiscoverTab = () => (
-    <View style={styles.tabContent}>
-      <SectionHeader title="Suggested for You" />
-      <Text style={[TextStyles.bodySmall, { color: colors.icon, marginBottom: Spacing.md, marginTop: -Spacing.xs }]}>
-        Browse our preselected and curated recipes
-      </Text>
-      <FlatList
-        data={MOCK_DISCOVER_RECIPES}
-        renderItem={({ item }) => (
-          <RecipeCardDiscover 
-        recipe={item} 
-        onPress={() => handleRecipePress(item)}
+  // Check if any filters are active
+  const hasActiveFilters = filters.tags.length > 0 || filters.maxCalories !== null || filters.searchQuery.trim() !== '';
+
+  const renderContent = () => (
+    <View style={styles.content}>
+      {/* Show filter summary only when filters are active */}
+      {hasActiveFilters && (
+        <RecipeFilters
+          filters={filters}
+          onOpenFilterSheet={() => setFilterSheetVisible(true)}
+          onRemoveTag={toggleTag}
+          onRemoveMaxCalories={() => setMaxCalories(null)}
+          onRemoveSort={() => setSortBy('default')}
+          onClearFilters={clearFilters}
+        />
+      )}
+
+      {/* Detailed Filter Sheet */}
+      <RecipeFilterSheet
+        visible={filterSheetVisible}
+        onClose={() => setFilterSheetVisible(false)}
+        filters={filters}
+        onApply={setFilters}
+        tagCategories={tagCategories}
+        remainingCalories={remainingCalories}
+      />
+
+      {/* Pick Your Diet - 3-column Grid */}
+      <Animated.View entering={FadeInDown.duration(600).delay(100).easing(Easing.out(Easing.quad))}>
+        <SectionHeader title="Pick Your Diet" />
+        <View style={styles.categoryGrid}>
+          {DIET_TYPES.map((diet) => (
+            <View key={diet.filter} style={styles.categoryGridItem}>
+              <CategoryCard
+                icon={diet.icon}
+                label={diet.label}
+                onPress={() => handleCategoryPress(diet.filter)}
+                isSelected={isFilterActive(diet.filter)}
+              />
+            </View>
+          ))}
+        </View>
+      </Animated.View>
+
+      {/* Recipes by Calorie Range - 3-column Grid */}
+      <Animated.View entering={FadeInDown.duration(600).delay(200).easing(Easing.out(Easing.quad))}>
+        <SectionHeader title="Recipes by Calorie Range" />
+        <View style={styles.categoryGrid}>
+          {CALORIE_RANGES.map((range) => (
+            <View key={range.label} style={styles.categoryGridItem}>
+              <CategoryCard
+                icon={range.icon}
+                label={range.label}
+                onPress={() => handleCalorieRangePress(range.max)}
+                isSelected={isCalorieRangeActive(range.max)}
+              />
+            </View>
+          ))}
+        </View>
+      </Animated.View>
+
+      {/* Featured Recipes - Horizontal Scroll */}
+      {!hasActiveFilters && featuredRecipes.length > 0 && (
+        <Animated.View entering={FadeInDown.duration(600).delay(300).easing(Easing.out(Easing.quad))}>
+          <SectionHeader title="Featured" />
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.featuredScroll}
+          >
+            {featuredRecipes.map((item) => (
+              <RecipeCardDiscover 
+                key={item.id}
+                recipe={prebakedToRecipe(item)} 
+                onPress={() => handleRecipePress(item)}
+                isLocked={item.tier === 'pro' && !isPro}
+                size="large"
+              />
+            ))}
+          </ScrollView>
+        </Animated.View>
+      )}
+
+      {/* All Recipes Grid */}
+      <Animated.View entering={FadeInDown.duration(600).delay(hasActiveFilters ? 300 : 400).easing(Easing.out(Easing.quad))}>
+        <SectionHeader title={hasActiveFilters ? "Matching Recipes" : "All Recipes"} />
+        <Text style={[TextStyles.bodySmall, { color: colors.icon, marginBottom: Spacing.md, marginTop: -Spacing.xs }]}>
+          {hasActiveFilters ? prebakedRecipes.length : remainingRecipes.length} recipes
+        </Text>
+        
+        {(hasActiveFilters ? prebakedRecipes : remainingRecipes).length === 0 ? (
+          <View style={styles.emptyPillar}>
+            <IconSymbol name="magnifyingglass" size={32} color={colors.icon} />
+            <Text style={[TextStyles.body, { color: colors.icon, textAlign: 'center', marginTop: Spacing.sm }]}>
+              No recipes match your filters
+            </Text>
+            <TouchableOpacity onPress={clearFilters} style={styles.clearFiltersButton}>
+              <Text style={[TextStyles.bodySmall, { color: neonGreen, fontWeight: '600' }]}>
+                Clear all filters
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <FlatList
+            data={hasActiveFilters ? prebakedRecipes : remainingRecipes}
+            renderItem={({ item }) => (
+              <RecipeCardDiscover 
+                recipe={prebakedToRecipe(item)} 
+                onPress={() => handleRecipePress(item)}
+                isLocked={item.tier === 'pro' && !isPro}
+              />
+            )}
+            keyExtractor={(item) => item.id}
+            numColumns={2}
+            scrollEnabled={false}
+            contentContainerStyle={styles.recipeGrid}
           />
         )}
-        keyExtractor={(item) => item.id}
-        numColumns={2}
-        scrollEnabled={false}
-        contentContainerStyle={styles.discoverGrid}
-      />
-    </View>
-  );
-
-  const renderKitchenTab = () => (
-    <View style={styles.tabContent}>
-      <SectionHeader title="Your Creations" />
-      {kitchenRecipes.length > 0 ? (
-        kitchenRecipes.map((recipe) => (
-          <RecipeCardAI 
-            key={recipe.id} 
-            recipe={recipe} 
-            onPress={() => handleRecipePress(recipe)} 
-          />
-        ))
-      ) : (
-        <View style={styles.emptyPillar}>
-          <Text style={[TextStyles.body, { color: colors.icon, textAlign: 'center' }]}>
-            Your kitchen is empty. Tap 'Generate' or scan a meal to start your collection!
-          </Text>
-        </View>
-      )}
+      </Animated.View>
     </View>
   );
 
   return (
     <PageContainer>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-      <PageHeader
-        title="Recipes"
-          subtitle="Your digital wellness cookbook"
-      />
+        <PageHeader title="Recipes" />
 
-      {/* Generate Recipe Button */}
-      {!loading && user && (
-        <TouchableOpacity
-          style={[styles.generateButton, { backgroundColor: neonGreen }]}
-          onPress={handleOpenGenerator}
-          activeOpacity={0.8}
-        >
+        {/* Generate Recipe Button - Hidden when ENABLE_RECIPE_GENERATION is false */}
+        {ENABLE_RECIPE_GENERATION && !loading && user && (
+          <TouchableOpacity
+            style={[styles.generateButton, { backgroundColor: neonGreen }]}
+            onPress={handleOpenGenerator}
+            activeOpacity={0.8}
+          >
             <View style={styles.generateIconContainer}>
-          <IconSymbol name="sparkles" size={20} color="#000000" />
+              <IconSymbol name="sparkles" size={20} color="#000000" />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[TextStyles.button, { color: '#000000' }]}>
-            Generate Recipe
-          </Text>
+                Generate Recipe
+              </Text>
               <Text style={[TextStyles.caption, { color: 'rgba(0,0,0,0.6)', fontWeight: '600' }]}>
                 {proteinGoal ? `Based on your ${proteinGoal}g protein goal` : 'Custom AI creation'}
               </Text>
@@ -325,51 +371,50 @@ export default function RecipesScreen() {
                 <Text style={styles.proBadgeText}>PRO</Text>
               </View>
             )}
-        </TouchableOpacity>
-      )}
+          </TouchableOpacity>
+        )}
 
-      {/* Search and Controls */}
+        {/* Search and Filter Controls */}
         <View style={styles.searchWrapper}>
-        <View style={[styles.searchContainer, { backgroundColor: glassSurface, borderColor: glassBorder, borderWidth: 1 }]}>
-          <IconSymbol name="magnifyingglass" size={20} color={colors.icon} />
-          <TextInput
-            style={[styles.searchInput, { color: colors.text }]}
-              placeholder="Search salmon, keto, high protein..."
-            placeholderTextColor={colors.icon}
-            value={searchQuery}
-            onChangeText={handleSearch}
-              onFocus={() => searchQuery && setShowSearchSuggestions(true)}
-          />
+          <View style={styles.searchRow}>
+            <View style={[styles.searchContainer, { backgroundColor: glassSurface, borderColor: glassBorder, borderWidth: 1 }]}>
+              <IconSymbol name="magnifyingglass" size={20} color={colors.icon} />
+              <TextInput
+                style={[styles.searchInput, { color: colors.text }]}
+                placeholder="Search salmon, keto, high protein..."
+                placeholderTextColor={colors.icon}
+                value={searchQuery}
+                onChangeText={handleSearch}
+                onFocus={() => searchQuery && setShowSearchSuggestions(true)}
+              />
+            </View>
+            <TouchableOpacity 
+              style={styles.filterButton}
+              onPress={() => setFilterSheetVisible(true)}
+            >
+              <IconSymbol name="slider.horizontal.3" size={20} color={herbarium.textPrimary} />
+            </TouchableOpacity>
           </View>
           <SearchSuggestions />
         </View>
         
-        {/* Pillar Tabs */}
-        <View style={styles.tabsContainer}>
-          <TouchableOpacity 
-            onPress={() => setActiveTab('discover')}
-            style={[styles.tab, activeTab === 'discover' && { borderBottomColor: neonGreen, borderBottomWidth: 2 }]}
-          >
-            <Text style={[styles.tabText, { color: activeTab === 'discover' ? colors.text : colors.icon }]}>Discover</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setActiveTab('kitchen')}
-            style={[styles.tab, activeTab === 'kitchen' && { borderBottomColor: accentSky, borderBottomWidth: 2 }]}
-          >
-            <Text style={[styles.tabText, { color: activeTab === 'kitchen' ? colors.text : colors.icon }]}>AI Kitchen</Text>
-          </TouchableOpacity>
-      </View>
+        {/* UpgradePrompt for AI Recipes - Hidden when ENABLE_RECIPE_GENERATION is false */}
+        {ENABLE_RECIPE_GENERATION && !isPro && (
+          <UpgradePrompt 
+            feature="recipes"
+            title="Unlock AI Recipes"
+            message="Upgrade to Pro to generate custom recipes from your meals, search our full library, and save your favorites."
+            style={{ marginHorizontal: PageSpacing.containerPadding, marginBottom: Spacing.lg }}
+          />
+        )}
 
-        {/* Active Tab Content */}
-      {loading ? (
+        {/* Content */}
+        {(loading || recipesLoading) ? (
           <View style={styles.loadingContainer}>
             <Text style={[TextStyles.body, { color: colors.icon }]}>Loading recipes...</Text>
-        </View>
-      ) : (
-          <Animated.View key={activeTab} entering={FadeIn.duration(300)}>
-            {activeTab === 'discover' && renderDiscoverTab()}
-            {activeTab === 'kitchen' && renderKitchenTab()}
-          </Animated.View>
+          </View>
+        ) : (
+          renderContent()
         )}
       </ScrollView>
 
@@ -380,8 +425,7 @@ export default function RecipesScreen() {
           userId={user.id}
           onClose={() => setShowGeneratorModal(false)}
           onRecipeGenerated={() => {
-            loadUserAndRecipes();
-            setActiveTab('kitchen');
+            loadUser();
           }}
         />
       )}
@@ -425,9 +469,15 @@ const styles = StyleSheet.create({
   searchWrapper: {
     position: 'relative',
     zIndex: 10,
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.md,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
   },
   searchContainer: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
@@ -435,12 +485,19 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     gap: 12,
   },
+  filterButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: herbarium.surface1,
+    borderWidth: 1,
+    borderColor: herbarium.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   searchInput: {
     flex: 1,
     fontSize: 16,
-    ...Platform.select({
-      web: { outlineStyle: 'none' }
-    }),
   },
   suggestionsOverlay: {
     position: 'absolute',
@@ -465,63 +522,34 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 12,
   },
-  tabsContainer: {
-    flexDirection: 'row',
-    marginBottom: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: glassBorder,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  tabText: {
-    ...TextStyles.body,
-    fontWeight: '600',
-  },
-  tabContent: {
+  content: {
     flex: 1,
   },
   sectionHeader: {
-    marginBottom: Spacing.md,
-    marginTop: Spacing.sm,
+    marginBottom: Spacing.sm,
+    marginTop: Spacing.lg,
   },
   sectionTitle: {
-    ...TextStyles.caption,
-    color: 'rgba(255, 255, 255, 0.4)', // Muted Sage approximation
-    fontWeight: 'bold',
-    letterSpacing: 1,
+    fontFamily: FontFamilies.headingBold,
+    fontSize: 18,
+    color: herbarium.textPrimary,
+    letterSpacing: -0.2,
   },
-  discoverGrid: {
-    paddingBottom: Spacing.lg,
-  },
-  scannedItem: {
-    marginBottom: Spacing.sm,
-  },
-  scannedCard: {
+  categoryGrid: {
     flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 16,
-    borderWidth: 1,
-    gap: 12,
+    flexWrap: 'wrap',
+    marginHorizontal: -4,
   },
-  scannedImage: {
-    width: 50,
-    height: 50,
-    borderRadius: 8,
+  categoryGridItem: {
+    width: '33.33%',
+    paddingHorizontal: 4,
+    marginBottom: 8,
   },
-  scannedPlaceholder: {
-    width: 50,
-    height: 50,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    alignItems: 'center',
-    justifyContent: 'center',
+  featuredScroll: {
+    paddingRight: Spacing.md,
   },
-  scannedInfo: {
-    flex: 1,
+  recipeGrid: {
+    paddingBottom: Spacing.md,
   },
   emptyPillar: {
     padding: 40,
@@ -530,6 +558,11 @@ const styles = StyleSheet.create({
     backgroundColor: glassSurface,
     borderRadius: 20,
     marginTop: Spacing.md,
+  },
+  clearFiltersButton: {
+    marginTop: Spacing.md,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
   },
   loadingContainer: {
     padding: 40,
@@ -548,4 +581,3 @@ const styles = StyleSheet.create({
     fontSize: 10,
   },
 });
-

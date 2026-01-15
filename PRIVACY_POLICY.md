@@ -31,3 +31,12 @@ You can delete your account and all associated data at any time through the app 
 ## 6. Contact Us
 If you have any questions about this Privacy Policy, please contact us at support@mealscanner.app.
 
+
+
+
+
+
+
+
+
+

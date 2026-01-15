@@ -59,10 +59,10 @@ const styles = StyleSheet.create({
   container: {
     overflow: 'hidden',
     borderRadius: 24,
-    backgroundColor: 'rgba(2, 44, 34, 0.6)', // Deep green tint
+    backgroundColor: glassSurface, // Use global glassSurface token
   },
   webCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: glassSurface,
     backdropFilter: 'blur(20px)',
     borderRadius: 24,
     overflow: 'hidden',

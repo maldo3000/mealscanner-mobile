@@ -14,6 +14,11 @@ interface RecipeCardAIProps {
   onPress: () => void;
 }
 
+const formatMacro = (val: number | undefined | null) => {
+  if (val === undefined || val === null) return '0';
+  return Number(val.toFixed(1)).toString();
+};
+
 export function RecipeCardAI({ recipe, onPress }: RecipeCardAIProps) {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
@@ -71,7 +76,7 @@ export function RecipeCardAI({ recipe, onPress }: RecipeCardAIProps) {
               {recipe.nutrition_per_serving?.calories && (
                 <View style={styles.metaItem}>
                   <IconSymbol name="flame" size={12} color={neonGreen} />
-                  <Text style={styles.metaText}>{Math.round(recipe.nutrition_per_serving.calories)} kcal</Text>
+                  <Text style={styles.metaText}>{formatMacro(recipe.nutrition_per_serving.calories)} kcal</Text>
                 </View>
               )}
             </View>

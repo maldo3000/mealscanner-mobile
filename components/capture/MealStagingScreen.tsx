@@ -1,5 +1,7 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -14,22 +16,24 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { BlurView } from 'expo-blur';
 import { Image } from 'expo-image';
 
 import { Button } from '@/components/ui/Button';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { Input } from '@/components/ui/Input';
-import { Colors, glassBorder, glassSurface, neonGreen } from '@/constants/Colors';
+import { bgPrimary, Colors, glassBorder, glassSurface, neonGreen } from '@/constants/Colors';
 import { PageSpacing, Spacing } from '@/constants/Spacing';
 import { FontFamilies, TextStyles } from '@/constants/Typography';
+import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { transcribeAudioDirect } from '@/lib/supabase';
 import { AnalysisLoadingOverlay, AnalysisStatus } from './AnalysisLoadingOverlay';
 import type { DraftMealItem } from './types';
 
 const MAX_PHOTOS = 4 as const;
 
 export interface MealStagingScreenProps {
+  userId: string;
   items: DraftMealItem[];
   contextText: string;
   analysisStatus: AnalysisStatus;
@@ -116,6 +120,7 @@ function MealItemRow(props: MealItemRowProps): React.ReactElement {
 
 export function MealStagingScreen(props: MealStagingScreenProps): React.ReactElement {
   const {
+    userId,
     items,
     contextText,
     analysisStatus,
@@ -138,6 +143,61 @@ export function MealStagingScreen(props: MealStagingScreenProps): React.ReactEle
 
   const [showContextModal, setShowContextModal] = useState<boolean>(false);
   const [tempContext, setTempContext] = useState<string>(contextText);
+  const [isTranscribing, setIsTranscribing] = useState<boolean>(false);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState<boolean>(false);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      () => setIsKeyboardVisible(true)
+    );
+    const hideSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setIsKeyboardVisible(false)
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  const handleAudioTranscription = useCallback(async (audioUri: string) => {
+    if (!audioUri) return;
+    setIsTranscribing(true);
+    try {
+      const { data, error } = await transcribeAudioDirect(audioUri, userId);
+      if (error) throw error;
+      if (data?.transcript) {
+        setTempContext((prev) => {
+          const trimmed = prev.trim();
+          return trimmed ? `${trimmed} ${data.transcript}` : data.transcript;
+        });
+      }
+    } catch (e) {
+      Alert.alert('Transcription Error', 'Failed to transcribe audio. Please try again or type your feedback.');
+    } finally {
+      setIsTranscribing(false);
+    }
+  }, [userId]);
+
+  const { isRecording, startRecording, stopRecording } = useAudioRecorder({
+    onRecordingComplete: handleAudioTranscription,
+    onError: (error) => {
+      Alert.alert('Recording Error', error.message);
+    },
+  });
+
+  const handleVoiceInput = useCallback(async () => {
+    if (isRecording) {
+      await stopRecording();
+      return;
+    }
+    try {
+      await startRecording();
+    } catch {
+      Alert.alert('Error', 'Failed to start recording. Please check microphone permissions.');
+    }
+  }, [isRecording, startRecording, stopRecording]);
 
   const isAnalyzing = analysisStatus === 'analyzing' || analysisStatus === 'success';
   const canAnalyze = items.length > 0 && analysisStatus === 'idle';
@@ -152,15 +212,21 @@ export function MealStagingScreen(props: MealStagingScreenProps): React.ReactEle
     setShowContextModal(true);
   }, [contextText]);
 
-  const closeContext = useCallback((): void => {
+  const closeContext = useCallback(async (): Promise<void> => {
+    if (isRecording) {
+      await stopRecording();
+    }
     setShowContextModal(false);
     setTempContext('');
-  }, []);
+  }, [isRecording, stopRecording]);
 
   const saveContext = useCallback(async (): Promise<void> => {
+    if (isRecording) {
+      await stopRecording();
+    }
     await onSaveContext(tempContext);
     setShowContextModal(false);
-  }, [onSaveContext, tempContext]);
+  }, [isRecording, onSaveContext, stopRecording, tempContext]);
 
   return (
     <View style={styles.container}>
@@ -284,7 +350,7 @@ export function MealStagingScreen(props: MealStagingScreenProps): React.ReactEle
               behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
               style={styles.modalContainer}
             >
-              <BlurView intensity={20} tint="dark" style={styles.modalContent}>
+              <View style={styles.modalCard}>
                 <View style={styles.modalHeader}>
                   <Text style={[TextStyles.h3, { color: colors.text }]}>Add context</Text>
                   <TouchableOpacity onPress={closeContext} style={styles.modalClose} activeOpacity={0.85}>
@@ -301,9 +367,42 @@ export function MealStagingScreen(props: MealStagingScreenProps): React.ReactEle
                   multiline
                   numberOfLines={7}
                   textAlignVertical="top"
+                  rightIcon={
+                    !isKeyboardVisible && (
+                      <TouchableOpacity
+                        onPress={handleVoiceInput}
+                        disabled={isTranscribing}
+                        activeOpacity={0.7}
+                        style={styles.voiceInputButton}
+                      >
+                        <IconSymbol
+                          name={isRecording ? 'stop.fill' : isTranscribing ? 'hourglass' : 'mic'}
+                          size={26}
+                          color={isRecording ? '#EF4444' : neonGreen}
+                        />
+                      </TouchableOpacity>
+                    )
+                  }
                   containerStyle={{ marginBottom: Spacing.lg }}
                   style={{ minHeight: 140 }}
                 />
+
+                {/* Recording indicator */}
+                {isRecording && (
+                  <View style={styles.recordingIndicator}>
+                    <View style={styles.recordingDot} />
+                    <Text style={[TextStyles.bodySmall, { color: '#EF4444' }]}>Recording… tap mic to stop</Text>
+                  </View>
+                )}
+
+                {/* Transcribing indicator */}
+                {isTranscribing && (
+                  <View style={styles.transcribingIndicator}>
+                    <ActivityIndicator size="small" color={neonGreen} />
+                    <Text style={[TextStyles.bodySmall, { color: colors.icon }]}>Transcribing…</Text>
+                  </View>
+                )}
+
                 <View style={styles.modalActions}>
                   <Button variant="secondary" onPress={closeContext} style={styles.modalButton}>
                     Cancel
@@ -312,7 +411,7 @@ export function MealStagingScreen(props: MealStagingScreenProps): React.ReactEle
                     Save
                   </Button>
                 </View>
-              </BlurView>
+              </View>
             </KeyboardAvoidingView>
           </View>
         </TouchableWithoutFeedback>
@@ -513,36 +612,60 @@ const styles = StyleSheet.create({
 
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.65)',
+    backgroundColor: 'rgba(0,0,0,0.7)',
     justifyContent: 'center',
+    alignItems: 'center',
     padding: Spacing.lg,
   },
   modalContainer: {
     width: '100%',
     maxWidth: 520,
-    alignSelf: 'center',
   },
-  modalContent: {
+  modalCard: {
+    backgroundColor: bgPrimary,
     borderRadius: 20,
-    padding: Spacing.lg,
-    overflow: 'hidden',
+    padding: Spacing.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
   },
   modalHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 12,
     marginBottom: Spacing.md,
   },
   modalClose: {
-    padding: 6,
+    padding: 4,
   },
   modalActions: {
     flexDirection: 'row',
-    gap: 12,
+    gap: Spacing.md,
   },
   modalButton: {
     flex: 1,
+  },
+  voiceInputButton: {
+    padding: Spacing.xs,
+  },
+  recordingIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginTop: -Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  recordingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#EF4444',
+  },
+  transcribingIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginTop: -Spacing.md,
+    marginBottom: Spacing.md,
   },
 });
 

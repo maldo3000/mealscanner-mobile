@@ -120,16 +120,16 @@ export function RulerSlider({ min, max, value, onValueChange, unit, step = 1, fo
 const styles = StyleSheet.create({
   container: {
     width: '100%',
-    marginVertical: 8,
+    marginVertical: 4,
   },
   valueContainer: {
     flexDirection: 'row',
     alignItems: 'baseline',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 8,
   },
   valueText: {
-    fontSize: 52,
+    fontSize: 32,
     color: neonGreen,
     fontFamily: 'Telegraf_800UltraBold',
     includeFontPadding: false,
@@ -138,24 +138,24 @@ const styles = StyleSheet.create({
     ...TextStyles.body,
     color: textMuted,
     marginLeft: 6,
-    fontSize: 20,
+    fontSize: 16,
   },
   rulerWrapper: {
-    height: 50,
+    height: 40,
   },
   rulerContainer: {
-    height: 50,
+    height: 40,
     justifyContent: 'center',
   },
   rulerTrack: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    height: 40,
+    height: 32,
   },
   rulerItem: {
     alignItems: 'center',
     justifyContent: 'flex-end',
-    height: 40,
+    height: 32,
   },
   rulerLine: {
     borderRadius: 1,

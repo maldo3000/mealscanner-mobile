@@ -2,7 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, View, ViewProps } from 'react-native';
 
 import { Colors } from '@/constants/Colors';
-import { PageSpacing, Spacing } from '@/constants/Spacing';
+import { Spacing } from '@/constants/Spacing';
 import { TextStyles } from '@/constants/Typography';
 import { useColorScheme } from '@/hooks/useColorScheme';
 
@@ -12,6 +12,8 @@ interface PageHeaderProps extends ViewProps {
   rightAction?: React.ReactNode;
   leftAction?: React.ReactNode;
   showBottomBorder?: boolean;
+  titleStyle?: any;
+  subtitleStyle?: any;
 }
 
 /**
@@ -24,6 +26,8 @@ export function PageHeader({
   rightAction,
   leftAction,
   showBottomBorder = false,
+  titleStyle,
+  subtitleStyle,
   style,
   ...props
 }: PageHeaderProps) {
@@ -52,7 +56,7 @@ export function PageHeader({
         )}
         
         <View style={styles.titleContainer}>
-          <Text style={[TextStyles.h1, { color: colors.text, fontSize: 44, lineHeight: 52 }]}>
+          <Text style={[TextStyles.h1, { color: colors.text, fontSize: 44, lineHeight: 52 }, titleStyle]}>
             {title}
           </Text>
           {subtitle && (
@@ -60,6 +64,7 @@ export function PageHeader({
               style={[
                 TextStyles.bodySmall,
                 { color: colors.icon, marginTop: Spacing.xs },
+                subtitleStyle
               ]}
             >
               {subtitle}

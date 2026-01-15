@@ -5,7 +5,9 @@ import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { AnimatedTabIcon } from '@/components/ui/AnimatedTabIcon';
 import { CustomTabBar } from '@/components/ui/CustomTabBar';
+import { BrandLogo } from '@/components/ui/BrandLogo';
 import { CaptureActionSheet } from '@/components/capture/CaptureActionSheet';
+import { GlobalCaptureController } from '@/components/capture/GlobalCaptureController';
 import { Colors, bgPrimary } from '@/constants/Colors';
 import { TextStyles } from '@/constants/Typography';
 import { useColorScheme } from '@/hooks/useColorScheme';
@@ -37,10 +39,10 @@ const navigationItems = [
     href: '/(tabs)/recipes'
   },
   {
-    name: 'settings',
+    name: 'profile',
     title: 'Profile',
     icon: 'person.circle',
-    href: '/(tabs)/settings'
+    href: '/(tabs)/profile'
   }
 ];
 
@@ -63,10 +65,7 @@ function SidebarLayout() {
       <View style={[styles.sidebar, { backgroundColor: colors.surface, borderRightColor: colors.border }]}>
         {/* Logo/Header */}
         <View style={styles.sidebarHeader}>
-          <View style={[styles.logoContainer, { backgroundColor: colors.tint }]}>
-            <IconSymbol name="fork.knife" size={24} color="white" />
-          </View>
-          <Text style={[TextStyles.h3, { color: colors.text }]}>MealScanner</Text>
+          <BrandLogo size="lg" textColor={colors.text} />
         </View>
 
         {/* Navigation Items */}
@@ -105,8 +104,9 @@ function SidebarLayout() {
         {/* Footer */}
         <View style={styles.sidebarFooter}>
           <View style={styles.versionInfo}>
-            <Text style={[TextStyles.bodySmall, { color: colors.icon }]}>
-              MealScanner v0.1
+            <BrandLogo size="sm" textColor={colors.icon} />
+            <Text style={[TextStyles.bodySmall, { color: colors.icon, marginTop: 4 }]}>
+              v0.1
             </Text>
           </View>
         </View>
@@ -124,13 +124,15 @@ export default function TabLayout() {
   const colorScheme = useColorScheme();
   const router = useRouter();
   const [captureSheetVisible, setCaptureSheetVisible] = useState(false);
+  const [captureAction, setCaptureAction] = useState<'snap' | 'describe' | 'log' | 'recipe' | null>(null);
+  const [isCaptureVisible, setIsCaptureVisible] = useState(false);
 
   // Handle capture action selection from the action sheet
   const handleCaptureAction = useCallback((action: 'snap' | 'describe' | 'log' | 'recipe') => {
     setCaptureSheetVisible(false);
-    // Navigate to log screen with the action parameter
-    router.push({ pathname: '/(tabs)/log', params: { action } });
-  }, [router]);
+    setCaptureAction(action);
+    setIsCaptureVisible(true);
+  }, []);
 
   const handleOpenCaptureSheet = useCallback(() => {
     setCaptureSheetVisible(true);
@@ -138,6 +140,11 @@ export default function TabLayout() {
 
   const handleCloseCaptureSheet = useCallback(() => {
     setCaptureSheetVisible(false);
+  }, []);
+
+  const handleCloseCapture = useCallback(() => {
+    setCaptureAction(null);
+    setIsCaptureVisible(false);
   }, []);
 
   // Use sidebar layout on web, bottom tabs on mobile
@@ -192,7 +199,7 @@ export default function TabLayout() {
           }}
         />
         <Tabs.Screen
-          name="settings"
+          name="profile"
           options={{
             title: 'Profile',
             tabBarIcon: ({ color, focused }) => (
@@ -217,6 +224,13 @@ export default function TabLayout() {
         onLog={() => handleCaptureAction('log')}
         onCaptureRecipe={() => handleCaptureAction('recipe')}
       />
+
+      {/* Global Capture Controller Overlay */}
+      <GlobalCaptureController
+        activeAction={captureAction}
+        isVisible={isCaptureVisible}
+        onClose={handleCloseCapture}
+      />
     </>
   );
 }
@@ -239,13 +253,6 @@ const styles = StyleSheet.create({
     gap: 12,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(107, 114, 128, 0.1)',
-  },
-  logoContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   navigation: {
     flex: 1,

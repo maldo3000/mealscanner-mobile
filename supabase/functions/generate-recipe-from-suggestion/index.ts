@@ -17,6 +17,7 @@ interface GenerateRecipeRequest {
     difficulty?: 'Easy' | 'Medium' | 'Hard';
   };
   user_id: string;
+  is_pro?: boolean;
   nutrition_goals?: {
     dailyTargets: {
       calories: number;
@@ -68,13 +69,23 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { suggestion, user_id, nutrition_goals } = await req.json() as GenerateRecipeRequest;
+    const { suggestion, user_id, is_pro, nutrition_goals } = await req.json() as GenerateRecipeRequest;
 
     if (!suggestion || !user_id) {
       return new Response(
         JSON.stringify({ error: 'Missing required fields: suggestion and user_id' }),
         { 
           status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    if (!is_pro) {
+      return new Response(
+        JSON.stringify({ error: 'Recipe generation is a Pro feature.' }),
+        { 
+          status: 403, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         }
       );

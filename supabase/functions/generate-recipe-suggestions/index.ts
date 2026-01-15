@@ -9,6 +9,7 @@ const corsHeaders = {
 interface RecipeSuggestionRequest {
   user_input: string;
   user_id: string;
+  is_pro?: boolean;
   nutrition_goals?: {
     dailyTargets: {
       calories: number;
@@ -43,13 +44,23 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { user_input, user_id, nutrition_goals } = await req.json() as RecipeSuggestionRequest;
+    const { user_input, user_id, is_pro, nutrition_goals } = await req.json() as RecipeSuggestionRequest;
 
     if (!user_input || !user_id) {
       return new Response(
         JSON.stringify({ error: 'Missing required fields: user_input and user_id' }),
         { 
           status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    if (!is_pro) {
+      return new Response(
+        JSON.stringify({ error: 'Recipe suggestions are a Pro feature.' }),
+        { 
+          status: 403, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         }
       );
@@ -123,7 +134,7 @@ function generateSuggestions(
       description: 'Tender chicken breast marinated in lemon and herbs, served with roasted vegetables',
       estimated_calories: targetCalories,
       estimated_protein: targetProtein,
-      tags: ['High-Protein', 'Healthy', wantsQuick ? 'Quick & Easy' : undefined].filter(Boolean) as string[],
+      tags: ['Protein-heavy', 'Balanced', wantsQuick ? 'Quick & Easy' : undefined].filter(Boolean) as string[],
       cuisine_type: 'Mediterranean',
       difficulty: wantsQuick ? 'Easy' : 'Medium',
     });
@@ -136,7 +147,7 @@ function generateSuggestions(
       description: 'Nutritious quinoa bowl with roasted vegetables, chickpeas, and tahini dressing',
       estimated_calories: Math.round(targetCalories * 0.9),
       estimated_protein: Math.round(targetProtein * 0.8),
-      tags: ['Vegetarian', 'Healthy', 'High-Fibre'].filter(Boolean) as string[],
+      tags: ['Vegetarian', 'Balanced'].filter(Boolean) as string[],
       cuisine_type: 'Mediterranean',
       difficulty: 'Easy',
     });
@@ -162,7 +173,7 @@ function generateSuggestions(
       description: 'Omega-3 rich salmon baked with herbs and served with steamed vegetables',
       estimated_calories: Math.round(targetCalories * 0.95),
       estimated_protein: targetProtein,
-      tags: ['Healthy', 'High-Protein', 'Omega-3'].filter(Boolean) as string[],
+      tags: ['Balanced', 'Protein-heavy', 'Omega-3'].filter(Boolean) as string[],
       cuisine_type: 'Mediterranean',
       difficulty: 'Easy',
     });
@@ -175,7 +186,7 @@ function generateSuggestions(
       description: 'Tender chicken glazed with teriyaki sauce over brown rice with steamed broccoli',
       estimated_calories: targetCalories,
       estimated_protein: targetProtein,
-      tags: ['High-Protein', 'Quick & Easy'].filter(Boolean) as string[],
+      tags: ['Protein-heavy', 'Quick & Easy'].filter(Boolean) as string[],
       cuisine_type: 'Asian',
       difficulty: 'Easy',
     });
@@ -188,7 +199,7 @@ function generateSuggestions(
       description: 'Bell peppers stuffed with lean ground turkey, quinoa, and Mediterranean spices',
       estimated_calories: Math.round(targetCalories * 0.9),
       estimated_protein: Math.round(targetProtein * 0.9),
-      tags: ['Healthy', 'High-Protein'],
+      tags: ['Balanced', 'Protein-heavy'],
       cuisine_type: 'Mediterranean',
       difficulty: 'Medium',
     },
@@ -197,7 +208,7 @@ function generateSuggestions(
       description: 'Aromatic Thai curry with mixed vegetables and tofu in coconut milk',
       estimated_calories: Math.round(targetCalories * 0.85),
       estimated_protein: Math.round(targetProtein * 0.7),
-      tags: ['Vegetarian', 'Healthy'],
+      tags: ['Vegetarian', 'Balanced'],
       cuisine_type: 'Thai',
       difficulty: 'Medium',
     },
@@ -206,7 +217,7 @@ function generateSuggestions(
       description: 'Spiced chicken and vegetables roasted together for an easy one-pan meal',
       estimated_calories: targetCalories,
       estimated_protein: targetProtein,
-      tags: ['High-Protein', 'Quick & Easy'],
+      tags: ['Protein-heavy', 'Quick & Easy'],
       cuisine_type: 'Mexican',
       difficulty: 'Easy',
     },
@@ -215,7 +226,7 @@ function generateSuggestions(
       description: 'Hearty soup with lentils, vegetables, and herbs - perfect for meal prep',
       estimated_calories: Math.round(targetCalories * 0.8),
       estimated_protein: Math.round(targetProtein * 0.6),
-      tags: ['Vegetarian', 'Healthy', 'High-Fibre'],
+      tags: ['Vegetarian', 'Balanced'],
       cuisine_type: 'International',
       difficulty: 'Easy',
     },
@@ -224,7 +235,7 @@ function generateSuggestions(
       description: 'Marinated chicken skewers with tzatziki, served with Greek salad and pita',
       estimated_calories: targetCalories,
       estimated_protein: targetProtein,
-      tags: ['High-Protein', 'Healthy'],
+      tags: ['Protein-heavy', 'Balanced'],
       cuisine_type: 'Greek',
       difficulty: 'Medium',
     },
@@ -256,11 +267,11 @@ function generateSuggestions(
   // Ensure we always return exactly 5 suggestions
   while (selectedSuggestions.length < 5) {
     const fallback: RecipeSuggestion = {
-      name: `Healthy ${selectedSuggestions.length + 1} Bowl`,
+      name: `Balanced ${selectedSuggestions.length + 1} Bowl`,
       description: 'A balanced meal aligned with your nutrition goals',
       estimated_calories: targetCalories,
       estimated_protein: targetProtein,
-      tags: ['Healthy'],
+      tags: ['Balanced'],
       cuisine_type: 'International',
       difficulty: 'Easy',
     };

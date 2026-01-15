@@ -23,8 +23,9 @@ import { FontFamilies, TextStyles } from '@/constants/Typography';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { searchFoodDatabase } from '@/lib/foodSearch';
 import type { DatabaseFoodItem } from '@/components/capture/types';
+import { useAuth } from '@/context/AuthContext';
 
-const RECENT_HISTORY_KEY = 'food_search_history_v1';
+const RECENT_HISTORY_BASE_KEY = 'food_search_history_v1';
 const MAX_HISTORY = 5;
 
 // Serving presets as multipliers
@@ -42,9 +43,21 @@ export interface FoodSearchModalProps {
 }
 
 export function FoodSearchModal({ onCancel, onSelectItem, onQuickLog }: FoodSearchModalProps): React.ReactElement {
+  const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
+
+  // Helper to format macro values to 1 decimal point max, removing trailing .0
+  const formatMacro = (val: number | undefined | null) => {
+    if (val === undefined || val === null) return '0';
+    return Number(val.toFixed(1)).toString();
+  };
+
+  const historyKey = useMemo(() => {
+    const userId = user?.id || 'guest';
+    return `${RECENT_HISTORY_BASE_KEY}_${userId}`;
+  }, [user?.id]);
 
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<DatabaseFoodItem[]>([]);
@@ -64,27 +77,29 @@ export function FoodSearchModal({ onCancel, onSelectItem, onQuickLog }: FoodSear
   useEffect(() => {
     const loadHistory = async () => {
       try {
-        const raw = await AsyncStorage.getItem(RECENT_HISTORY_KEY);
+        const raw = await AsyncStorage.getItem(historyKey);
         if (raw) {
           setHistory(JSON.parse(raw));
+        } else {
+          setHistory([]); // Reset if no history for this user
         }
       } catch (error) {
         console.error('Failed to load history:', error);
       }
     };
     loadHistory();
-  }, []);
+  }, [historyKey]);
 
   // Save to history
   const addToHistory = useCallback(async (item: DatabaseFoodItem) => {
     try {
       const newHistory = [item, ...history.filter((h) => h.id !== item.id)].slice(0, MAX_HISTORY);
       setHistory(newHistory);
-      await AsyncStorage.setItem(RECENT_HISTORY_KEY, JSON.stringify(newHistory));
+      await AsyncStorage.setItem(historyKey, JSON.stringify(newHistory));
     } catch (error) {
       console.error('Failed to save history:', error);
     }
-  }, [history]);
+  }, [history, historyKey]);
 
   // Debounced search
   useEffect(() => {
@@ -143,12 +158,12 @@ export function FoodSearchModal({ onCancel, onSelectItem, onQuickLog }: FoodSear
       : servingMultiplier;
     
     return {
-      calories: Math.round(item.calories * ratio),
-      protein: Math.round(item.protein * ratio),
-      carbs: Math.round(item.carbs * ratio),
-      fat: Math.round(item.fat * ratio),
-      fiber: Math.round((item.fiber || 0) * ratio),
-      sodium: Math.round((item.sodium || 0) * ratio),
+      calories: item.calories * ratio,
+      protein: item.protein * ratio,
+      carbs: item.carbs * ratio,
+      fat: item.fat * ratio,
+      fiber: (item.fiber || 0) * ratio,
+      sodium: (item.sodium || 0) * ratio,
       actualGrams: customGramsValue || Math.round(item.servingSize * servingMultiplier),
     };
   }, [servingMultiplier, customGrams, useCustomGrams]);
@@ -264,34 +279,34 @@ export function FoodSearchModal({ onCancel, onSelectItem, onQuickLog }: FoodSear
             <View style={styles.macroRow}>
               <View style={styles.macroItem}>
                 <Text style={TextStyles.caption}>Calories</Text>
-                <Text style={[TextStyles.h3, { color: primaryGreen }]}>{nutrition.calories}</Text>
+                <Text style={[TextStyles.h3, { color: primaryGreen }]}>{formatMacro(nutrition.calories)}</Text>
               </View>
               <View style={styles.macroDivider} />
               <View style={styles.macroItem}>
                 <Text style={TextStyles.caption}>Protein</Text>
-                <Text style={TextStyles.h3}>{nutrition.protein}g</Text>
+                <Text style={TextStyles.h3}>{formatMacro(nutrition.protein)}g</Text>
               </View>
               <View style={styles.macroDivider} />
               <View style={styles.macroItem}>
                 <Text style={TextStyles.caption}>Carbs</Text>
-                <Text style={TextStyles.h3}>{nutrition.carbs}g</Text>
+                <Text style={TextStyles.h3}>{formatMacro(nutrition.carbs)}g</Text>
               </View>
               <View style={styles.macroDivider} />
               <View style={styles.macroItem}>
                 <Text style={TextStyles.caption}>Fat</Text>
-                <Text style={TextStyles.h3}>{nutrition.fat}g</Text>
+                <Text style={TextStyles.h3}>{formatMacro(nutrition.fat)}g</Text>
               </View>
             </View>
 
             <View style={[styles.macroRow, { borderTopWidth: 0, marginTop: Spacing.md, paddingTop: 0 }]}>
               <View style={styles.macroItem}>
                 <Text style={TextStyles.caption}>Fiber</Text>
-                <Text style={TextStyles.h3}>{nutrition.fiber}g</Text>
+                <Text style={TextStyles.h3}>{formatMacro(nutrition.fiber)}g</Text>
               </View>
               <View style={styles.macroDivider} />
               <View style={styles.macroItem}>
                 <Text style={TextStyles.caption}>Sodium</Text>
-                <Text style={TextStyles.h3}>{nutrition.sodium}mg</Text>
+                <Text style={TextStyles.h3}>{formatMacro(nutrition.sodium)}mg</Text>
               </View>
               <View style={styles.macroItem} />
               <View style={styles.macroItem} />

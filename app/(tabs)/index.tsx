@@ -13,11 +13,13 @@ import { Card } from '@/components/ui/Card';
 import { DiscoveryCard } from '@/components/ui/DiscoveryCard';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { NutritionHero } from '@/components/ui/NutritionHero';
+import { ProBadge } from '@/components/ui/ProBadge';
 import { Tag } from '@/components/ui/Tag';
 import { Colors, glassSurface, neonGreen, primaryGreen } from '@/constants/Colors';
 import { PageSpacing, Spacing } from '@/constants/Spacing';
 import { TextStyles } from '@/constants/Typography';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { useSubscription } from '@/context/SubscriptionContext';
 import { calculateCurrentStreak, calculateLongestStreak } from '@/lib/streakUtils';
 import { getAllUserMeals, getCurrentUser, supabase } from '@/lib/supabase';
 
@@ -33,6 +35,10 @@ interface Meal {
     protein?: number;
     fat?: number;
     carbs?: number;
+    fiber?: number;
+    sugar?: number;
+    sodium?: number;
+    cholesterol?: number;
   };
   health_score?: 'very_healthy' | 'healthy' | 'needs_improvement';
   fiber_score?: string;
@@ -54,6 +60,7 @@ interface TodayStats {
 }
 
 export default function HomeScreen() {
+  const { isPro } = useSubscription();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
   const router = useRouter();
@@ -70,11 +77,17 @@ export default function HomeScreen() {
   const [selectedDateIndex, setSelectedDateIndex] = useState<number>((new Date().getDay() + 6) % 7);
   const [selectedWeekIndex, setSelectedDateWeekIndex] = useState<number>(2); // Default to current week (index 2)
   const [weeklyStats, setWeeklyStats] = useState<TodayStats[][]>([
-    Array(7).fill({ mealsCount: 0, totalCalories: 0, totalProtein: 0, totalFat: 0, totalCarbs: 0 }),
-    Array(7).fill({ mealsCount: 0, totalCalories: 0, totalProtein: 0, totalFat: 0, totalCarbs: 0 }),
-    Array(7).fill({ mealsCount: 0, totalCalories: 0, totalProtein: 0, totalFat: 0, totalCarbs: 0 }),
+    Array.from({ length: 7 }, () => ({ mealsCount: 0, totalCalories: 0, totalProtein: 0, totalFat: 0, totalCarbs: 0 })),
+    Array.from({ length: 7 }, () => ({ mealsCount: 0, totalCalories: 0, totalProtein: 0, totalFat: 0, totalCarbs: 0 })),
+    Array.from({ length: 7 }, () => ({ mealsCount: 0, totalCalories: 0, totalProtein: 0, totalFat: 0, totalCarbs: 0 })),
   ]);
   const [allMeals, setAllMeals] = useState<Meal[]>([]);
+
+  // Helper to format macro values to 1 decimal point max, removing trailing .0
+  const formatMacro = (val: number | undefined | null) => {
+    if (val === undefined || val === null) return '0';
+    return Number(val.toFixed(1)).toString();
+  };
 
   // Mock data for XP/Level
   const currentLevel = 3;
@@ -84,9 +97,9 @@ export default function HomeScreen() {
 
   // Mock achievements
   const achievements = [
-    { icon: 'flame.fill', title: '7 Day Streak', unlocked: true, color: 'coral' as const },
-    { icon: 'star.fill', title: 'Consistency', unlocked: true, color: 'neon' as const },
-    { icon: 'leaf.fill', title: 'Healthy Week', unlocked: true, color: 'neon' as const },
+    { icon: 'star.fill', title: '7 Day Streak', unlocked: true, color: 'neon' as const },
+    { icon: 'sparkles', title: 'Consistency', unlocked: true, color: '#FF9500' },
+    { icon: 'trophy.fill', title: 'Balanced Week', unlocked: true, color: 'sky' as const },
   ];
 
   useEffect(() => {
@@ -123,9 +136,9 @@ export default function HomeScreen() {
       [0, 0, 0, 0, 0, 0, 0],
     ]);
     setWeeklyStats([
-      Array(7).fill({ mealsCount: 0, totalCalories: 0, totalProtein: 0, totalFat: 0, totalCarbs: 0 }),
-      Array(7).fill({ mealsCount: 0, totalCalories: 0, totalProtein: 0, totalFat: 0, totalCarbs: 0 }),
-      Array(7).fill({ mealsCount: 0, totalCalories: 0, totalProtein: 0, totalFat: 0, totalCarbs: 0 }),
+      Array.from({ length: 7 }, () => ({ mealsCount: 0, totalCalories: 0, totalProtein: 0, totalFat: 0, totalCarbs: 0 })),
+      Array.from({ length: 7 }, () => ({ mealsCount: 0, totalCalories: 0, totalProtein: 0, totalFat: 0, totalCarbs: 0 })),
+      Array.from({ length: 7 }, () => ({ mealsCount: 0, totalCalories: 0, totalProtein: 0, totalFat: 0, totalCarbs: 0 })),
     ]);
     setAllMeals([]);
   };
@@ -141,7 +154,9 @@ export default function HomeScreen() {
         return;
       }
 
-      const { data: meals, error } = await getAllUserMeals(user.id);
+      // Free users are limited to 7 days of history
+      const daysLimit = isPro ? undefined : 7;
+      const { data: meals, error } = await getAllUserMeals(user.id, daysLimit);
       if (error || !meals) {
         resetState();
         return;
@@ -258,7 +273,10 @@ export default function HomeScreen() {
 
   return (
     <PageContainer>
-      <PageHeader title="Today" />
+      <PageHeader 
+        title="Today" 
+        rightAction={isPro ? <ProBadge style={{ marginTop: 8 }} /> : null}
+      />
       <ContentContainer
         scrollable={true}
         refreshControl={
@@ -302,7 +320,7 @@ export default function HomeScreen() {
               <DiscoveryCard 
                 type="meal"
                 title={allMeals[0].description}
-                subtitle={`${allMeals[0].calories ? allMeals[0].calories + ' kcal • ' : ''}${formatDate(allMeals[0].created_at)}`}
+                subtitle={`${allMeals[0].calories ? formatMacro(allMeals[0].calories) + ' kcal • ' : ''}${formatDate(allMeals[0].created_at)}`}
                 imageUrl={allMeals[0].image_url}
                 mealId={allMeals[0].id}
               />
@@ -335,7 +353,7 @@ export default function HomeScreen() {
               <View style={styles.hubHeroSection}>
                 <View style={styles.hubStreakIconContainer}>
                   <View style={styles.iconBacklight} />
-                  <IconSymbol name="flame.fill" size={36} color={neonGreen} />
+                  <IconSymbol name="star.fill" size={36} color={neonGreen} />
                 </View>
                 
                 <View style={styles.hubStreakTextContainer}>
@@ -366,13 +384,17 @@ export default function HomeScreen() {
               {/* Achievements Grid inside the Card */}
               <View style={styles.hubBadgesGrid}>
                 {achievements.map((achievement, index) => (
-                  <Badge
+                  <Animated.View 
                     key={index}
-                    icon={achievement.icon}
-                    title={achievement.title}
-                    unlocked={achievement.unlocked}
-                    accentColor={achievement.color as any}
-                  />
+                    entering={FadeInDown.duration(400).delay(400 + index * 100).springify()}
+                  >
+                    <Badge
+                      icon={achievement.icon}
+                      title={achievement.title}
+                      unlocked={achievement.unlocked}
+                      accentColor={achievement.color as any}
+                    />
+                  </Animated.View>
                 ))}
               </View>
             </Card>
@@ -413,9 +435,7 @@ const styles = StyleSheet.create({
     borderRadius: 20, // Squircle
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: `${neonGreen}10`,
-    borderWidth: 1,
-    borderColor: `${neonGreen}20`,
+    backgroundColor: `${neonGreen}15`,
     marginBottom: Spacing.lg,
     overflow: 'hidden',
     position: 'relative',

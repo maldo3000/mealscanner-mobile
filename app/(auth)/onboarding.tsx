@@ -8,23 +8,70 @@ import {
   Animated, 
   ScrollView,
   Platform,
-  Image
+  TextInput
 } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
+import Reanimated, { 
+  useSharedValue, 
+  useAnimatedStyle, 
+  withSpring, 
+  withDelay, 
+  withSequence,
+  withTiming,
+  runOnJS
+} from 'react-native-reanimated';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { RulerSlider } from '@/components/onboarding/RulerSlider';
+import { AnimatedLogo } from '@/components/ui/AnimatedLogo';
+import { SpriteAnimation } from '@/components/ui/SpriteAnimation';
 import { Colors, neonGreen, textMuted, bgPrimary, glassBorder, glassSurface } from '@/constants/Colors';
 import { TextStyles } from '@/constants/Typography';
 import { FoodIllustration, FoodType } from '@/components/illustrations/FoodIllustrations';
 import { supabase, signInWithApple, signInWithGoogle } from '@/lib/supabase';
 import { Paywall } from '@/components/subscription/Paywall';
+import { localGoalsRepository } from '@/lib/goals/LocalGoalsRepository';
+import type { NutritionGoal, NutritionGoalType, ActivityLevel, BiologicalSex } from '@/lib/goals/types';
+
+// Import dancing veggies sprite frames
+const spriteFrames = [
+  require('../../assets/images/loading-animation/ezgif-frame-001.png'),
+  require('../../assets/images/loading-animation/ezgif-frame-002.png'),
+  require('../../assets/images/loading-animation/ezgif-frame-003.png'),
+  require('../../assets/images/loading-animation/ezgif-frame-004.png'),
+  require('../../assets/images/loading-animation/ezgif-frame-005.png'),
+  require('../../assets/images/loading-animation/ezgif-frame-006.png'),
+  require('../../assets/images/loading-animation/ezgif-frame-007.png'),
+  require('../../assets/images/loading-animation/ezgif-frame-008.png'),
+  require('../../assets/images/loading-animation/ezgif-frame-009.png'),
+  require('../../assets/images/loading-animation/ezgif-frame-010.png'),
+  require('../../assets/images/loading-animation/ezgif-frame-011.png'),
+  require('../../assets/images/loading-animation/ezgif-frame-012.png'),
+  require('../../assets/images/loading-animation/ezgif-frame-013.png'),
+  require('../../assets/images/loading-animation/ezgif-frame-014.png'),
+  require('../../assets/images/loading-animation/ezgif-frame-015.png'),
+  require('../../assets/images/loading-animation/ezgif-frame-016.png'),
+  require('../../assets/images/loading-animation/ezgif-frame-017.png'),
+  require('../../assets/images/loading-animation/ezgif-frame-018.png'),
+  require('../../assets/images/loading-animation/ezgif-frame-019.png'),
+  require('../../assets/images/loading-animation/ezgif-frame-020.png'),
+  require('../../assets/images/loading-animation/ezgif-frame-021.png'),
+  require('../../assets/images/loading-animation/ezgif-frame-022.png'),
+  require('../../assets/images/loading-animation/ezgif-frame-023.png'),
+  require('../../assets/images/loading-animation/ezgif-frame-024.png'),
+  require('../../assets/images/loading-animation/ezgif-frame-025.png'),
+  require('../../assets/images/loading-animation/ezgif-frame-026.png'),
+  require('../../assets/images/loading-animation/ezgif-frame-027.png'),
+];
 
 const { width } = Dimensions.get('window');
 
 type QuizData = {
+  fullName: string;
   gender: 'male' | 'female' | 'other';
   age: number;
   height: number;
@@ -33,13 +80,19 @@ type QuizData = {
   source: string;
   activityLevel: string;
   dietaryPreferences: string[];
+  allergies: string[];
+  pace: 'gentle' | 'standard' | 'aggressive';
+  targetCalories?: number;
+  targetProtein?: number;
+  targetCarbs?: number;
+  targetFat?: number;
 };
 
 const GOALS = [
-  { id: 'lose_weight', label: 'Lose weight sustainably', icon: 'apple' as FoodType },
-  { id: 'build_muscle', label: 'Build muscle & strength', icon: 'burger' as FoodType },
-  { id: 'plant_based', label: 'Eat more plant-based foods', icon: 'salad' as FoodType },
-  { id: 'track_habits', label: 'Just track my habits', icon: 'coffee' as FoodType },
+  { id: 'lose_weight', label: 'Lose weight sustainably', image: require('../../assets/images/lose_weight.png') },
+  { id: 'build_muscle', label: 'Build muscle & strength', image: require('../../assets/images/build_muscle.png') },
+  { id: 'plant_based', label: 'Eat more plant-based foods', image: require('../../assets/images/plant_based.png') },
+  { id: 'track_habits', label: 'Just track my habits', image: require('../../assets/images/cal-icon.png') },
 ];
 
 const SOURCES = [
@@ -53,14 +106,34 @@ const SOURCES = [
 ];
 
 const ACTIVITY_LEVELS = [
-  { id: 'sedentary', label: 'Sedentary', desc: 'Desk job, little exercise' },
-  { id: 'light', label: 'Lightly Active', desc: '1–2 workouts/week' },
-  { id: 'active', label: 'Active', desc: '3–5 workouts/week' },
-  { id: 'very_active', label: 'Very Active', desc: 'Daily intense training' },
+  { 
+    id: 'sedentary', 
+    label: 'Sedentary', 
+    desc: 'Desk job, little exercise',
+    image: require('../../assets/images/sedentary.png')
+  },
+  { 
+    id: 'light', 
+    label: 'Lightly Active', 
+    desc: '1–2 workouts/week',
+    image: require('../../assets/images/lightly_active.png')
+  },
+  { 
+    id: 'active', 
+    label: 'Active', 
+    desc: '3–5 workouts/week',
+    image: require('../../assets/images/Active.png')
+  },
+  { 
+    id: 'very_active', 
+    label: 'Very Active', 
+    desc: 'Daily intense training',
+    image: require('../../assets/images/very_active.png')
+  },
 ];
 
 const DIETARY_PREFERENCES = [
-  'Vegan', 'Keto', 'Paleo', 'Gluten-Free', 'Dairy-Free', 'None'
+  'Vegan', 'Vegetarian', 'Pescatarian', 'Keto', 'Paleo', 'Low-Carb', 'No Pork', 'Halal', 'Kosher', 'Gluten-Free', 'Dairy-Free', 'None'
 ];
 
 // Unit conversion helpers
@@ -83,6 +156,7 @@ export default function OnboardingScreen() {
   const [currentStep, setCurrentStep] = useState(0);
   const [useMetric, setUseMetric] = useState(true);
   const [quizData, setQuizData] = useState<QuizData>({
+    fullName: '',
     gender: 'female',
     age: 25,
     height: 170, // Always stored in cm
@@ -91,12 +165,16 @@ export default function OnboardingScreen() {
     source: '',
     activityLevel: '',
     dietaryPreferences: [],
+    allergies: [],
+    pace: 'standard',
   });
+  const [newAllergy, setNewAllergy] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [showPaywall, setShowPaywall] = useState(false);
+
 
   // Display values based on unit system
   const displayHeight = useMetric ? quizData.height : Math.round(quizData.height / 2.54); // inches for imperial
@@ -155,25 +233,71 @@ export default function OnboardingScreen() {
       // Update profile and goals with onboarding data if it's a new user
       if (data.user) {
         // Map onboarding goal to database goal_type
-        const goalMap: Record<string, string> = {
+        const goalMap: Record<string, NutritionGoalType> = {
           'lose_weight': 'weight_loss',
-          'build_muscle': 'muscle_gain',
-          'plant_based': 'health',
+          'build_muscle': 'weight_gain',
+          'plant_based': 'maintenance',
           'track_habits': 'maintenance'
         };
 
-        // Save user goals
+        // Map activity level to typed ActivityLevel
+        const activityLevelMap: Record<string, ActivityLevel> = {
+          'sedentary': 'sedentary',
+          'light': 'light',
+          'active': 'active',
+          'very_active': 'very_active',
+        };
+
+        const goalType = goalMap[quizData.goal] || 'maintenance';
+        const activityLevel = activityLevelMap[quizData.activityLevel] || 'light';
+        const nowIso = new Date().toISOString();
+
+        // Save user goals to Supabase
         await supabase.from('user_goals').upsert({
           user_id: data.user.id,
-          goal_type: goalMap[quizData.goal] || 'health',
+          goal_type: goalType,
           activity_level: quizData.activityLevel,
-          dietary_restrictions: quizData.dietaryPreferences,
-          updated_at: new Date().toISOString()
+          dietary_restrictions: [...quizData.dietaryPreferences, ...quizData.allergies],
+          target_calories: quizData.targetCalories,
+          target_protein: quizData.targetProtein,
+          target_carbs: quizData.targetCarbs,
+          target_fat: quizData.targetFat,
+          updated_at: nowIso
         });
+
+        // Also save to local storage for immediate availability in settings
+        const localGoal: NutritionGoal = {
+          id: `goal_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+          version: 1,
+          createdAt: nowIso,
+          updatedAt: nowIso,
+          isActive: true,
+          type: goalType,
+          name: goalType === 'weight_loss' ? 'Weight Loss' : goalType === 'weight_gain' ? 'Build Muscle' : 'Maintain Health',
+          profileSnapshot: {
+            sex: quizData.gender as BiologicalSex,
+            ageYears: quizData.age,
+            heightCm: quizData.height,
+            weightKg: quizData.weight,
+            activityLevel,
+          },
+          dailyTargets: {
+            calories: quizData.targetCalories || 2000,
+            proteinGrams: quizData.targetProtein || 100,
+            carbGrams: quizData.targetCarbs || 200,
+            fatGrams: quizData.targetFat || 65,
+            fibreGrams: 25,
+          },
+          meta: {
+            source: 'wizard',
+            focusAreas: [...quizData.dietaryPreferences, ...quizData.allergies],
+          },
+        };
+        await localGoalsRepository.saveGoal(localGoal, data.user.id);
 
         // Update profile
         await supabase.from('profiles').update({
-          full_name: data.user.user_metadata?.full_name || data.user.email?.split('@')[0],
+          full_name: quizData.fullName || data.user.user_metadata?.full_name || data.user.email?.split('@')[0],
         }).eq('id', data.user.id);
       }
     } catch (e: any) {
@@ -188,6 +312,16 @@ export default function OnboardingScreen() {
   const handleNext = () => {
     if (currentStep < totalSteps - 1) {
       animateTransition(() => setCurrentStep(currentStep + 1));
+    }
+  };
+
+  // Handles both data update and transition - updates data after fade-out to prevent visual glitch
+  const handleNextWithData = (updates: Partial<QuizData>) => {
+    if (currentStep < totalSteps - 1) {
+      animateTransition(() => {
+        setQuizData(prev => ({ ...prev, ...updates }));
+        setCurrentStep(currentStep + 1);
+      });
     }
   };
 
@@ -213,19 +347,23 @@ export default function OnboardingScreen() {
       }),
     ]).start(() => {
       callback();
-      slideAnim.setValue(20);
-      Animated.parallel([
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-        Animated.timing(slideAnim, {
-          toValue: 0,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-      ]).start();
+      
+      // Small delay to allow React to render the new step before starting fade-in
+      setTimeout(() => {
+        slideAnim.setValue(20);
+        Animated.parallel([
+          Animated.timing(fadeAnim, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+          Animated.timing(slideAnim, {
+            toValue: 0,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      }, 50);
     });
   };
 
@@ -235,11 +373,26 @@ export default function OnboardingScreen() {
 
   const toggleDietary = (pref: string) => {
     const current = quizData.dietaryPreferences;
-    if (current.includes(pref)) {
-      updateData({ dietaryPreferences: current.filter(p => p !== pref) });
-    } else {
-      updateData({ dietaryPreferences: [...current, pref] });
+    
+    if (pref === 'None') {
+      // If 'None' is clicked, and it was already selected, deselect it.
+      // If 'None' is clicked, and it wasn't selected, select ONLY 'None'.
+      if (current.includes('None')) {
+        updateData({ dietaryPreferences: [] });
+      } else {
+        updateData({ dietaryPreferences: ['None'] });
+      }
+      return;
     }
+
+    // If any other preference is clicked, ensure 'None' is deselected.
+    let newPrefs = current.filter(p => p !== 'None');
+    if (newPrefs.includes(pref)) {
+      newPrefs = newPrefs.filter(p => p !== pref);
+    } else {
+      newPrefs.push(pref);
+    }
+    updateData({ dietaryPreferences: newPrefs });
   };
 
   const renderHeader = () => (
@@ -255,10 +408,41 @@ export default function OnboardingScreen() {
 
   const renderStep = () => {
     switch (currentStep) {
-      case 0: // Physicals
+      case 0: // Goal (First screen now)
+        return (
+          <View style={styles.stepContent}>
+            <Text style={styles.stepTitle}>What are you here for?</Text>
+            <View style={styles.optionsContainer}>
+              {GOALS.map((goal, index) => (
+                <AnimatedGoalOption
+                  key={goal.id}
+                  goal={goal}
+                  index={index}
+                  isSelected={quizData.goal === goal.id}
+                  onPress={() => handleNextWithData({ goal: goal.id })}
+                />
+              ))}
+            </View>
+          </View>
+        );
+
+      case 1: // Physicals (with Name added)
         return (
           <View style={styles.stepContent}>
             <Text style={styles.stepTitle}>Tell us about yourself</Text>
+            
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Your Name</Text>
+              <TextInput 
+                value={quizData.fullName}
+                onChangeText={(v) => updateData({ fullName: v })}
+                placeholder="Enter your name"
+                placeholderTextColor="rgba(74, 222, 128, 0.3)"
+                autoCapitalize="words"
+                style={styles.cleanInput}
+                selectionColor={neonGreen}
+              />
+            </View>
             
             <View style={styles.genderContainer}>
               {['female', 'male', 'other'].map((g) => (
@@ -276,13 +460,18 @@ export default function OnboardingScreen() {
 
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Age</Text>
-              <Input 
+              <TextInput 
                 keyboardType="number-pad"
                 value={quizData.age.toString()}
                 onChangeText={(v) => updateData({ age: parseInt(v) || 0 })}
                 placeholder="25"
+                placeholderTextColor="rgba(74, 222, 128, 0.3)"
+                style={styles.cleanInput}
+                selectionColor={neonGreen}
               />
             </View>
+
+            <View style={styles.sectionDivider} />
 
             <View style={styles.rulerGroup}>
               <View style={styles.labelRow}>
@@ -341,30 +530,6 @@ export default function OnboardingScreen() {
           </View>
         );
 
-      case 1: // Goal
-        return (
-          <View style={styles.stepContent}>
-            <Text style={styles.stepTitle}>What is your primary focus?</Text>
-            <View style={styles.optionsContainer}>
-              {GOALS.map((goal) => (
-                <TouchableOpacity 
-                  key={goal.id}
-                  style={[styles.optionCard, quizData.goal === goal.id && styles.activeOptionCard]}
-                  onPress={() => {
-                    updateData({ goal: goal.id });
-                    handleNext();
-                  }}
-                >
-                  <FoodIllustration type={goal.icon} size={40} />
-                  <Text style={[styles.optionLabel, quizData.goal === goal.id && styles.activeText]}>
-                    {goal.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        );
-
       case 2: // Source
         return (
           <View style={styles.stepContent}>
@@ -374,10 +539,7 @@ export default function OnboardingScreen() {
                 <TouchableOpacity 
                   key={source.id}
                   style={[styles.optionCard, quizData.source === source.id && styles.activeOptionCard]}
-                  onPress={() => {
-                    updateData({ source: source.id });
-                    handleNext();
-                  }}
+                  onPress={() => handleNextWithData({ source: source.id })}
                 >
                   <View style={styles.sourceIconContainer}>
                     <FontAwesome name={source.icon as any} size={18} color={neonGreen} />
@@ -395,39 +557,26 @@ export default function OnboardingScreen() {
         return (
           <View style={styles.stepContent}>
             <Text style={styles.stepTitle}>How active is your lifestyle?</Text>
-            <View style={styles.characterImageContainer}>
-              <Image 
-                source={require('@/assets/images/foodcharacter-screen4.png')} 
-                style={styles.characterImage}
-                resizeMode="contain"
-              />
-            </View>
             <View style={styles.optionsContainer}>
-              {ACTIVITY_LEVELS.map((level) => (
-                <TouchableOpacity 
+              {ACTIVITY_LEVELS.map((level, index) => (
+                <AnimatedActivityOption
                   key={level.id}
-                  style={[styles.optionCard, quizData.activityLevel === level.id && styles.activeOptionCard]}
-                  onPress={() => {
-                    updateData({ activityLevel: level.id });
-                    handleNext();
-                  }}
-                >
-                  <View>
-                    <Text style={[styles.optionLabel, quizData.activityLevel === level.id && styles.activeText]}>
-                      {level.label}
-                    </Text>
-                    <Text style={styles.optionDesc}>{level.desc}</Text>
-                  </View>
-                </TouchableOpacity>
+                  level={level}
+                  index={index}
+                  isSelected={quizData.activityLevel === level.id}
+                  onPress={() => handleNextWithData({ activityLevel: level.id })}
+                />
               ))}
             </View>
           </View>
         );
 
-      case 4: // Dietary
+      case 4: // Dietary & Allergies
         return (
           <View style={styles.stepContent}>
             <Text style={styles.stepTitle}>Any dietary preferences or allergies?</Text>
+            
+            <Text style={styles.sectionLabel}>Dietary Preferences</Text>
             <View style={styles.chipContainer}>
               {DIETARY_PREFERENCES.map((pref) => (
                 <TouchableOpacity 
@@ -447,11 +596,60 @@ export default function OnboardingScreen() {
                 </TouchableOpacity>
               ))}
             </View>
+
+            <View style={styles.allergySection}>
+              <Text style={styles.sectionLabel}>Allergies (Optional)</Text>
+              <View style={styles.allergyInputRow}>
+                <View style={styles.allergyInputWrapper}>
+                  <Input 
+                    placeholder="Add allergy" 
+                    value={newAllergy}
+                    onChangeText={setNewAllergy}
+                    onSubmitEditing={() => {
+                      if (newAllergy.trim()) {
+                        updateData({ allergies: [...quizData.allergies, newAllergy.trim()] });
+                        setNewAllergy('');
+                      }
+                    }}
+                  />
+                </View>
+                <TouchableOpacity 
+                  onPress={() => {
+                    if (newAllergy.trim()) {
+                      updateData({ allergies: [...quizData.allergies, newAllergy.trim()] });
+                      setNewAllergy('');
+                    }
+                  }}
+                  style={styles.addAllergyButton}
+                >
+                  <FontAwesome name="plus" size={16} color={neonGreen} />
+                </TouchableOpacity>
+              </View>
+              
+              {quizData.allergies.length > 0 && (
+                <View style={styles.allergyChipsContainer}>
+                  {quizData.allergies.map((allergy, index) => (
+                    <TouchableOpacity 
+                      key={index}
+                      style={[styles.chip, styles.activeChip]}
+                      onPress={() => {
+                        updateData({ allergies: quizData.allergies.filter((_, i) => i !== index) });
+                      }}
+                    >
+                      <View style={styles.allergyChipContent}>
+                        <Text style={[styles.chipText, styles.activeText]}>{allergy}</Text>
+                        <FontAwesome name="times" size={12} color={neonGreen} style={styles.removeIcon} />
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
           </View>
         );
 
       case 5: // Magic Moment
-        return <MagicMoment onComplete={handleNext} data={quizData} />;
+        return <MagicMoment onComplete={handleNext} data={quizData} onUpdateData={updateData} />;
 
       case 6: // Pro Prompt
         return (
@@ -612,13 +810,15 @@ export default function OnboardingScreen() {
         ]}>
           <ScrollView 
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.scrollContent}
+            contentContainerStyle={[
+              styles.scrollContent,
+            ]}
           >
             {renderStep()}
           </ScrollView>
         </Animated.View>
 
-        {currentStep < 5 && currentStep !== 1 && currentStep !== 2 && currentStep !== 3 && (
+        {currentStep < 5 && currentStep !== 0 && currentStep !== 2 && currentStep !== 3 && (
           <SafeAreaView edges={['bottom']} style={styles.footer}>
             <Button variant="primary" fullWidth onPress={handleNext}>
               Next
@@ -638,12 +838,231 @@ export default function OnboardingScreen() {
   );
 }
 
-function MagicMoment({ onComplete, data }: { onComplete: () => void, data: QuizData }) {
-  const [loading, setLoading] = useState(true);
-  const [calculation, setCalculation] = useState({ calories: 0, protein: 0 });
+interface MagicMomentProps {
+  onComplete: () => void;
+  data: QuizData;
+  onUpdateData: (updates: Partial<QuizData>) => void;
+}
+
+function ConfettiPiece({ index }: { index: number }) {
+  const size = Math.random() * 8 + 4;
+  const colors = [neonGreen, '#4ade80', '#22c55e', '#86efac', '#ffffff'];
+  const color = colors[Math.floor(Math.random() * colors.length)];
+  
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  const opacity = useSharedValue(1);
+  const scale = useSharedValue(0);
+  const rotate = useSharedValue(0);
 
   useEffect(() => {
-    // Calculate BMR and TDEE
+    const angle = (Math.random() * Math.PI * 2);
+    const distance = Math.random() * 150 + 50;
+    
+    scale.value = withSpring(1);
+    translateX.value = withTiming(Math.cos(angle) * distance, { duration: 1000 });
+    translateY.value = withTiming(Math.sin(angle) * distance - 100, { duration: 1000 });
+    opacity.value = withTiming(0, { duration: 1000 });
+    rotate.value = withTiming(Math.random() * 360, { duration: 1000 });
+  }, []);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    position: 'absolute',
+    width: size,
+    height: size,
+    backgroundColor: color,
+    borderRadius: size / 2,
+    opacity: opacity.value,
+    transform: [
+      { translateX: translateX.value },
+      { translateY: translateY.value },
+      { scale: scale.value },
+      { rotate: `${rotate.value}deg` }
+    ],
+  }));
+
+  return <Reanimated.View style={animatedStyle} />;
+}
+
+function AnimatedGoalOption({ 
+  goal, 
+  isSelected, 
+  index, 
+  onPress 
+}: { 
+  goal: any, 
+  isSelected: boolean, 
+  index: number, 
+  onPress: () => void 
+}) {
+  const scale = useSharedValue(0.8);
+  const textOpacity = useSharedValue(0);
+  const delay = index * 100;
+
+  useEffect(() => {
+    scale.value = withDelay(delay, withSpring(1, { damping: 12, stiffness: 100 }));
+    textOpacity.value = withDelay(delay + 200, withTiming(1, { duration: 400 }));
+  }, []);
+
+  const iconStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const textStyle = useAnimatedStyle(() => ({
+    opacity: textOpacity.value,
+  }));
+
+  return (
+    <TouchableOpacity 
+      style={[styles.optionCard, isSelected && styles.activeOptionCard]}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
+      <Reanimated.View style={iconStyle}>
+        <Image 
+          source={goal.image} 
+          style={styles.goalIcon} 
+          contentFit="contain"
+          transition={200}
+          cachePolicy="memory"
+        />
+      </Reanimated.View>
+      <Reanimated.View style={[textStyle, { flex: 1 }]}>
+        <Text style={[styles.optionLabel, isSelected && styles.activeText]}>
+          {goal.label}
+        </Text>
+      </Reanimated.View>
+    </TouchableOpacity>
+  );
+}
+
+function AnimatedActivityOption({ 
+  level, 
+  isSelected, 
+  index, 
+  onPress 
+}: { 
+  level: any, 
+  isSelected: boolean, 
+  index: number, 
+  onPress: () => void 
+}) {
+  const scale = useSharedValue(0.8);
+  const textOpacity = useSharedValue(0);
+  const delay = index * 100;
+
+  useEffect(() => {
+    scale.value = withDelay(delay, withSpring(1, { damping: 12, stiffness: 100 }));
+    textOpacity.value = withDelay(delay + 200, withTiming(1, { duration: 400 }));
+  }, []);
+
+  const iconStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const textStyle = useAnimatedStyle(() => ({
+    opacity: textOpacity.value,
+  }));
+
+  return (
+    <TouchableOpacity 
+      style={[styles.optionCard, isSelected && styles.activeOptionCard]}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
+      <Reanimated.View style={iconStyle}>
+        <Image 
+          source={level.image} 
+          style={styles.goalIcon} 
+          contentFit="contain"
+          transition={200}
+          cachePolicy="memory"
+        />
+      </Reanimated.View>
+      <Reanimated.View style={[textStyle, { flex: 1 }]}>
+        <Text style={[styles.optionLabel, isSelected && styles.activeText]}>
+          {level.label}
+        </Text>
+        <Text style={styles.optionDesc}>{level.desc}</Text>
+      </Reanimated.View>
+    </TouchableOpacity>
+  );
+}
+
+function StaggeredMacroItem({ 
+  label, 
+  value, 
+  unit, 
+  delay,
+  isHeadline = false
+}: { 
+  label: string, 
+  value: number, 
+  unit: string, 
+  delay: number,
+  isHeadline?: boolean
+}) {
+  const opacity = useSharedValue(0);
+  const translateY = useSharedValue(15);
+
+  useEffect(() => {
+    opacity.value = withDelay(delay, withTiming(1, { duration: 600 }));
+    translateY.value = withDelay(delay, withSpring(0, { damping: 18, stiffness: 120 }));
+  }, []);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: translateY.value }
+    ],
+    opacity: opacity.value,
+  }));
+
+  return (
+    <Reanimated.View style={[
+      styles.macroItem, 
+      isHeadline && styles.headlineMacroItem,
+      animatedStyle
+    ]}>
+      <Text 
+        style={[styles.macroValue, isHeadline && styles.headlineValue]}
+        allowFontScaling={false}
+      >
+        {value}{unit}
+      </Text>
+      <Text style={styles.macroLabel}>{label}</Text>
+    </Reanimated.View>
+  );
+}
+
+function MagicMoment({ onComplete, data, onUpdateData }: MagicMomentProps) {
+  const [loading, setLoading] = useState(true);
+  const [calculation, setCalculation] = useState({ calories: 0, protein: 0, carbs: 0, fat: 0 });
+  const [hasCalculated, setHasCalculated] = useState(false);
+  const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
+  const [showConfetti, setShowConfetti] = useState(false);
+  
+  const cardTranslateY = useSharedValue(20);
+  const cardOpacity = useSharedValue(0);
+
+  const loadingMessages = [
+    "Analyzing your profile...",
+    "Calculating your metabolic rate...",
+    "Optimizing macros for your goal...",
+    "Personalizing your recipe feed...",
+    "Finalizing your plan..."
+  ];
+
+  useEffect(() => {
+    if (loading) {
+      const interval = setInterval(() => {
+        setLoadingMessageIndex((prev) => (prev + 1) % loadingMessages.length);
+      }, 800);
+      return () => clearInterval(interval);
+    }
+  }, [loading]);
+
+  // Calculate macros based on data and pace
+  const calculateMacros = (pace: 'gentle' | 'standard' | 'aggressive') => {
     const isMale = data.gender === 'male';
     const bmr = (10 * data.weight) + (6.25 * data.height) - (5 * data.age) + (isMale ? 5 : -161);
     
@@ -657,55 +1076,201 @@ function MagicMoment({ onComplete, data }: { onComplete: () => void, data: QuizD
     let tdee = bmr * (multipliers[data.activityLevel] || 1.375);
     
     // Goal adjustments
-    if (data.goal === 'lose_weight') tdee -= 500;
-    if (data.goal === 'build_muscle') tdee += 300;
+    if (data.goal === 'lose_weight') {
+      // Pace modifiers for weight loss
+      const paceDeficits: Record<string, number> = {
+        'gentle': 250,
+        'standard': 500,
+        'aggressive': 750
+      };
+      tdee -= paceDeficits[pace];
+    } else if (data.goal === 'build_muscle') {
+      // Pace modifiers for muscle gain
+      const paceSurplus: Record<string, number> = {
+        'gentle': 150,
+        'standard': 300,
+        'aggressive': 500
+      };
+      tdee += paceSurplus[pace];
+    }
     
     // Protein calculation
     const proteinMult = data.goal === 'build_muscle' ? 2.2 : 1.8;
     const protein = data.weight * proteinMult;
+    
+    // Fat is ~25% of calories
+    const fat = (tdee * 0.25) / 9;
+    
+    // Carbs fill the rest
+    const carbs = (tdee - (protein * 4) - (fat * 9)) / 4;
 
-    setCalculation({ 
+    return { 
       calories: Math.round(tdee), 
-      protein: Math.round(protein) 
-    });
+      protein: Math.round(protein),
+      carbs: Math.round(Math.max(0, carbs)),
+      fat: Math.round(fat)
+    };
+  };
 
-    const timer = setTimeout(() => {
-      setLoading(false);
-    }, 4000);
-    return () => clearTimeout(timer);
-  }, [data]);
+  // Initial calculation with loading state
+  useEffect(() => {
+    if (!hasCalculated) {
+      const results = calculateMacros(data.pace);
+      setCalculation(results);
+      onUpdateData({
+        targetCalories: results.calories,
+        targetProtein: results.protein,
+        targetCarbs: results.carbs,
+        targetFat: results.fat,
+      });
+
+      const timer = setTimeout(() => {
+        setLoading(false);
+        setHasCalculated(true);
+        setShowConfetti(true);
+        
+        // Impact Moment
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        cardTranslateY.value = withSpring(0, { damping: 15, stiffness: 90 });
+        cardOpacity.value = withTiming(1, { duration: 500 });
+        
+        // Hide confetti after burst
+        setTimeout(() => setShowConfetti(false), 2000);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
+  // Recalculate when pace changes (after initial load)
+  useEffect(() => {
+    if (hasCalculated) {
+      const results = calculateMacros(data.pace);
+      setCalculation(results);
+      onUpdateData({
+        targetCalories: results.calories,
+        targetProtein: results.protein,
+        targetCarbs: results.carbs,
+        targetFat: results.fat,
+      });
+    }
+  }, [data.pace, hasCalculated, onUpdateData]);
+
+  const handlePaceChange = (pace: 'gentle' | 'standard' | 'aggressive') => {
+    onUpdateData({ pace });
+  };
+
+  const cardStyle = useAnimatedStyle(() => ({
+    width: '100%',
+    transform: [{ translateY: cardTranslateY.value }],
+    opacity: cardOpacity.value,
+  }));
 
   if (loading) {
     return (
-      <View style={styles.magicContainer}>
-        <View style={styles.spinnerWrapper}>
-          <FontAwesome name="spinner" size={60} color={neonGreen} style={styles.spinIcon} />
+      <View style={styles.magicLoadingContainer}>
+        {/* Spinning MealScanner Logo */}
+        <AnimatedLogo size={60} playIntro={false} />
+        
+        {/* Dancing Veggies Animation */}
+        <View style={styles.veggiesWrapper}>
+          <SpriteAnimation
+            frames={spriteFrames}
+            fps={12}
+            loop={true}
+            width={340}
+            height={340}
+          />
         </View>
-        <Text style={styles.magicText}>
-          Calculating your daily fuel and personalizing your recipe feed...
-        </Text>
+        
+        <Text style={styles.magicTitleLoading}>Creating your plan</Text>
+        
+        <View style={styles.messageWrapper}>
+          <Text style={styles.magicTextDynamic}>
+            {loadingMessages[loadingMessageIndex]}
+          </Text>
+        </View>
+
+        <View style={styles.loadingProgressTrack}>
+          <View 
+            style={[
+              styles.loadingProgressBar, 
+              { width: `${((loadingMessageIndex + 1) / loadingMessages.length) * 100}%` }
+            ]} 
+          />
+        </View>
       </View>
     );
   }
 
   return (
     <View style={styles.magicContainer}>
-      <Text style={styles.magicTitle}>Your Personalized Plan is Ready!</Text>
-      <View style={styles.planCard}>
-        <View style={styles.planRow}>
-          <Text style={styles.planLabel}>Daily Target</Text>
-          <Text style={styles.planValue}>{calculation.calories} kcal</Text>
+      {showConfetti && (
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+            {Array.from({ length: 40 }).map((_, i) => (
+              <ConfettiPiece key={i} index={i} />
+            ))}
+          </View>
         </View>
-        <View style={styles.planRow}>
-          <Text style={styles.planLabel}>Protein</Text>
-          <Text style={styles.planValue}>{calculation.protein}g</Text>
+      )}
+
+      <Text style={[styles.magicTitle, { marginBottom: 32 }]}>Here's your starting target</Text>
+      
+      <Reanimated.View style={[styles.planCard, cardStyle]}>
+        <View style={styles.macroGrid}>
+          {/* Headline Calorie Section */}
+          <View style={styles.calorieHeadline}>
+            <StaggeredMacroItem 
+              label="Daily Calories" 
+              value={calculation.calories} 
+              unit="" 
+              delay={500} 
+              isHeadline 
+            />
+          </View>
+
+          {/* Three-column Macro Row */}
+          <View style={styles.macroRow}>
+            {[
+              { label: 'Protein', value: calculation.protein, unit: 'g' },
+              { label: 'Carbs', value: calculation.carbs, unit: 'g' },
+              { label: 'Fat', value: calculation.fat, unit: 'g' }
+            ].map((item, i) => (
+              <StaggeredMacroItem 
+                key={item.label} 
+                label={item.label} 
+                value={item.value} 
+                unit={item.unit} 
+                delay={700 + (i * 100)} 
+              />
+            ))}
+          </View>
         </View>
+
+        <View style={styles.paceContainer}>
+          <Text style={styles.paceLabel}>Choose your pace</Text>
+          <View style={styles.paceSelector}>
+            {(['gentle', 'standard', 'aggressive'] as const).map((p) => (
+              <TouchableOpacity 
+                key={p}
+                style={[styles.paceButton, data.pace === p && styles.activePaceButton]}
+                onPress={() => handlePaceChange(p)}
+              >
+                <Text style={[styles.paceText, data.pace === p && styles.activePaceText]}>
+                  {p.charAt(0).toUpperCase() + p.slice(1)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
         <Text style={styles.planBlurb}>
-          Thank you for trusting us. Based on your {data.activityLevel.replace('_', ' ')} lifestyle and goal to {data.goal.replace('_', ' ')}, we've designed a sustainable path to success.
+          You can adjust your plan anytime from your settings.
         </Text>
-      </View>
-      <Button variant="primary" fullWidth onPress={onComplete} style={{ marginTop: 24 }}>
-        See My Plan
+      </Reanimated.View>
+
+      <Button variant="primary" fullWidth onPress={onComplete} style={styles.startButton}>
+        Start tracking
       </Button>
     </View>
   );
@@ -763,8 +1328,9 @@ const styles = StyleSheet.create({
     ...TextStyles.h2,
     color: '#FFFFFF',
     fontFamily: 'Telegraf_800UltraBold',
-    marginBottom: 20,
+    marginBottom: 24,
     fontSize: 26,
+    textAlign: 'center',
   },
   characterImageContainer: {
     alignItems: 'center',
@@ -788,7 +1354,7 @@ const styles = StyleSheet.create({
   genderContainer: {
     flexDirection: 'row',
     gap: 10,
-    marginBottom: 20,
+    marginBottom: 16,
   },
   genderButton: {
     flex: 1,
@@ -812,7 +1378,20 @@ const styles = StyleSheet.create({
     color: neonGreen,
   },
   inputGroup: {
-    marginBottom: 20,
+    marginBottom: 16,
+  },
+  cleanInput: {
+    fontSize: 32,
+    color: neonGreen,
+    fontFamily: 'Telegraf_800UltraBold',
+    textAlign: 'center',
+    paddingVertical: 8,
+  },
+  sectionDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    marginVertical: 12,
+    marginHorizontal: 40,
   },
   rulerGroup: {
     marginBottom: 8,
@@ -859,11 +1438,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: glassBorder,
     backgroundColor: glassSurface,
-    gap: 16,
+    gap: 12,
   },
   activeOptionCard: {
     borderColor: neonGreen,
     backgroundColor: 'rgba(74, 222, 128, 0.1)',
+  },
+  goalIcon: {
+    width: 68,
+    height: 68,
   },
   optionLabel: {
     ...TextStyles.h3,
@@ -886,7 +1469,8 @@ const styles = StyleSheet.create({
   chipContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    justifyContent: 'center',
+    gap: 10,
   },
   chip: {
     paddingHorizontal: 20,
@@ -904,15 +1488,102 @@ const styles = StyleSheet.create({
     ...TextStyles.body,
     color: textMuted,
   },
+  sectionLabel: {
+    ...TextStyles.caption,
+    color: textMuted,
+    marginBottom: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  allergySection: {
+    marginTop: 28,
+  },
+  allergyInputRow: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'center',
+  },
+  allergyInputWrapper: {
+    flex: 1,
+  },
+  addAllergyButton: {
+    backgroundColor: glassSurface,
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: glassBorder,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  allergyChipsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 16,
+  },
+  allergyChipContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  removeIcon: {
+    marginLeft: 2,
+  },
   footer: {
     paddingVertical: 20,
     paddingHorizontal: 10,
   },
   magicContainer: {
     flex: 1,
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 40,
+  },
+  magicLoadingContainer: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingTop: 80,
+    paddingHorizontal: 20,
+    marginTop: -40,
+  },
+  veggiesWrapper: {
+    marginTop: -30,
+    marginBottom: -10,
+  },
+  magicTitleLoading: {
+    ...TextStyles.h2,
+    color: '#FFFFFF',
+    fontFamily: 'Telegraf_800UltraBold',
+    fontSize: 24,
+    marginBottom: 12,
+  },
+  messageWrapper: {
+    height: 30,
+    justifyContent: 'center',
+  },
+  magicTextDynamic: {
+    ...TextStyles.body,
+    textAlign: 'center',
+    color: neonGreen,
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  loadingProgressTrack: {
+    width: 200,
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 2,
+    marginTop: 32,
+    overflow: 'hidden',
+  },
+  loadingProgressBar: {
+    height: '100%',
+    backgroundColor: neonGreen,
+    borderRadius: 2,
   },
   magicText: {
     ...TextStyles.body,
@@ -927,7 +1598,9 @@ const styles = StyleSheet.create({
     color: neonGreen,
     fontFamily: 'Telegraf_800UltraBold',
     textAlign: 'center',
-    marginBottom: 32,
+    fontSize: 28,
+    lineHeight: 34,
+    marginBottom: 24,
   },
   spinIcon: {
     // We would use an actual animated spinner or mascot here
@@ -970,9 +1643,101 @@ const styles = StyleSheet.create({
   planBlurb: {
     ...TextStyles.body,
     color: textMuted,
-    lineHeight: 22,
+    lineHeight: 20,
     textAlign: 'center',
-    marginTop: 8,
+    marginTop: 12,
+    fontSize: 13,
+    paddingHorizontal: 10,
+  },
+  macroGrid: {
+    gap: 12,
+    marginBottom: 20,
+  },
+  calorieHeadline: {
+    width: '100%',
+  },
+  macroRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  macroItem: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headlineMacroItem: {
+    backgroundColor: 'rgba(74, 222, 128, 0.1)',
+    paddingVertical: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(74, 222, 128, 0.2)',
+    marginBottom: 4,
+  },
+  macroValue: {
+    ...TextStyles.h3,
+    color: neonGreen,
+    fontSize: 24,
+    lineHeight: 30,
+    fontFamily: 'Telegraf_800UltraBold',
+  },
+  headlineValue: {
+    fontSize: 48,
+    lineHeight: 56,
+  },
+  macroLabel: {
+    ...TextStyles.caption,
+    color: textMuted,
+    marginTop: 2,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    fontSize: 10,
+  },
+  paceContainer: {
+    marginTop: 16,
+    marginBottom: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.05)',
+  },
+  paceLabel: {
+    ...TextStyles.caption,
+    color: textMuted,
+    marginBottom: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    textAlign: 'center',
+  },
+  paceSelector: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  paceButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: glassBorder,
+    backgroundColor: glassSurface,
+    alignItems: 'center',
+  },
+  activePaceButton: {
+    borderColor: neonGreen,
+    backgroundColor: 'rgba(74, 222, 128, 0.15)',
+  },
+  paceText: {
+    ...TextStyles.caption,
+    color: textMuted,
+    fontWeight: '600',
+    fontSize: 12,
+  },
+  activePaceText: {
+    color: neonGreen,
+  },
+  startButton: {
+    marginTop: 32,
   },
   socialButtons: {
     gap: 16,

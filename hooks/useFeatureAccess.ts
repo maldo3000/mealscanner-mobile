@@ -44,6 +44,8 @@ interface UseFeatureAccessReturn {
   };
   /** Increment scan count after successful scan */
   incrementScan: () => Promise<void>;
+  /** Ensure subscription tier is synced to database before analysis */
+  ensureSubscriptionSynced: () => Promise<boolean>;
 }
 
 /**
@@ -51,7 +53,7 @@ interface UseFeatureAccessReturn {
  * Combines subscription state with scan limits for consistent feature gating
  */
 export function useFeatureAccess(): UseFeatureAccessReturn {
-  const { isPro, isLoading: isSubscriptionLoading, showPaywall } = useSubscription();
+  const { isPro, isLoading: isSubscriptionLoading, showPaywall, ensureSubscriptionSynced } = useSubscription();
   const scanLimit = useScanLimit();
 
   const isLoading = isSubscriptionLoading || scanLimit.isLoading;
@@ -157,6 +159,7 @@ export function useFeatureAccess(): UseFeatureAccessReturn {
     showPaywall,
     scanLimitState,
     incrementScan: scanLimit.incrementScan,
+    ensureSubscriptionSynced,
   };
 }
 

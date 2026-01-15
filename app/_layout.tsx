@@ -2,15 +2,18 @@ import { DarkTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { View } from 'react-native';
 import 'react-native-reanimated';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { LoadingScreen } from '@/components/LoadingScreen';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { useFirstLaunch } from '@/hooks/useFirstLaunch';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { SubscriptionProvider } from '@/context/SubscriptionContext';
+import { USE_EDITORIAL_HERBARIUM } from '@/constants/brandExperiment';
+import { herbarium } from '@/constants/Colors';
 import {
   SourceSans3_400Regular,
   SourceSans3_600SemiBold,
@@ -19,9 +22,6 @@ import {
 // Feature flag to easily disable loading screen
 // Set to false to disable the loading screen
 const ENABLE_LOADING_SCREEN = true;
-
-// Minimum time to show loading screen (in milliseconds)
-const MIN_LOADING_TIME = 2000; // 2 seconds
 
 function RootLayoutNav() {
   const { session, isLoading: isAuthLoading } = useAuth();
@@ -63,9 +63,21 @@ function RootLayoutNav() {
 
 function RootLayoutContent() {
   const { isLoading: isAuthLoading } = useAuth();
+  const { isFirstLaunch, isChecking: isCheckingFirstLaunch } = useFirstLaunch();
   const colorScheme = useColorScheme();
   // Always use dark theme to match mobile experience  
-  const theme = DarkTheme;
+  const theme = USE_EDITORIAL_HERBARIUM ? {
+    ...DarkTheme,
+    colors: {
+      ...DarkTheme.colors,
+      primary: herbarium.accentPrimary,
+      background: herbarium.backgroundInk,
+      card: herbarium.backgroundInkAlt,
+      text: herbarium.textPrimary,
+      border: herbarium.border,
+      notification: herbarium.accentPrimary,
+    },
+  } : DarkTheme;
   
   const [loaded] = useFonts({
     // Telegraf for headings (local asset files)
@@ -80,29 +92,21 @@ function RootLayoutContent() {
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
 
-  const [minTimeElapsed, setMinTimeElapsed] = useState(false);
   const [isOverlayVisible, setIsOverlayVisible] = useState(true);
   const [shouldRenderLoading, setShouldRenderLoading] = useState(true);
+  const [loadingAnimationReady, setLoadingAnimationReady] = useState(false);
 
-  // Track minimum display time
-  useEffect(() => {
-    if (ENABLE_LOADING_SCREEN) {
-      const timer = setTimeout(() => {
-        setMinTimeElapsed(true);
-      }, MIN_LOADING_TIME);
-
-      return () => clearTimeout(timer);
-    } else {
-      setMinTimeElapsed(true);
-    }
+  // Callback when the loading screen's internal animation completes
+  const handleLoadingReady = useCallback(() => {
+    setLoadingAnimationReady(true);
   }, []);
 
-  // Determine when app is ready (fonts loaded AND minimum time elapsed AND auth check finished)
-  const isAppReady = loaded && minTimeElapsed && !isAuthLoading;
+  // Determine when app is ready (fonts loaded AND auth check finished AND first-launch check finished)
+  const isAppReady = loaded && !isAuthLoading && !isCheckingFirstLaunch;
 
-  // Trigger fade out when app is ready
+  // Trigger fade out when BOTH app is ready AND loading animation has completed
   useEffect(() => {
-    if (isAppReady) {
+    if (isAppReady && loadingAnimationReady) {
       // Small additional delay to ensure the Redirect logic in RootLayoutNav has fired
       // and the stack has started mounting the target screen behind the overlay
       const timer = setTimeout(() => {
@@ -110,7 +114,7 @@ function RootLayoutContent() {
       }, 300);
       return () => clearTimeout(timer);
     }
-  }, [isAppReady]);
+  }, [isAppReady, loadingAnimationReady]);
 
   // If fonts aren't loaded yet, show nothing (system splash screen handles this)
   if (!loaded) {
@@ -126,7 +130,9 @@ function RootLayoutContent() {
         {/* The loading screen overlays everything until it's done fading */}
         {ENABLE_LOADING_SCREEN && shouldRenderLoading && (
           <LoadingScreen 
-            isVisible={isOverlayVisible} 
+            isVisible={isOverlayVisible}
+            isFirstLaunch={isFirstLaunch}
+            onReadyToDismiss={handleLoadingReady}
             onFadeComplete={() => setShouldRenderLoading(false)}
           />
         )}

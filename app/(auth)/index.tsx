@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { Button } from '@/components/ui/Button';
 import { Colors, neonGreen, textMuted, bgPrimary } from '@/constants/Colors';
 import { TextStyles } from '@/constants/Typography';
-import { Mascot } from '@/components/Mascot';
+import { AnimatedLogo } from '@/components/ui/AnimatedLogo';
 import { PageContainer } from '@/components/layout/PageContainer';
 
 export default function LandingScreen() {
@@ -16,7 +16,7 @@ export default function LandingScreen() {
         <View style={styles.content}>
           <View style={styles.heroSection}>
             <View style={styles.mascotContainer}>
-              <Mascot size={180} />
+              <AnimatedLogo size={200} />
             </View>
             <Text style={[styles.headline, { color: neonGreen }]}>
               Snap, Analyze,{"\n"}Eat Smarter
@@ -113,6 +113,7 @@ const styles = StyleSheet.create({
     color: textMuted,
     paddingHorizontal: 20,
     fontSize: 16,
+    marginBottom: 32,
   },
   actionSection: {
     width: '100%',

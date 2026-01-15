@@ -10,8 +10,9 @@ import { FontFamilies, TextStyles } from '@/constants/Typography';
 import { useAuth } from '@/context/AuthContext';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { deleteMeal, getUserMeals } from '@/lib/supabase';
-import { useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import { useSubscription } from '@/context/SubscriptionContext';
+import { useRouter, useFocusEffect } from 'expo-router';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import {
     Alert,
     FlatList,
@@ -26,7 +27,7 @@ import {
 } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
-import Animated, { Easing, FadeInDown } from 'react-native-reanimated';
+import Animated, { Easing, FadeInDown, LinearTransition } from 'react-native-reanimated';
 
 interface Meal {
   id: string;
@@ -41,6 +42,10 @@ interface Meal {
     protein?: number;
     fat?: number;
     carbs?: number;
+    fiber?: number;
+    sugar?: number;
+    sodium?: number;
+    cholesterol?: number;
   };
   health_score?: 'very_healthy' | 'healthy' | 'needs_improvement';
   fiber_score?: string;
@@ -57,6 +62,7 @@ interface Meal {
 
 export default function MealsScreen() {
   const { user } = useAuth();
+  const { isPro } = useSubscription();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
   const router = useRouter();
@@ -69,31 +75,47 @@ export default function MealsScreen() {
   // Always use compact list view for the journal
   const viewMode = 'compact';
 
-  useEffect(() => {
-    if (user) {
-      loadMeals(user.id);
-    } else {
-      setMeals([]);
-      setLoading(false);
-    }
-  }, [user]);
+  const isFirstLoad = useRef(true);
 
-  const loadMeals = async (userId: string) => {
-    setLoading(true);
+  // Helper to format macro values to 1 decimal point max, removing trailing .0
+  const formatMacro = (val: number | undefined | null) => {
+    if (val === undefined || val === null) return '0';
+    return Number(val.toFixed(1)).toString();
+  };
+
+  // Refresh data when screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      if (user) {
+        // Only show skeleton on very first load of the session
+        // Note: meals.length is read inside but not a dependency - we only want to
+        // re-run on focus or user change, not when meals array changes
+        const shouldShowSkeleton = isFirstLoad.current && meals.length === 0;
+        loadMeals(user.id, shouldShowSkeleton);
+        isFirstLoad.current = false;
+      } else {
+        setMeals([]);
+        setLoading(false);
+      }
+    }, [user])
+  );
+
+  const loadMeals = async (userId: string, showSkeleton = false) => {
+    if (showSkeleton) setLoading(true);
     try {
-      console.log('🔍 Journal: Loading meals for user ID:', userId);
-      const { data, error } = await getUserMeals(userId, 50);
+      console.log('🔍 Journal: Loading meals for user ID:', userId, 'showSkeleton:', showSkeleton);
+      // Free users are limited to 7 days of history
+      const daysLimit = isPro ? undefined : 7;
+      const { data, error } = await getUserMeals(userId, 50, daysLimit);
       if (error) {
         console.error('Error loading meals:', error);
-        Alert.alert('Error', 'Failed to load meals');
+        if (showSkeleton) Alert.alert('Error', 'Failed to load meals');
         return;
       }
-      console.log('🔍 Journal: Received meals data:', data);
-      console.log('🔍 Journal: Number of meals:', data?.length || 0);
       setMeals(data || []);
     } catch (error) {
       console.error('Error loading meals:', error);
-      Alert.alert('Error', 'Failed to load meals');
+      if (showSkeleton) Alert.alert('Error', 'Failed to load meals');
     } finally {
       setLoading(false);
     }
@@ -102,7 +124,7 @@ export default function MealsScreen() {
   const onRefresh = useCallback(async () => {
     if (!user) return;
     setRefreshing(true);
-    await loadMeals(user.id);
+    await loadMeals(user.id, false);
     setRefreshing(false);
   }, [user]);
 
@@ -225,7 +247,10 @@ export default function MealsScreen() {
   };
 
   const renderCompactMealRow = ({ item: meal, index }: { item: Meal, index: number }) => (
-    <Animated.View entering={FadeInDown.delay(index * 40).duration(500).easing(Easing.out(Easing.quad))}>
+    <Animated.View 
+      entering={FadeInDown.delay(index * 40).springify().damping(20).stiffness(90)}
+      layout={LinearTransition.springify().damping(20).stiffness(90)}
+    >
       <Swipeable
         renderRightActions={(progress, dragX) => renderRightActions(progress, dragX, meal.id)}
         friction={2}
@@ -274,25 +299,25 @@ export default function MealsScreen() {
             <View style={styles.compactMeta}>
               <View style={styles.macroBadge}>
                 <Text style={[TextStyles.bodySmall, { color: primaryGreen, fontWeight: '700' }]}>
-                  {meal.calories || '0'}
+                  {formatMacro(meal.calories)}
                 </Text>
                 <Text style={[TextStyles.caption, { color: colors.icon, fontSize: 10 }]}>kcal</Text>
               </View>
               <View style={styles.macroBadge}>
                 <Text style={[TextStyles.bodySmall, { color: colors.text, fontWeight: '600' }]}>
-                  {meal.macros?.protein || '0'}g
+                  {formatMacro(meal.macros?.protein)}g
                 </Text>
                 <Text style={[TextStyles.caption, { color: colors.icon, fontSize: 10 }]}>pro</Text>
               </View>
               <View style={styles.macroBadge}>
                 <Text style={[TextStyles.bodySmall, { color: colors.text, fontWeight: '600' }]}>
-                  {meal.macros?.carbs || '0'}g
+                  {formatMacro(meal.macros?.carbs)}g
                 </Text>
                 <Text style={[TextStyles.caption, { color: colors.icon, fontSize: 10 }]}>carb</Text>
               </View>
               <View style={styles.macroBadge}>
                 <Text style={[TextStyles.bodySmall, { color: colors.text, fontWeight: '600' }]}>
-                  {meal.macros?.fat || '0'}g
+                  {formatMacro(meal.macros?.fat)}g
                 </Text>
                 <Text style={[TextStyles.caption, { color: colors.icon, fontSize: 10 }]}>fat</Text>
               </View>
@@ -365,7 +390,7 @@ export default function MealsScreen() {
                 </Text>
                 <View style={styles.summaryCalorieRow}>
                   <Text style={[TextStyles.h1, { color: primaryGreen, fontWeight: '800' }]}>
-                    {totals.calories}
+                    {formatMacro(totals.calories)}
                   </Text>
                   <Text style={[TextStyles.body, { color: colors.icon, marginLeft: 6, marginBottom: 6 }]}>
                     kcal
@@ -376,15 +401,15 @@ export default function MealsScreen() {
               <View style={styles.summaryMacros}>
                 <View style={styles.summaryMacroItem}>
                   <Text style={[TextStyles.caption, { color: colors.icon, fontSize: 10, marginBottom: 2 }]}>Pro</Text>
-                  <Text style={[TextStyles.bodySmall, { color: colors.text, fontWeight: '700' }]}>{totals.protein}g</Text>
+                  <Text style={[TextStyles.bodySmall, { color: colors.text, fontWeight: '700' }]}>{formatMacro(totals.protein)}g</Text>
                 </View>
                 <View style={styles.summaryMacroItem}>
                   <Text style={[TextStyles.caption, { color: colors.icon, fontSize: 10, marginBottom: 2 }]}>Carb</Text>
-                  <Text style={[TextStyles.bodySmall, { color: colors.text, fontWeight: '700' }]}>{totals.carbs}g</Text>
+                  <Text style={[TextStyles.bodySmall, { color: colors.text, fontWeight: '700' }]}>{formatMacro(totals.carbs)}g</Text>
                 </View>
                 <View style={styles.summaryMacroItem}>
                   <Text style={[TextStyles.caption, { color: colors.icon, fontSize: 10, marginBottom: 2 }]}>Fat</Text>
-                  <Text style={[TextStyles.bodySmall, { color: colors.text, fontWeight: '700' }]}>{totals.fat}g</Text>
+                  <Text style={[TextStyles.bodySmall, { color: colors.text, fontWeight: '700' }]}>{formatMacro(totals.fat)}g</Text>
                 </View>
               </View>
             </View>

@@ -67,14 +67,19 @@ const MAPPING = {
   'flame': 'local-fire-department',
   'flame.fill': 'local-fire-department',
   'leaf.fill': 'eco',
+  'bolt.fill': 'bolt',
   'drop.fill': 'water-drop',
   'figure.strengthtraining.traditional': 'fitness-center',
   'sparkles': 'auto-awesome',
   'pill': 'medication',
+  'leaf.arrow.circlepath': 'cached',
+  'candybar.fill': 'cookie',
+  'shaker.fill': 'grain',
   
   // Legacy
   'paperplane.fill': 'send',
   'chevron.left.forwardslash.chevron.right': 'code',
+  'rectangle.portrait.and.arrow.right': 'logout',
 } as IconMapping;
 
 /**

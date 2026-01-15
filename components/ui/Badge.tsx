@@ -4,16 +4,17 @@ import { IconSymbol } from './IconSymbol';
 import { neonGreen, glassSurface, glassBorder, textWhite, textMuted } from '@/constants/Colors';
 import { TextStyles } from '@/constants/Typography';
 
-export type BadgeAccentColor = 'default' | 'neon' | 'mint' | 'sky' | 'coral';
+export type BadgeAccentColor = 'default' | 'neon' | 'mint' | 'sky' | 'coral' | string;
 
 interface BadgeProps {
   icon: string;
   title: string;
   unlocked: boolean;
   accentColor?: BadgeAccentColor;
+  textStyle?: any;
 }
 
-export function Badge({ icon, title, unlocked, accentColor = 'neon' }: BadgeProps) {
+export function Badge({ icon, title, unlocked, accentColor = 'neon', textStyle }: BadgeProps) {
   
   const getAccentColor = () => {
     switch (accentColor) {
@@ -31,24 +32,21 @@ export function Badge({ icon, title, unlocked, accentColor = 'neon' }: BadgeProp
     <View style={[
       styles.badge, 
       { 
-        backgroundColor: unlocked ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.1)',
-        borderColor: unlocked ? 'rgba(255,255,255,0.08)' : 'transparent',
-        borderWidth: 1
+        backgroundColor: unlocked ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.1)',
       }
     ]}>
       <View style={[
         styles.iconContainer, 
         { 
-          backgroundColor: unlocked ? `${accent}15` : 'rgba(255,255,255,0.05)',
-          borderColor: unlocked ? `${accent}30` : 'transparent',
-          borderWidth: 1,
+          backgroundColor: unlocked ? `${accent}20` : 'rgba(255,255,255,0.05)',
           shadowColor: unlocked ? accent : 'transparent',
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: unlocked ? 0.2 : 0,
-          shadowRadius: 8,
-          elevation: unlocked ? 4 : 0,
+          shadowOffset: { width: 0, height: 6 },
+          shadowOpacity: unlocked ? 0.4 : 0,
+          shadowRadius: 12,
+          elevation: unlocked ? 6 : 0,
         }
       ]}>
+
         <IconSymbol 
           name={icon as any} 
           size={24} 
@@ -66,7 +64,8 @@ export function Badge({ icon, title, unlocked, accentColor = 'neon' }: BadgeProp
             textAlign: 'center',
             fontSize: 10,
             letterSpacing: 0.2,
-          }
+          },
+          textStyle
         ]} 
         numberOfLines={2}
       >

@@ -90,12 +90,8 @@ export function UpgradePrompt({
   const displayMessage = message || content.message;
 
   const handleUpgrade = async () => {
-    // Try RevenueCat native paywall first
-    const success = await showPaywall();
-    if (!success) {
-      // Fall back to custom paywall if native fails
-      setPaywallVisible(true);
-    }
+    // Show our custom paywall directly
+    setPaywallVisible(true);
   };
 
   if (compact) {

@@ -1,16 +1,23 @@
+import { GoogleSignin } from '@react-native-google-signin/google-signin'
 import { createClient } from '@supabase/supabase-js'
+import * as AppleAuthentication from 'expo-apple-authentication'
+import * as Crypto from 'expo-crypto'
 import * as FileSystemLegacy from 'expo-file-system/legacy'
 import { Platform } from 'react-native'
-import * as AppleAuthentication from 'expo-apple-authentication'
-import { GoogleSignin } from '@react-native-google-signin/google-signin'
-import * as Crypto from 'expo-crypto'
 
 // Configure Google Sign-In
 if (Platform.OS !== 'web') {
-  GoogleSignin.configure({
-    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-  })
+  const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
+  const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+
+  if (iosClientId || webClientId) {
+    GoogleSignin.configure({
+      webClientId: webClientId,
+      iosClientId: iosClientId,
+    });
+  } else {
+    console.warn('⚠️ Google Sign-In IDs missing from .env. Google Sign-In will not work.');
+  }
 }
 
 // Only import AsyncStorage on native platforms
@@ -116,24 +123,46 @@ export const signInWithApple = async () => {
 
 export const signInWithGoogle = async () => {
   try {
-    await GoogleSignin.hasPlayServices()
-    const userInfo = await GoogleSignin.signIn()
-    
-    // For newer versions of the library, the idToken might be in userInfo.data
-    const idToken = (userInfo as any).data?.idToken || userInfo.idToken
+    const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
+    const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
 
-    if (!idToken) {
-      throw new Error('No ID token present!')
+    if (!iosClientId && !webClientId) {
+      throw new Error('Google Sign-In is not configured. Please add client IDs to your .env file.');
     }
 
+    await GoogleSignin.hasPlayServices();
+    
+    // Clear any previous Google session to ensure a fresh token
+    await GoogleSignin.signOut().catch(() => {});
+    
+    GoogleSignin.configure({
+      webClientId,
+      iosClientId,
+    });
+
+    const userInfo = await GoogleSignin.signIn();
+    const idToken = (userInfo as any).data?.idToken || userInfo.idToken;
+
+    if (!idToken) {
+      throw new Error('No ID token present!');
+    }
+
+    // Native Google Sign-In with Supabase
+    // Note: "Skip nonce checks" is enabled in Supabase Dashboard for iOS compatibility
+    // This allows the ID token to be accepted without matching the nonce
     const { data, error } = await supabase.auth.signInWithIdToken({
       provider: 'google',
       token: idToken,
-    })
+    });
 
-    return { data, error }
+    return { data, error };
   } catch (e: any) {
-    return { data: null, error: e }
+    // Handle user cancellation gracefully
+    if (e.code === 'SIGN_IN_CANCELLED' || e.code === '-5') {
+      return { data: null, error: null };
+    }
+    console.error('❌ Google Sign-In Error:', e);
+    return { data: null, error: e };
   }
 }
 
@@ -267,23 +296,39 @@ export const saveMeal = async (mealData: {
   return { data, error }
 }
 
-export const getUserMeals = async (userId: string, limit = 20) => {
-  const { data, error } = await supabase
+export const getUserMeals = async (userId: string, limit = 20, daysLimit?: number) => {
+  let query = supabase
     .from('meals')
     .select('*')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .limit(limit)
+
+  if (daysLimit) {
+    const date = new Date()
+    date.setDate(date.getDate() - daysLimit)
+    query = query.gte('created_at', date.toISOString())
+  }
+  
+  const { data, error } = await query
   
   return { data, error }
 }
 
-export const getAllUserMeals = async (userId: string) => {
-  const { data, error } = await supabase
+export const getAllUserMeals = async (userId: string, daysLimit?: number) => {
+  let query = supabase
     .from('meals')
     .select('*')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
+
+  if (daysLimit) {
+    const date = new Date()
+    date.setDate(date.getDate() - daysLimit)
+    query = query.gte('created_at', date.toISOString())
+  }
+  
+  const { data, error } = await query
   
   return { data, error }
 }
@@ -329,7 +374,86 @@ export const deleteMeal = async (mealId: string) => {
     .eq('id', mealId)
   
   return { error }
-} 
+}
+
+/**
+ * Save a recipe as a meal entry in the journal
+ * This allows users to log a pre-baked recipe they've cooked
+ */
+export const saveRecipeAsMeal = async (
+  userId: string,
+  recipeData: {
+    id: string;
+    name: string;
+    description?: string;
+    image_url?: string;
+    servings?: number;
+    nutrition_per_serving: {
+      calories: number;
+      protein: number;
+      carbs: number;
+      fat: number;
+      fiber?: number;
+    };
+    ingredients?: Array<{ name: string; amount: string; unit: string }>;
+    tags?: string[];
+  },
+  servingsConsumed: number = 1
+) => {
+  try {
+    console.log('🍳 Saving recipe as meal:', { recipeId: recipeData.id, name: recipeData.name, servings: servingsConsumed });
+    
+    // Calculate nutrition based on servings consumed
+    const multiplier = servingsConsumed;
+    const nutrition = recipeData.nutrition_per_serving;
+    
+    const mealData = {
+      user_id: userId,
+      description: recipeData.name,
+      image_url: recipeData.image_url,
+      calories: Math.round(nutrition.calories * multiplier),
+      macros: {
+        protein: Math.round(nutrition.protein * multiplier),
+        carbs: Math.round(nutrition.carbs * multiplier),
+        fat: Math.round(nutrition.fat * multiplier),
+        fiber: nutrition.fiber ? Math.round(nutrition.fiber * multiplier) : undefined,
+      },
+      ingredients: recipeData.ingredients?.map(ing => `${ing.amount} ${ing.unit} ${ing.name}`) || [],
+      serving_estimate: servingsConsumed === 1 
+        ? '1 serving' 
+        : `${servingsConsumed} servings`,
+      recipe: recipeData.id, // Link back to the recipe
+      meal_type: 'meal',
+      health_score: 'healthy' as const,
+      qualitative_feedback: `Logged from recipe: ${recipeData.name}`,
+      ai_analysis: {
+        source: 'recipe',
+        recipe_id: recipeData.id,
+        recipe_name: recipeData.name,
+        tags: recipeData.tags,
+      },
+      processing_status: 'completed',
+      created_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await supabase
+      .from('meals')
+      .insert([mealData])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('🍳 Error saving recipe as meal:', error);
+      throw error;
+    }
+
+    console.log('🍳 Recipe saved as meal successfully:', data?.id);
+    return { data, error: null };
+  } catch (error) {
+    console.error('🍳 Error saving recipe as meal:', error);
+    return { data: null, error };
+  }
+};
 
 // AI Analysis Functions
 export const analyzeImageMeal = async (imageUrl: string, userId: string, mealId?: string, description?: string) => {
@@ -398,6 +522,12 @@ export interface MealItem {
     carbs: number
     fat: number
     fiber: number
+    sugar?: number
+    sodium?: number
+    cholesterol?: number
+    visual_analysis?: string
+    estimated_weight_g?: number
+    needs_review?: boolean
   } | null
   ai_ingredients: string[] | null
   ai_confidence: number | null
@@ -515,7 +645,7 @@ export const setMealHeroItem = async (mealId: string, mealItemId: string) => {
 
 // User Goals Functions
 export const saveUserGoals = async (userId: string, goals: {
-  goal_type: 'weight_loss' | 'muscle_gain' | 'maintenance' | 'health'
+  goal_type: string
   target_calories?: number
   target_protein?: number
   target_carbs?: number
@@ -663,14 +793,15 @@ export const getMealsWithAnalysis = async (userId: string, limit = 20) => {
 }
 
 // Recipe Analysis Functions
-export const analyzeRecipeFromImage = async (imageUrl: string, userId: string, description?: string, sourceMealId?: string) => {
+export const analyzeRecipeFromImage = async (imageUrl: string, userId: string, isPro: boolean, description?: string, sourceMealId?: string) => {
   try {
-    console.log('🔍 Starting recipe image analysis for:', { imageUrl: imageUrl.substring(0, 50) + '...', userId, description });
+    console.log('🔍 Starting recipe image analysis for:', { imageUrl: imageUrl.substring(0, 50) + '...', userId, description, isPro });
     
     const { data, error } = await supabase.functions.invoke('analyze-recipe-image', {
       body: {
         image_url: imageUrl,
         user_id: userId,
+        is_pro: isPro,
         description,
         source_meal_id: sourceMealId
       }
@@ -689,14 +820,15 @@ export const analyzeRecipeFromImage = async (imageUrl: string, userId: string, d
   }
 }
 
-export const analyzeRecipeFromText = async (description: string, userId: string, sourceMealId?: string) => {
+export const analyzeRecipeFromText = async (description: string, userId: string, isPro: boolean, sourceMealId?: string) => {
   try {
-    console.log('🔍 Starting recipe text analysis for:', { description: description.substring(0, 50) + '...', userId });
+    console.log('🔍 Starting recipe text analysis for:', { description: description.substring(0, 50) + '...', userId, isPro });
     
     const { data, error } = await supabase.functions.invoke('analyze-recipe-text', {
       body: {
         description,
         user_id: userId,
+        is_pro: isPro,
         source_meal_id: sourceMealId
       }
     })
@@ -1130,8 +1262,8 @@ export const saveDatabaseMeal = async (
     const derivedMealType = mealType || (() => {
       const hour = new Date().getHours();
       if (hour < 11) return 'Breakfast';
-      if (hour < 16) return 'Lunch';
-      if (hour < 19) return 'Dinner';
+      if (hour < 15) return 'Lunch';
+      if (hour < 20) return 'Dinner';
       return 'Snack';
     })();
 
@@ -1188,6 +1320,7 @@ export const saveDatabaseMeal = async (
 export const generateRecipeSuggestions = async (
   userInput: string,
   userId: string,
+  isPro: boolean,
   nutritionGoals?: {
     dailyTargets: {
       calories: number;
@@ -1201,12 +1334,13 @@ export const generateRecipeSuggestions = async (
   }
 ) => {
   try {
-    console.log('🔍 Starting recipe suggestions generation for:', { userInput: userInput.substring(0, 50) + '...', userId });
+    console.log('🔍 Starting recipe suggestions generation for:', { userInput: userInput.substring(0, 50) + '...', userId, isPro });
     
     const { data, error } = await supabase.functions.invoke('generate-recipe-suggestions', {
       body: {
         user_input: userInput,
         user_id: userId,
+        is_pro: isPro,
         nutrition_goals: nutritionGoals,
       }
     })
@@ -1235,6 +1369,7 @@ export const generateRecipeFromSuggestion = async (
     difficulty?: 'Easy' | 'Medium' | 'Hard';
   },
   userId: string,
+  isPro: boolean,
   nutritionGoals?: {
     dailyTargets: {
       calories: number;
@@ -1247,12 +1382,13 @@ export const generateRecipeFromSuggestion = async (
   }
 ) => {
   try {
-    console.log('🔍 Starting full recipe generation for:', { recipeName: suggestion.name, userId });
+    console.log('🔍 Starting full recipe generation for:', { suggestionName: suggestion.name, userId, isPro });
     
     const { data, error } = await supabase.functions.invoke('generate-recipe-from-suggestion', {
       body: {
         suggestion,
         user_id: userId,
+        is_pro: isPro,
         nutrition_goals: nutritionGoals,
       }
     })

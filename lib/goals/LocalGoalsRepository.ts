@@ -15,7 +15,7 @@ if (Platform.OS !== 'web') {
   AsyncStorage = require('@react-native-async-storage/async-storage').default as AsyncStorageLike;
 }
 
-const STORAGE_KEY = 'nutrition_goals_v1';
+const STORAGE_BASE_KEY = 'nutrition_goals_v1';
 
 interface StoredGoalsState {
   version: number;
@@ -54,24 +54,29 @@ export class LocalGoalsRepository implements GoalsRepository {
     this.storage = storage;
   }
 
-  private async readState(): Promise<StoredGoalsState> {
+  private getStorageKey(userId?: string): string {
+    const id = userId || 'guest';
+    return `${STORAGE_BASE_KEY}_${id}`;
+  }
+
+  private async readState(userId?: string): Promise<StoredGoalsState> {
     if (!this.storage) {
       return DEFAULT_STATE;
     }
-    const raw = await this.storage.getItem(STORAGE_KEY);
+    const raw = await this.storage.getItem(this.getStorageKey(userId));
     return parseState(raw);
   }
 
-  private async writeState(state: StoredGoalsState): Promise<void> {
+  private async writeState(state: StoredGoalsState, userId?: string): Promise<void> {
     if (!this.storage) {
       return;
     }
     const serialised = JSON.stringify(state);
-    await this.storage.setItem(STORAGE_KEY, serialised);
+    await this.storage.setItem(this.getStorageKey(userId), serialised);
   }
 
-  public async getActiveGoal(): Promise<NutritionGoal | null> {
-    const state = await this.readState();
+  public async getActiveGoal(userId?: string): Promise<NutritionGoal | null> {
+    const state = await this.readState(userId);
     if (state.activeGoalId) {
       const byId = state.goals.find((goal) => goal.id === state.activeGoalId);
       if (byId) {
@@ -82,13 +87,13 @@ export class LocalGoalsRepository implements GoalsRepository {
     return active ?? null;
   }
 
-  public async getAllGoals(): Promise<NutritionGoal[]> {
-    const state = await this.readState();
+  public async getAllGoals(userId?: string): Promise<NutritionGoal[]> {
+    const state = await this.readState(userId);
     return state.goals;
   }
 
-  public async saveGoal(goal: NutritionGoal): Promise<void> {
-    const state = await this.readState();
+  public async saveGoal(goal: NutritionGoal, userId?: string): Promise<void> {
+    const state = await this.readState(userId);
 
     const existingIndex = state.goals.findIndex((g) => g.id === goal.id);
     const goals = [...state.goals];
@@ -113,11 +118,11 @@ export class LocalGoalsRepository implements GoalsRepository {
       ...state,
       goals,
       activeGoalId,
-    });
+    }, userId);
   }
 
-  public async setActiveGoal(goalId: string): Promise<void> {
-    const state = await this.readState();
+  public async setActiveGoal(goalId: string, userId?: string): Promise<void> {
+    const state = await this.readState(userId);
     const goals = state.goals.map((goal) => ({
       ...goal,
       isActive: goal.id === goalId,
@@ -127,16 +132,16 @@ export class LocalGoalsRepository implements GoalsRepository {
       ...state,
       goals,
       activeGoalId: goalId,
-    });
+    }, userId);
   }
 
-  public async clearGoals(): Promise<void> {
-    const state = await this.readState();
+  public async clearGoals(userId?: string): Promise<void> {
+    const state = await this.readState(userId);
     await this.writeState({
       ...state,
       goals: [],
       activeGoalId: undefined,
-    });
+    }, userId);
   }
 }
 

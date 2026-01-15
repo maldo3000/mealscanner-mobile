@@ -1,14 +1,11 @@
+import { IconSymbol } from '@/components/ui/IconSymbol';
 import React, { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
-import Animated, { 
-  useAnimatedStyle, 
-  useSharedValue, 
-  withSpring, 
-  withTiming,
-  interpolateColor
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
 } from 'react-native-reanimated';
-import { IconSymbol } from '@/components/ui/IconSymbol';
-import { neonGreen } from '@/constants/Colors';
 
 interface AnimatedTabIconProps {
   focused: boolean;
@@ -17,39 +14,23 @@ interface AnimatedTabIconProps {
   size?: number;
 }
 
+/**
+ * Simplified AnimatedTabIcon that works with the CustomTabBar's liquid indicator
+ * Handles icon scaling and color transitions
+ */
 export function AnimatedTabIcon({ focused, color, name, size = 24 }: AnimatedTabIconProps) {
-  const scale = useSharedValue(focused ? 1.2 : 1);
-  const progress = useSharedValue(focused ? 1 : 0);
-  const iconScale = useSharedValue(focused ? 1 : 0.85);
+  const iconScale = useSharedValue(focused ? 1.1 : 1);
 
   useEffect(() => {
-    // Higher damping = faster settle, less oscillation
-    // Stiffness controls snap speed
-    const springConfig = { damping: 18, stiffness: 400 };
+    // Spring config for a snappy, physical feel
+    const springConfig = { damping: 15, stiffness: 300 };
     
     if (focused) {
-      scale.value = withSpring(1.15, springConfig);
-      progress.value = withTiming(1, { duration: 200 });
-      iconScale.value = withSpring(1, springConfig);
+      iconScale.value = withSpring(1.15, springConfig);
     } else {
-      scale.value = withSpring(1, springConfig);
-      progress.value = withTiming(0, { duration: 200 });
-      iconScale.value = withSpring(0.9, springConfig);
+      iconScale.value = withSpring(1, springConfig);
     }
-  }, [focused, scale, progress, iconScale]);
-
-  const containerStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ scale: scale.value }],
-      backgroundColor: interpolateColor(
-        progress.value,
-        [0, 1],
-        ['transparent', neonGreen]
-      ),
-      shadowOpacity: progress.value * 0.5,
-      shadowRadius: progress.value * 12,
-    };
-  });
+  }, [focused]);
 
   const iconStyle = useAnimatedStyle(() => {
     return {
@@ -57,19 +38,16 @@ export function AnimatedTabIcon({ focused, color, name, size = 24 }: AnimatedTab
     };
   });
 
-  // Use consistent container size regardless of icon size to prevent layout shifts
-  const containerSize = 48;
-
   return (
     <View style={styles.wrapper}>
-      <Animated.View style={[styles.container, { width: containerSize, height: containerSize, borderRadius: containerSize / 2 }, containerStyle]}>
-        <Animated.View style={[styles.iconWrapper, iconStyle]}>
-          <IconSymbol 
-            size={size} 
-            name={name as any} 
-            color={focused ? '#000000' : 'rgba(255, 255, 255, 0.6)'} 
-          />
-        </Animated.View>
+      <Animated.View style={iconStyle}>
+        <IconSymbol 
+          size={size} 
+          name={name as any} 
+          // Icon turns black when the neon green bubble slides behind it,
+          // otherwise remains semi-transparent white
+          color={focused ? '#000000' : 'rgba(255, 255, 255, 0.5)'} 
+        />
       </Animated.View>
     </View>
   );
@@ -82,15 +60,4 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  container: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: neonGreen,
-    shadowOffset: { width: 0, height: 0 },
-  },
-  iconWrapper: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
 });
-

@@ -9,6 +9,7 @@ const corsHeaders = {
 interface RecipeTextAnalysisRequest {
   description: string;
   user_id: string;
+  is_pro?: boolean;
   source_meal_id?: string;
 }
 
@@ -53,13 +54,23 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { description, user_id, source_meal_id } = await req.json() as RecipeTextAnalysisRequest;
+    const { description, user_id, is_pro, source_meal_id } = await req.json() as RecipeTextAnalysisRequest;
 
     if (!description || !user_id) {
       return new Response(
         JSON.stringify({ error: 'Missing required fields: description and user_id' }),
         { 
           status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    if (!is_pro) {
+      return new Response(
+        JSON.stringify({ error: 'Recipe generation is a Pro feature.' }),
+        { 
+          status: 403, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         }
       );
@@ -314,7 +325,7 @@ function generateTags(description: string): string[] {
   const tags: string[] = [];
   
   if (description.toLowerCase().includes('healthy') || description.toLowerCase().includes('nutritious')) {
-    tags.push('Healthy');
+    tags.push('Balanced');
   }
   if (description.toLowerCase().includes('quick') || description.toLowerCase().includes('fast')) {
     tags.push('Quick & Easy');

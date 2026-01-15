@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { ImageSourcePropType, StyleSheet, View, ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
 
@@ -13,6 +13,7 @@ interface SpriteAnimationProps {
 
 /**
  * Reusable sprite animation component that cycles through a series of image frames.
+ * Prefetches all frames before starting animation for smooth playback.
  * Uses setInterval for precise frame timing control.
  * 
  * @example
@@ -35,10 +36,35 @@ export function SpriteAnimation({
   height = 200,
 }: SpriteAnimationProps) {
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
+  const [isReady, setIsReady] = useState(false);
   const totalFrames = frames.length;
+  const hasPreloaded = useRef(false);
 
+  // Prefetch all frames before starting animation
   useEffect(() => {
-    if (totalFrames === 0) return;
+    if (totalFrames === 0 || hasPreloaded.current) return;
+    
+    hasPreloaded.current = true;
+    
+    const prefetchFrames = async () => {
+      try {
+        // Prefetch all frames in parallel
+        await Promise.all(
+          frames.map(frame => Image.prefetch(frame))
+        );
+      } catch (error) {
+        // Continue even if prefetch fails - images will load on demand
+        console.warn('SpriteAnimation: Some frames failed to prefetch', error);
+      }
+      setIsReady(true);
+    };
+
+    prefetchFrames();
+  }, [frames, totalFrames]);
+
+  // Start animation only after frames are prefetched
+  useEffect(() => {
+    if (totalFrames === 0 || !isReady) return;
 
     const frameDuration = 1000 / fps; // Duration per frame in milliseconds
     let intervalId: NodeJS.Timeout;
@@ -68,12 +94,13 @@ export function SpriteAnimation({
         clearInterval(intervalId);
       }
     };
-  }, [fps, totalFrames, loop]);
+  }, [fps, totalFrames, loop, isReady]);
 
   if (totalFrames === 0) {
     return null;
   }
 
+  // Show first frame while prefetching (prevents empty space)
   return (
     <View style={[styles.container, style]}>
       <View style={[styles.animationContainer, { width, height }]}>
@@ -82,6 +109,8 @@ export function SpriteAnimation({
           style={[styles.image, { width, height }]}
           contentFit="contain"
           transition={0}
+          cachePolicy="memory"
+          priority="high"
         />
       </View>
     </View>

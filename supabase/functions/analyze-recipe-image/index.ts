@@ -11,6 +11,7 @@ const corsHeaders = {
 interface RecipeAnalysisRequest {
   image_url: string;
   user_id: string;
+  is_pro?: boolean;
   description?: string;
   source_meal_id?: string;
   llm?: LLMConfig;
@@ -19,6 +20,7 @@ interface RecipeAnalysisRequest {
 interface RecipeAnalysisResponse {
   name: string;
   description?: string;
+  visual_analysis: string;
   ingredients: Array<{
     name: string;
     amount: string;
@@ -44,7 +46,7 @@ interface RecipeAnalysisResponse {
   };
 }
 
-Deno.serve(async (req) => {
+Deno.serve(async (req: Request) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -57,7 +59,7 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { image_url, user_id, description, source_meal_id, llm } = await req.json() as RecipeAnalysisRequest;
+    const { image_url, user_id, is_pro, description, source_meal_id, llm } = await req.json() as RecipeAnalysisRequest;
 
     if (!image_url || !user_id) {
       return new Response(
@@ -69,17 +71,35 @@ Deno.serve(async (req) => {
       );
     }
 
+    if (!is_pro) {
+      return new Response(
+        JSON.stringify({ error: 'Recipe generation is a Pro feature.' }),
+        { 
+          status: 403, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
     console.log(`Starting recipe analysis for user ${user_id} with image: ${image_url}`);
 
     // Create comprehensive recipe analysis prompt
     const systemPrompt = `You are a professional chef and recipe developer with expertise in analyzing food images to create detailed, accurate recipes. Analyze the provided meal image and extract a complete recipe that would recreate this dish.`;
 
     const userPrompt = `
-Analyze this food image and provide a complete recipe to recreate this dish. Please provide a JSON response with:
+Analyze this food image and provide a complete recipe to recreate this dish. 
 
+Follow this Chain of Thought (Volume First) process:
+1. IDENTIFY: Precisely identify the dish and all visible ingredients.
+2. SPATIAL REFERENCE: Compare the dish's size to reference objects in the photo (e.g., standard 10-inch plate, fork, glass, or the user's hand) to estimate serving sizes.
+3. VOLUME/WEIGHT: Estimate the physical volume and weight of the ingredients.
+4. CALCULATE: Only after estimating portions, calculate the nutrition values per serving.
+
+Please provide a JSON response with:
 {
-  "name": "<descriptive recipe name based on the dish (e.g., 'Creamy Mushroom Risotto', 'Thai Green Curry')>",
+  "name": "<descriptive recipe name>",
   "description": "<brief description of the dish>",
+  "visual_analysis": "<step-by-step reasoning: identification -> size relative to scale -> volume -> gram conversion for key ingredients>",
   "ingredients": [
     {
       "name": "<ingredient name>",
@@ -111,7 +131,7 @@ Analyze this food image and provide a complete recipe to recreate this dish. Ple
   }
 }
 
-Make the recipe detailed and realistic - include proper measurements, cooking techniques, and step-by-step instructions that would actually work to recreate this dish. Base the difficulty on the actual complexity of the cooking techniques required.
+Make the recipe detailed and realistic. Base the difficulty on the actual complexity of the techniques required.
 `;
 
     // Use LLM router for vision analysis
@@ -248,7 +268,7 @@ Make the recipe detailed and realistic - include proper measurements, cooking te
       }
     );
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Recipe analysis error:', error);
     
     return new Response(

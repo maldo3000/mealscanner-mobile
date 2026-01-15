@@ -1,0 +1,833 @@
+{
+  "tagCategories": {
+    "dietary": ["vegan", "vegetarian", "pescatarian", "gluten-free", "dairy-free"],
+    "goals": ["high-protein", "low-carb", "low-fat", "high-fiber", "keto", "meal-prep"],
+    "speed": ["under-15-mins", "under-30-mins"],
+    "mealType": ["breakfast", "lunch", "dinner", "snack"]
+  },
+  "recipes": [
+    {
+      "id": "r001",
+      "name": "High Protein Salmon Bowl",
+      "description": "A protein-packed bowl with omega-3 rich salmon, quinoa, and fresh vegetables",
+      "image_url": "https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=800",
+      "prep_time": "10 mins",
+      "cook_time": "10 mins",
+      "total_time": "20 mins",
+      "servings": 1,
+      "difficulty": "Easy",
+      "nutrition_per_serving": {
+        "calories": 450,
+        "protein": 35,
+        "carbs": 28,
+        "fat": 22,
+        "fiber": 6
+      },
+      "tags": ["high-protein", "pescatarian", "under-30-mins", "lunch", "dinner"],
+      "ingredients": [
+        { "name": "Salmon fillet", "amount": "6", "unit": "oz" },
+        { "name": "Quinoa, cooked", "amount": "0.5", "unit": "cup" },
+        { "name": "Avocado", "amount": "0.5", "unit": "medium" },
+        { "name": "Baby spinach", "amount": "1", "unit": "cup" },
+        { "name": "Cherry tomatoes", "amount": "0.5", "unit": "cup" },
+        { "name": "Olive oil", "amount": "1", "unit": "tbsp" },
+        { "name": "Lemon juice", "amount": "1", "unit": "tbsp" },
+        { "name": "Salt and pepper", "amount": "to", "unit": "taste" }
+      ],
+      "instructions": [
+        "Season salmon fillet with salt, pepper, and a drizzle of olive oil.",
+        "Heat a pan over medium-high heat and sear salmon for 4 minutes per side until cooked through.",
+        "While salmon cooks, arrange quinoa and spinach in a bowl.",
+        "Slice avocado and halve cherry tomatoes.",
+        "Place cooked salmon on top of the bowl and arrange vegetables around it.",
+        "Drizzle with lemon juice and remaining olive oil. Serve immediately."
+      ],
+      "tier": "free"
+    },
+    {
+      "id": "r002",
+      "name": "Keto Avocado Salad",
+      "description": "A refreshing low-carb salad with creamy avocado and crisp greens",
+      "image_url": "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=800",
+      "prep_time": "15 mins",
+      "cook_time": "0 mins",
+      "total_time": "15 mins",
+      "servings": 1,
+      "difficulty": "Easy",
+      "nutrition_per_serving": {
+        "calories": 320,
+        "protein": 8,
+        "carbs": 12,
+        "fat": 28,
+        "fiber": 9
+      },
+      "tags": ["keto", "low-carb", "vegetarian", "gluten-free", "under-15-mins", "lunch"],
+      "ingredients": [
+        { "name": "Avocado", "amount": "1", "unit": "large" },
+        { "name": "Mixed greens", "amount": "2", "unit": "cups" },
+        { "name": "Cherry tomatoes", "amount": "0.5", "unit": "cup" },
+        { "name": "Cucumber", "amount": "0.5", "unit": "medium" },
+        { "name": "Red onion", "amount": "2", "unit": "tbsp, sliced" },
+        { "name": "Olive oil", "amount": "2", "unit": "tbsp" },
+        { "name": "Apple cider vinegar", "amount": "1", "unit": "tbsp" },
+        { "name": "Salt and pepper", "amount": "to", "unit": "taste" }
+      ],
+      "instructions": [
+        "Wash and dry mixed greens, place in a large bowl.",
+        "Dice cucumber and halve cherry tomatoes.",
+        "Slice avocado and arrange on top of greens.",
+        "Add tomatoes, cucumber, and red onion slices.",
+        "Whisk together olive oil and apple cider vinegar for dressing.",
+        "Drizzle dressing over salad, season with salt and pepper, and toss gently."
+      ],
+      "tier": "free"
+    },
+    {
+      "id": "r003",
+      "name": "Quinoa Veggie Power Bowl",
+      "description": "A fiber-rich vegetarian bowl packed with colorful roasted vegetables",
+      "image_url": "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800",
+      "prep_time": "15 mins",
+      "cook_time": "10 mins",
+      "total_time": "25 mins",
+      "servings": 1,
+      "difficulty": "Easy",
+      "nutrition_per_serving": {
+        "calories": 380,
+        "protein": 12,
+        "carbs": 55,
+        "fat": 12,
+        "fiber": 10
+      },
+      "tags": ["vegetarian", "high-fiber", "under-30-mins", "lunch", "dinner"],
+      "ingredients": [
+        { "name": "Quinoa, cooked", "amount": "0.75", "unit": "cup" },
+        { "name": "Roasted chickpeas", "amount": "0.5", "unit": "cup" },
+        { "name": "Roasted sweet potato", "amount": "0.5", "unit": "cup, cubed" },
+        { "name": "Kale", "amount": "1", "unit": "cup, chopped" },
+        { "name": "Red cabbage", "amount": "0.25", "unit": "cup, shredded" },
+        { "name": "Hummus", "amount": "2", "unit": "tbsp" },
+        { "name": "Tahini", "amount": "1", "unit": "tbsp" },
+        { "name": "Lemon juice", "amount": "1", "unit": "tbsp" }
+      ],
+      "instructions": [
+        "Cook quinoa according to package instructions if not pre-cooked.",
+        "Massage kale with a bit of olive oil to soften.",
+        "Arrange quinoa as the base of your bowl.",
+        "Top with roasted chickpeas, sweet potato cubes, kale, and red cabbage.",
+        "Add a dollop of hummus on the side.",
+        "Drizzle tahini and lemon juice over the bowl. Enjoy!"
+      ],
+      "tier": "free"
+    },
+    {
+      "id": "r004",
+      "name": "Lemon Herb Grilled Chicken",
+      "description": "Juicy grilled chicken breast with a bright lemon and herb marinade",
+      "image_url": "https://images.unsplash.com/photo-1532550907401-a500c9a57435?w=800",
+      "prep_time": "10 mins",
+      "cook_time": "20 mins",
+      "total_time": "30 mins",
+      "servings": 2,
+      "difficulty": "Easy",
+      "nutrition_per_serving": {
+        "calories": 290,
+        "protein": 42,
+        "carbs": 4,
+        "fat": 12,
+        "fiber": 1
+      },
+      "tags": ["high-protein", "low-carb", "gluten-free", "dairy-free", "under-30-mins", "lunch", "dinner"],
+      "ingredients": [
+        { "name": "Chicken breast", "amount": "2", "unit": "large (6 oz each)" },
+        { "name": "Lemon", "amount": "1", "unit": "juiced and zested" },
+        { "name": "Olive oil", "amount": "2", "unit": "tbsp" },
+        { "name": "Garlic", "amount": "2", "unit": "cloves, minced" },
+        { "name": "Fresh rosemary", "amount": "1", "unit": "tbsp, chopped" },
+        { "name": "Fresh thyme", "amount": "1", "unit": "tbsp, chopped" },
+        { "name": "Salt", "amount": "0.5", "unit": "tsp" },
+        { "name": "Black pepper", "amount": "0.25", "unit": "tsp" }
+      ],
+      "instructions": [
+        "Combine lemon juice, zest, olive oil, garlic, rosemary, thyme, salt, and pepper in a bowl.",
+        "Place chicken breasts in a shallow dish and pour marinade over them.",
+        "Let marinate for at least 15 minutes (or up to 2 hours in the refrigerator).",
+        "Preheat grill or grill pan to medium-high heat.",
+        "Grill chicken for 6-8 minutes per side until internal temperature reaches 165°F.",
+        "Let rest for 5 minutes before slicing. Serve with a side salad or vegetables."
+      ],
+      "tier": "free"
+    },
+    {
+      "id": "r005",
+      "name": "Overnight Oats with Berries",
+      "description": "Creamy no-cook oats with fresh berries and a touch of honey",
+      "image_url": "https://images.unsplash.com/photo-1517673400267-0251440c45dc?w=800",
+      "prep_time": "5 mins",
+      "cook_time": "0 mins",
+      "total_time": "5 mins",
+      "servings": 1,
+      "difficulty": "Easy",
+      "nutrition_per_serving": {
+        "calories": 350,
+        "protein": 12,
+        "carbs": 52,
+        "fat": 10,
+        "fiber": 8
+      },
+      "tags": ["vegetarian", "high-fiber", "under-15-mins", "breakfast"],
+      "ingredients": [
+        { "name": "Rolled oats", "amount": "0.5", "unit": "cup" },
+        { "name": "Milk (dairy or plant-based)", "amount": "0.5", "unit": "cup" },
+        { "name": "Greek yogurt", "amount": "0.25", "unit": "cup" },
+        { "name": "Chia seeds", "amount": "1", "unit": "tbsp" },
+        { "name": "Honey or maple syrup", "amount": "1", "unit": "tbsp" },
+        { "name": "Mixed berries", "amount": "0.5", "unit": "cup" },
+        { "name": "Vanilla extract", "amount": "0.25", "unit": "tsp" }
+      ],
+      "instructions": [
+        "In a jar or container, combine oats, milk, yogurt, chia seeds, honey, and vanilla.",
+        "Stir well to combine all ingredients.",
+        "Cover and refrigerate overnight (at least 4 hours).",
+        "In the morning, stir oats and top with fresh mixed berries.",
+        "Add more milk if you prefer a thinner consistency.",
+        "Enjoy cold or microwave for 1-2 minutes if you prefer warm oats."
+      ],
+      "tier": "free"
+    },
+    {
+      "id": "r006",
+      "name": "Greek Chicken Lettuce Wraps",
+      "description": "Light and flavorful chicken wraps with tzatziki and fresh vegetables",
+      "image_url": "https://images.unsplash.com/photo-1529059997568-3d847b1154f0?w=800",
+      "prep_time": "15 mins",
+      "cook_time": "10 mins",
+      "total_time": "25 mins",
+      "servings": 2,
+      "difficulty": "Easy",
+      "nutrition_per_serving": {
+        "calories": 280,
+        "protein": 32,
+        "carbs": 8,
+        "fat": 14,
+        "fiber": 2
+      },
+      "tags": ["high-protein", "low-carb", "gluten-free", "under-30-mins", "lunch", "dinner"],
+      "ingredients": [
+        { "name": "Ground chicken", "amount": "8", "unit": "oz" },
+        { "name": "Butter lettuce leaves", "amount": "6", "unit": "large leaves" },
+        { "name": "Cucumber", "amount": "0.5", "unit": "cup, diced" },
+        { "name": "Cherry tomatoes", "amount": "0.5", "unit": "cup, halved" },
+        { "name": "Red onion", "amount": "2", "unit": "tbsp, diced" },
+        { "name": "Tzatziki sauce", "amount": "0.25", "unit": "cup" },
+        { "name": "Feta cheese", "amount": "2", "unit": "tbsp, crumbled" },
+        { "name": "Dried oregano", "amount": "1", "unit": "tsp" },
+        { "name": "Garlic powder", "amount": "0.5", "unit": "tsp" },
+        { "name": "Olive oil", "amount": "1", "unit": "tbsp" }
+      ],
+      "instructions": [
+        "Heat olive oil in a skillet over medium-high heat.",
+        "Add ground chicken, oregano, and garlic powder. Cook until browned, about 8-10 minutes.",
+        "While chicken cooks, wash and dry lettuce leaves.",
+        "Prepare toppings: dice cucumber and red onion, halve tomatoes.",
+        "Spoon cooked chicken into lettuce cups.",
+        "Top with cucumber, tomatoes, red onion, tzatziki, and crumbled feta."
+      ],
+      "tier": "free"
+    },
+    {
+      "id": "r007",
+      "name": "Vegan Buddha Bowl",
+      "description": "A nourishing plant-based bowl with roasted vegetables and tahini dressing",
+      "image_url": "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=800",
+      "prep_time": "15 mins",
+      "cook_time": "25 mins",
+      "total_time": "40 mins",
+      "servings": 2,
+      "difficulty": "Easy",
+      "nutrition_per_serving": {
+        "calories": 420,
+        "protein": 14,
+        "carbs": 48,
+        "fat": 20,
+        "fiber": 12
+      },
+      "tags": ["vegan", "high-fiber", "dairy-free", "gluten-free", "lunch", "dinner"],
+      "ingredients": [
+        { "name": "Brown rice, cooked", "amount": "1", "unit": "cup" },
+        { "name": "Chickpeas, drained", "amount": "0.75", "unit": "cup" },
+        { "name": "Sweet potato", "amount": "1", "unit": "medium, cubed" },
+        { "name": "Broccoli florets", "amount": "1", "unit": "cup" },
+        { "name": "Red cabbage", "amount": "0.5", "unit": "cup, shredded" },
+        { "name": "Avocado", "amount": "0.5", "unit": "medium" },
+        { "name": "Tahini", "amount": "2", "unit": "tbsp" },
+        { "name": "Lemon juice", "amount": "1", "unit": "tbsp" },
+        { "name": "Olive oil", "amount": "2", "unit": "tbsp" },
+        { "name": "Cumin", "amount": "0.5", "unit": "tsp" },
+        { "name": "Paprika", "amount": "0.5", "unit": "tsp" }
+      ],
+      "instructions": [
+        "Preheat oven to 400°F (200°C).",
+        "Toss sweet potato cubes and chickpeas with 1 tbsp olive oil, cumin, and paprika.",
+        "Spread on a baking sheet and roast for 20-25 minutes until golden.",
+        "Steam or roast broccoli until tender-crisp.",
+        "Make tahini dressing by whisking tahini, lemon juice, and 2 tbsp water.",
+        "Divide brown rice between bowls. Top with roasted vegetables, broccoli, cabbage, and avocado.",
+        "Drizzle with tahini dressing and serve."
+      ],
+      "tier": "free"
+    },
+    {
+      "id": "r008",
+      "name": "Egg White Veggie Scramble",
+      "description": "A light and protein-rich breakfast scramble loaded with fresh vegetables",
+      "image_url": "https://images.unsplash.com/photo-1525351484163-7529414344d8?w=800",
+      "prep_time": "5 mins",
+      "cook_time": "8 mins",
+      "total_time": "13 mins",
+      "servings": 1,
+      "difficulty": "Easy",
+      "nutrition_per_serving": {
+        "calories": 180,
+        "protein": 22,
+        "carbs": 8,
+        "fat": 6,
+        "fiber": 2
+      },
+      "tags": ["high-protein", "low-carb", "low-fat", "vegetarian", "gluten-free", "under-15-mins", "breakfast"],
+      "ingredients": [
+        { "name": "Egg whites", "amount": "5", "unit": "large" },
+        { "name": "Bell pepper", "amount": "0.25", "unit": "cup, diced" },
+        { "name": "Spinach", "amount": "0.5", "unit": "cup" },
+        { "name": "Cherry tomatoes", "amount": "4", "unit": "halved" },
+        { "name": "Mushrooms", "amount": "0.25", "unit": "cup, sliced" },
+        { "name": "Olive oil spray", "amount": "1", "unit": "spray" },
+        { "name": "Salt and pepper", "amount": "to", "unit": "taste" },
+        { "name": "Fresh herbs (optional)", "amount": "1", "unit": "tbsp" }
+      ],
+      "instructions": [
+        "Spray a non-stick pan with olive oil and heat over medium heat.",
+        "Add bell pepper and mushrooms, sauté for 2-3 minutes.",
+        "Add spinach and tomatoes, cook until spinach wilts.",
+        "Pour egg whites over the vegetables.",
+        "Gently stir and fold until eggs are cooked through, about 3-4 minutes.",
+        "Season with salt, pepper, and fresh herbs. Serve immediately."
+      ],
+      "tier": "free"
+    },
+    {
+      "id": "r009",
+      "name": "Tuna Stuffed Avocado",
+      "description": "Creamy avocado halves filled with seasoned tuna salad",
+      "image_url": "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800",
+      "prep_time": "10 mins",
+      "cook_time": "0 mins",
+      "total_time": "10 mins",
+      "servings": 1,
+      "difficulty": "Easy",
+      "nutrition_per_serving": {
+        "calories": 380,
+        "protein": 28,
+        "carbs": 12,
+        "fat": 26,
+        "fiber": 10
+      },
+      "tags": ["high-protein", "low-carb", "keto", "pescatarian", "gluten-free", "dairy-free", "under-15-mins", "lunch", "snack"],
+      "ingredients": [
+        { "name": "Canned tuna, drained", "amount": "1", "unit": "can (5 oz)" },
+        { "name": "Avocado", "amount": "1", "unit": "large" },
+        { "name": "Greek yogurt or mayo", "amount": "1", "unit": "tbsp" },
+        { "name": "Dijon mustard", "amount": "0.5", "unit": "tsp" },
+        { "name": "Celery", "amount": "2", "unit": "tbsp, diced" },
+        { "name": "Red onion", "amount": "1", "unit": "tbsp, minced" },
+        { "name": "Lemon juice", "amount": "1", "unit": "tsp" },
+        { "name": "Salt and pepper", "amount": "to", "unit": "taste" }
+      ],
+      "instructions": [
+        "In a bowl, combine drained tuna, yogurt (or mayo), mustard, celery, and red onion.",
+        "Add lemon juice and season with salt and pepper. Mix well.",
+        "Cut avocado in half and remove the pit.",
+        "Scoop out a bit of avocado flesh to create a larger well.",
+        "Divide tuna mixture between avocado halves.",
+        "Serve immediately or refrigerate for up to 2 hours."
+      ],
+      "tier": "free"
+    },
+    {
+      "id": "r010",
+      "name": "Protein Smoothie Bowl",
+      "description": "A thick and creamy smoothie bowl topped with fresh fruits and seeds",
+      "image_url": "https://images.unsplash.com/photo-1511690743698-d9d85f2fbf38?w=800",
+      "prep_time": "5 mins",
+      "cook_time": "0 mins",
+      "total_time": "5 mins",
+      "servings": 1,
+      "difficulty": "Easy",
+      "nutrition_per_serving": {
+        "calories": 340,
+        "protein": 28,
+        "carbs": 38,
+        "fat": 8,
+        "fiber": 6
+      },
+      "tags": ["high-protein", "vegetarian", "gluten-free", "under-15-mins", "breakfast", "snack"],
+      "ingredients": [
+        { "name": "Frozen banana", "amount": "1", "unit": "medium" },
+        { "name": "Frozen berries", "amount": "0.5", "unit": "cup" },
+        { "name": "Protein powder", "amount": "1", "unit": "scoop (25g)" },
+        { "name": "Greek yogurt", "amount": "0.25", "unit": "cup" },
+        { "name": "Almond milk", "amount": "0.25", "unit": "cup" },
+        { "name": "Granola", "amount": "2", "unit": "tbsp" },
+        { "name": "Chia seeds", "amount": "1", "unit": "tsp" },
+        { "name": "Fresh berries", "amount": "0.25", "unit": "cup" }
+      ],
+      "instructions": [
+        "Add frozen banana, frozen berries, protein powder, yogurt, and almond milk to a blender.",
+        "Blend until thick and creamy, adding more milk if needed (keep it thick!).",
+        "Pour into a bowl.",
+        "Top with granola, chia seeds, and fresh berries.",
+        "Add any other toppings you like: sliced banana, coconut flakes, nut butter.",
+        "Eat immediately with a spoon."
+      ],
+      "tier": "free"
+    },
+    {
+      "id": "r011",
+      "name": "Meal Prep Chicken & Rice Bowls",
+      "description": "Perfectly seasoned chicken with fluffy rice and roasted vegetables - makes 4 servings for the week",
+      "image_url": "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800",
+      "prep_time": "15 mins",
+      "cook_time": "30 mins",
+      "total_time": "45 mins",
+      "servings": 4,
+      "difficulty": "Easy",
+      "nutrition_per_serving": {
+        "calories": 480,
+        "protein": 38,
+        "carbs": 45,
+        "fat": 16,
+        "fiber": 4
+      },
+      "tags": ["high-protein", "meal-prep", "dairy-free", "gluten-free", "lunch", "dinner"],
+      "ingredients": [
+        { "name": "Chicken breast", "amount": "1.5", "unit": "lbs" },
+        { "name": "Jasmine rice", "amount": "2", "unit": "cups, uncooked" },
+        { "name": "Broccoli florets", "amount": "4", "unit": "cups" },
+        { "name": "Bell peppers", "amount": "2", "unit": "medium, sliced" },
+        { "name": "Olive oil", "amount": "3", "unit": "tbsp" },
+        { "name": "Garlic powder", "amount": "1", "unit": "tsp" },
+        { "name": "Paprika", "amount": "1", "unit": "tsp" },
+        { "name": "Italian seasoning", "amount": "1", "unit": "tsp" },
+        { "name": "Salt", "amount": "1", "unit": "tsp" },
+        { "name": "Soy sauce", "amount": "2", "unit": "tbsp" }
+      ],
+      "instructions": [
+        "Preheat oven to 425°F. Cook rice according to package directions.",
+        "Season chicken with garlic powder, paprika, Italian seasoning, and salt.",
+        "Heat 1 tbsp oil in a pan and cook chicken 6-7 minutes per side until done. Let rest, then slice.",
+        "Toss broccoli and peppers with remaining oil, spread on baking sheet.",
+        "Roast vegetables for 20 minutes until slightly charred.",
+        "Divide rice, chicken, and vegetables into 4 containers.",
+        "Drizzle each with soy sauce. Refrigerate for up to 5 days."
+      ],
+      "tier": "pro"
+    },
+    {
+      "id": "r012",
+      "name": "Vegan Protein Pancakes",
+      "description": "Fluffy plant-based pancakes packed with 20g protein per serving",
+      "image_url": "https://images.unsplash.com/photo-1567620905732-2d1ec7ab7445?w=800",
+      "prep_time": "10 mins",
+      "cook_time": "15 mins",
+      "total_time": "25 mins",
+      "servings": 2,
+      "difficulty": "Easy",
+      "nutrition_per_serving": {
+        "calories": 320,
+        "protein": 20,
+        "carbs": 42,
+        "fat": 8,
+        "fiber": 6
+      },
+      "tags": ["vegan", "high-protein", "dairy-free", "under-30-mins", "breakfast"],
+      "ingredients": [
+        { "name": "Oat flour", "amount": "1", "unit": "cup" },
+        { "name": "Vegan protein powder", "amount": "1", "unit": "scoop (30g)" },
+        { "name": "Baking powder", "amount": "1", "unit": "tsp" },
+        { "name": "Almond milk", "amount": "0.75", "unit": "cup" },
+        { "name": "Banana", "amount": "1", "unit": "ripe, mashed" },
+        { "name": "Vanilla extract", "amount": "1", "unit": "tsp" },
+        { "name": "Maple syrup", "amount": "2", "unit": "tbsp" },
+        { "name": "Fresh berries", "amount": "0.5", "unit": "cup" }
+      ],
+      "instructions": [
+        "Mix oat flour, protein powder, and baking powder in a bowl.",
+        "In another bowl, combine almond milk, mashed banana, and vanilla.",
+        "Pour wet ingredients into dry and stir until just combined.",
+        "Heat a non-stick pan over medium heat.",
+        "Pour 1/4 cup batter per pancake. Cook until bubbles form, then flip.",
+        "Cook another 2 minutes until golden.",
+        "Top with maple syrup and fresh berries."
+      ],
+      "tier": "pro"
+    },
+    {
+      "id": "r013",
+      "name": "Garlic Shrimp Stir-Fry",
+      "description": "Quick and flavorful shrimp with crispy vegetables in a savory garlic sauce",
+      "image_url": "https://images.unsplash.com/photo-1551326844-4df70f78d0e9?w=800",
+      "prep_time": "10 mins",
+      "cook_time": "10 mins",
+      "total_time": "20 mins",
+      "servings": 2,
+      "difficulty": "Easy",
+      "nutrition_per_serving": {
+        "calories": 350,
+        "protein": 32,
+        "carbs": 18,
+        "fat": 16,
+        "fiber": 4
+      },
+      "tags": ["high-protein", "gluten-free", "pescatarian", "under-30-mins", "dinner"],
+      "ingredients": [
+        { "name": "Large shrimp, peeled", "amount": "1", "unit": "lb" },
+        { "name": "Broccoli florets", "amount": "2", "unit": "cups" },
+        { "name": "Bell pepper", "amount": "1", "unit": "large, sliced" },
+        { "name": "Snap peas", "amount": "1", "unit": "cup" },
+        { "name": "Garlic", "amount": "4", "unit": "cloves, minced" },
+        { "name": "Coconut aminos", "amount": "3", "unit": "tbsp" },
+        { "name": "Sesame oil", "amount": "2", "unit": "tbsp" },
+        { "name": "Ginger", "amount": "1", "unit": "tbsp, minced" },
+        { "name": "Red pepper flakes", "amount": "0.5", "unit": "tsp" }
+      ],
+      "instructions": [
+        "Heat sesame oil in a large wok or skillet over high heat.",
+        "Add shrimp and cook 2 minutes per side until pink. Remove and set aside.",
+        "Add broccoli, bell pepper, and snap peas. Stir-fry 3-4 minutes.",
+        "Add garlic and ginger, cook 30 seconds until fragrant.",
+        "Return shrimp to pan, add coconut aminos and red pepper flakes.",
+        "Toss everything together and serve immediately."
+      ],
+      "tier": "pro"
+    },
+    {
+      "id": "r014",
+      "name": "Turkey Taco Lettuce Boats",
+      "description": "Lean ground turkey with bold taco spices in crispy lettuce shells",
+      "image_url": "https://images.unsplash.com/photo-1565299585323-38d6b0865b47?w=800",
+      "prep_time": "10 mins",
+      "cook_time": "12 mins",
+      "total_time": "22 mins",
+      "servings": 2,
+      "difficulty": "Easy",
+      "nutrition_per_serving": {
+        "calories": 260,
+        "protein": 30,
+        "carbs": 10,
+        "fat": 12,
+        "fiber": 3
+      },
+      "tags": ["high-protein", "low-carb", "low-fat", "gluten-free", "dairy-free", "under-30-mins", "lunch", "dinner"],
+      "ingredients": [
+        { "name": "Lean ground turkey", "amount": "12", "unit": "oz" },
+        { "name": "Butter lettuce leaves", "amount": "8", "unit": "large leaves" },
+        { "name": "Diced tomatoes", "amount": "0.5", "unit": "cup" },
+        { "name": "Red onion", "amount": "0.25", "unit": "cup, diced" },
+        { "name": "Avocado", "amount": "1", "unit": "small, diced" },
+        { "name": "Lime", "amount": "1", "unit": "juiced" },
+        { "name": "Cumin", "amount": "1", "unit": "tsp" },
+        { "name": "Chili powder", "amount": "1", "unit": "tsp" },
+        { "name": "Garlic powder", "amount": "0.5", "unit": "tsp" },
+        { "name": "Fresh cilantro", "amount": "2", "unit": "tbsp, chopped" }
+      ],
+      "instructions": [
+        "Brown ground turkey in a skillet over medium-high heat, breaking it up as it cooks.",
+        "Add cumin, chili powder, and garlic powder. Stir well.",
+        "Cook for 8-10 minutes until turkey is fully cooked.",
+        "Wash and dry lettuce leaves.",
+        "Spoon turkey mixture into lettuce cups.",
+        "Top with tomatoes, onion, avocado, and cilantro.",
+        "Squeeze lime juice over the top before serving."
+      ],
+      "tier": "pro"
+    },
+    {
+      "id": "r015",
+      "name": "Dairy-Free Chocolate Protein Shake",
+      "description": "Rich and creamy chocolate shake that tastes like dessert but packs 30g protein",
+      "image_url": "https://images.unsplash.com/photo-1553530666-ba11a7da3888?w=800",
+      "prep_time": "5 mins",
+      "cook_time": "0 mins",
+      "total_time": "5 mins",
+      "servings": 1,
+      "difficulty": "Easy",
+      "nutrition_per_serving": {
+        "calories": 280,
+        "protein": 30,
+        "carbs": 24,
+        "fat": 8,
+        "fiber": 5
+      },
+      "tags": ["high-protein", "dairy-free", "vegan", "gluten-free", "under-15-mins", "breakfast", "snack"],
+      "ingredients": [
+        { "name": "Chocolate plant protein", "amount": "1.5", "unit": "scoops (35g)" },
+        { "name": "Oat milk", "amount": "1", "unit": "cup" },
+        { "name": "Frozen banana", "amount": "0.5", "unit": "medium" },
+        { "name": "Almond butter", "amount": "1", "unit": "tbsp" },
+        { "name": "Cacao powder", "amount": "1", "unit": "tbsp" },
+        { "name": "Ice cubes", "amount": "4", "unit": "cubes" },
+        { "name": "Pinch of sea salt", "amount": "1", "unit": "pinch" }
+      ],
+      "instructions": [
+        "Add oat milk and protein powder to blender first.",
+        "Add frozen banana, almond butter, and cacao powder.",
+        "Add ice cubes and a pinch of sea salt.",
+        "Blend on high for 45-60 seconds until smooth and creamy.",
+        "Pour into a tall glass and enjoy immediately.",
+        "Optional: top with cacao nibs or coconut whipped cream."
+      ],
+      "tier": "pro"
+    },
+    {
+      "id": "r016",
+      "name": "Beef & Broccoli Bowl",
+      "description": "Classic takeout favorite made healthy with lean beef and fresh broccoli",
+      "image_url": "https://images.unsplash.com/photo-1603133872878-684f208fb84b?w=800",
+      "prep_time": "15 mins",
+      "cook_time": "15 mins",
+      "total_time": "30 mins",
+      "servings": 2,
+      "difficulty": "Medium",
+      "nutrition_per_serving": {
+        "calories": 520,
+        "protein": 42,
+        "carbs": 38,
+        "fat": 22,
+        "fiber": 4
+      },
+      "tags": ["high-protein", "dairy-free", "under-30-mins", "dinner"],
+      "ingredients": [
+        { "name": "Flank steak", "amount": "12", "unit": "oz, sliced thin" },
+        { "name": "Broccoli florets", "amount": "3", "unit": "cups" },
+        { "name": "Brown rice, cooked", "amount": "1.5", "unit": "cups" },
+        { "name": "Low-sodium soy sauce", "amount": "3", "unit": "tbsp" },
+        { "name": "Sesame oil", "amount": "2", "unit": "tbsp" },
+        { "name": "Garlic", "amount": "3", "unit": "cloves, minced" },
+        { "name": "Ginger", "amount": "1", "unit": "tbsp, minced" },
+        { "name": "Honey", "amount": "1", "unit": "tbsp" },
+        { "name": "Cornstarch", "amount": "1", "unit": "tsp" },
+        { "name": "Sesame seeds", "amount": "1", "unit": "tbsp" }
+      ],
+      "instructions": [
+        "Mix soy sauce, honey, and cornstarch in a small bowl. Set aside.",
+        "Heat 1 tbsp sesame oil in a large skillet over high heat.",
+        "Add beef slices and sear 2 minutes per side. Remove and set aside.",
+        "Add remaining oil, then broccoli. Cook 4-5 minutes until tender-crisp.",
+        "Add garlic and ginger, cook 30 seconds.",
+        "Return beef to pan, pour sauce over, and toss to coat.",
+        "Serve over brown rice and garnish with sesame seeds."
+      ],
+      "tier": "pro"
+    },
+    {
+      "id": "r017",
+      "name": "Mediterranean Chickpea Salad",
+      "description": "A refreshing make-ahead salad with chickpeas, cucumber, and tangy feta",
+      "image_url": "https://images.unsplash.com/photo-1540420773420-3366772f4999?w=800",
+      "prep_time": "15 mins",
+      "cook_time": "0 mins",
+      "total_time": "15 mins",
+      "servings": 4,
+      "difficulty": "Easy",
+      "nutrition_per_serving": {
+        "calories": 310,
+        "protein": 12,
+        "carbs": 32,
+        "fat": 16,
+        "fiber": 8
+      },
+      "tags": ["vegetarian", "high-fiber", "meal-prep", "gluten-free", "under-15-mins", "lunch"],
+      "ingredients": [
+        { "name": "Chickpeas, drained", "amount": "2", "unit": "cans (15 oz each)" },
+        { "name": "Cucumber", "amount": "1", "unit": "large, diced" },
+        { "name": "Cherry tomatoes", "amount": "1", "unit": "cup, halved" },
+        { "name": "Red onion", "amount": "0.5", "unit": "cup, diced" },
+        { "name": "Kalamata olives", "amount": "0.5", "unit": "cup, halved" },
+        { "name": "Feta cheese", "amount": "0.5", "unit": "cup, crumbled" },
+        { "name": "Fresh parsley", "amount": "0.25", "unit": "cup, chopped" },
+        { "name": "Olive oil", "amount": "3", "unit": "tbsp" },
+        { "name": "Lemon juice", "amount": "2", "unit": "tbsp" },
+        { "name": "Dried oregano", "amount": "1", "unit": "tsp" }
+      ],
+      "instructions": [
+        "Drain and rinse chickpeas, pat dry.",
+        "Combine chickpeas, cucumber, tomatoes, onion, and olives in a large bowl.",
+        "Add crumbled feta and parsley.",
+        "Whisk together olive oil, lemon juice, and oregano.",
+        "Pour dressing over salad and toss gently.",
+        "Can be served immediately or refrigerated for up to 4 days."
+      ],
+      "tier": "pro"
+    },
+    {
+      "id": "r018",
+      "name": "Cauliflower Fried Rice",
+      "description": "A low-carb twist on classic fried rice using riced cauliflower",
+      "image_url": "https://images.unsplash.com/photo-1512058564366-18510be2db19?w=800",
+      "prep_time": "10 mins",
+      "cook_time": "12 mins",
+      "total_time": "22 mins",
+      "servings": 2,
+      "difficulty": "Easy",
+      "nutrition_per_serving": {
+        "calories": 220,
+        "protein": 14,
+        "carbs": 12,
+        "fat": 14,
+        "fiber": 4
+      },
+      "tags": ["low-carb", "keto", "gluten-free", "dairy-free", "under-30-mins", "lunch", "dinner"],
+      "ingredients": [
+        { "name": "Cauliflower rice", "amount": "4", "unit": "cups" },
+        { "name": "Eggs", "amount": "2", "unit": "large, beaten" },
+        { "name": "Carrots", "amount": "0.5", "unit": "cup, diced small" },
+        { "name": "Green peas", "amount": "0.5", "unit": "cup" },
+        { "name": "Green onions", "amount": "3", "unit": "stalks, sliced" },
+        { "name": "Garlic", "amount": "2", "unit": "cloves, minced" },
+        { "name": "Coconut aminos", "amount": "2", "unit": "tbsp" },
+        { "name": "Sesame oil", "amount": "2", "unit": "tbsp" },
+        { "name": "Ginger", "amount": "1", "unit": "tsp, minced" }
+      ],
+      "instructions": [
+        "Heat 1 tbsp sesame oil in a large wok or skillet over high heat.",
+        "Add beaten eggs and scramble quickly. Remove and set aside.",
+        "Add remaining oil, then carrots and peas. Cook 2-3 minutes.",
+        "Add cauliflower rice, garlic, and ginger. Stir-fry 5-6 minutes.",
+        "Add coconut aminos and toss well.",
+        "Return scrambled eggs to the pan, mix through.",
+        "Top with green onions and serve hot."
+      ],
+      "tier": "pro"
+    },
+    {
+      "id": "r019",
+      "name": "Almond Butter Energy Bites",
+      "description": "No-bake protein bites perfect for pre-workout or afternoon snacking",
+      "image_url": "https://images.unsplash.com/photo-1604329760661-e71dc83f8f26?w=800",
+      "prep_time": "10 mins",
+      "cook_time": "0 mins",
+      "total_time": "10 mins",
+      "servings": 12,
+      "difficulty": "Easy",
+      "nutrition_per_serving": {
+        "calories": 180,
+        "protein": 6,
+        "carbs": 18,
+        "fat": 10,
+        "fiber": 3
+      },
+      "tags": ["vegetarian", "high-fiber", "gluten-free", "under-15-mins", "snack"],
+      "ingredients": [
+        { "name": "Rolled oats", "amount": "1", "unit": "cup" },
+        { "name": "Almond butter", "amount": "0.5", "unit": "cup" },
+        { "name": "Honey", "amount": "0.25", "unit": "cup" },
+        { "name": "Dark chocolate chips", "amount": "0.25", "unit": "cup" },
+        { "name": "Chia seeds", "amount": "2", "unit": "tbsp" },
+        { "name": "Vanilla protein powder", "amount": "0.5", "unit": "scoop (15g)" },
+        { "name": "Vanilla extract", "amount": "1", "unit": "tsp" },
+        { "name": "Pinch of salt", "amount": "1", "unit": "pinch" }
+      ],
+      "instructions": [
+        "Combine all ingredients in a large bowl and mix well.",
+        "Refrigerate mixture for 15-20 minutes to firm up.",
+        "Roll into 12 equal balls using your hands.",
+        "Place on a parchment-lined tray.",
+        "Refrigerate for at least 30 minutes before serving.",
+        "Store in an airtight container in the fridge for up to 2 weeks."
+      ],
+      "tier": "pro"
+    },
+    {
+      "id": "r020",
+      "name": "Grilled Steak with Roasted Vegetables",
+      "description": "Perfectly seasoned ribeye with colorful roasted vegetables for the ultimate protein meal",
+      "image_url": "https://images.unsplash.com/photo-1558030006-450675393462?w=800",
+      "prep_time": "15 mins",
+      "cook_time": "25 mins",
+      "total_time": "40 mins",
+      "servings": 2,
+      "difficulty": "Medium",
+      "nutrition_per_serving": {
+        "calories": 550,
+        "protein": 45,
+        "carbs": 22,
+        "fat": 32,
+        "fiber": 5
+      },
+      "tags": ["high-protein", "low-carb", "gluten-free", "dairy-free", "dinner"],
+      "ingredients": [
+        { "name": "Ribeye steak", "amount": "12", "unit": "oz" },
+        { "name": "Asparagus", "amount": "1", "unit": "bunch, trimmed" },
+        { "name": "Zucchini", "amount": "1", "unit": "medium, sliced" },
+        { "name": "Bell peppers", "amount": "2", "unit": "medium, chunked" },
+        { "name": "Red onion", "amount": "1", "unit": "medium, wedged" },
+        { "name": "Olive oil", "amount": "3", "unit": "tbsp" },
+        { "name": "Garlic powder", "amount": "1", "unit": "tsp" },
+        { "name": "Fresh rosemary", "amount": "2", "unit": "sprigs" },
+        { "name": "Salt and pepper", "amount": "to", "unit": "taste" },
+        { "name": "Butter", "amount": "1", "unit": "tbsp" }
+      ],
+      "instructions": [
+        "Remove steak from fridge 30 minutes before cooking. Season generously with salt and pepper.",
+        "Preheat oven to 425°F. Toss vegetables with 2 tbsp olive oil and garlic powder.",
+        "Spread vegetables on a baking sheet. Roast for 20-25 minutes.",
+        "Heat remaining oil in a cast iron skillet over high heat until smoking.",
+        "Sear steak 4 minutes per side for medium-rare. Add butter and rosemary in last minute.",
+        "Rest steak 5 minutes before slicing.",
+        "Serve sliced steak over roasted vegetables."
+      ],
+      "tier": "pro"
+    },
+    {
+      "id": "r021",
+      "name": "Daniel Fast Tempeh Fajita Skillet",
+      "description": "Oil-free tempeh fajitas with colorful bell peppers, onions, warm spices, and fresh lime - Daniel Fast compliant",
+      "image_url": "https://images.unsplash.com/photo-1534938665420-4193effeacc4?w=800",
+      "prep_time": "10 mins",
+      "cook_time": "25 mins",
+      "total_time": "35 mins",
+      "servings": 4,
+      "difficulty": "Easy",
+      "nutrition_per_serving": {
+        "calories": 180,
+        "protein": 14,
+        "carbs": 15,
+        "fat": 8,
+        "fiber": 4
+      },
+      "tags": ["vegan", "dairy-free", "high-protein", "gluten-free", "lunch", "dinner"],
+      "ingredients": [
+        { "name": "Tempeh", "amount": "1", "unit": "block (200-250g), sliced into strips" },
+        { "name": "Bell peppers", "amount": "2", "unit": "any colors, sliced" },
+        { "name": "Onion", "amount": "1", "unit": "medium, sliced" },
+        { "name": "Garlic", "amount": "3", "unit": "cloves, minced" },
+        { "name": "Lime", "amount": "1", "unit": "juiced" },
+        { "name": "Cumin", "amount": "2", "unit": "tsp" },
+        { "name": "Smoked paprika", "amount": "1", "unit": "tsp" },
+        { "name": "Chili powder", "amount": "1", "unit": "tsp" },
+        { "name": "Dried oregano", "amount": "0.5", "unit": "tsp" },
+        { "name": "Black pepper", "amount": "to", "unit": "taste" },
+        { "name": "Vegetable broth or water", "amount": "0.5", "unit": "cup" }
+      ],
+      "instructions": [
+        "Steam the tempeh: Place tempeh strips in a pan with a splash of water, cover, and steam for 5-7 minutes. Drain. This removes bitterness and helps it absorb flavor.",
+        "Sauté onion and peppers oil-free: Heat pan over medium-high, add onions and peppers with 2-3 tbsp water or broth. Cook 6-8 minutes, adding more liquid if sticking.",
+        "Add garlic and spices: Stir in garlic for 30 seconds, then add cumin, paprika, chili powder, oregano, and pepper. Add a splash of water to prevent burning.",
+        "Brown the tempeh: Add steamed tempeh to the pan and cook 4-6 minutes, stirring so it picks up color and seasoning.",
+        "Finish with lime: Turn heat off and squeeze fresh lime juice over everything. Taste and adjust spices as needed.",
+        "Serve over brown rice, quinoa, corn tortillas, greens, or with baked sweet potato. Add black beans or edamame for extra protein."
+      ],
+      "tier": "free"
+    }
+  ]
+}

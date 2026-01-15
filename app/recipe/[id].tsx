@@ -3,15 +3,17 @@ import { PageContainer } from '@/components/layout/PageContainer';
 import { AnimatedCard } from '@/components/ui/AnimatedCard';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { ParallaxImage } from '@/components/ui/ParallaxImage';
-import { Colors, neonGreen } from '@/constants/Colors';
-import { Shadows } from '@/constants/Layout';
+import { Colors, neonGreen, glassSurface, glassBorder } from '@/constants/Colors';
 import { PageSpacing, Spacing } from '@/constants/Spacing';
 import { TextStyles } from '@/constants/Typography';
 import { useColorScheme } from '@/hooks/useColorScheme';
-import { deleteRecipe, getRecipeWithDetails } from '@/lib/supabase';
+import { useRecipes, type PrebakedRecipe } from '@/hooks/useRecipes';
+import { useAuth } from '@/context/AuthContext';
+import { deleteRecipe, getRecipeWithDetails, saveRecipeAsMeal } from '@/lib/supabase';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
+    ActivityIndicator,
     Alert,
     Platform,
     StyleSheet,
@@ -224,10 +226,21 @@ export default function RecipeDetailScreen() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+  const { getRecipeById } = useRecipes();
+  
   const [activeTab, setActiveTab] = useState<'ingredients' | 'instructions'>('ingredients');
   const [recipe, setRecipe] = useState<any>(null);
+  const [prebakedRecipe, setPrebakedRecipe] = useState<PrebakedRecipe | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
+  const [logging, setLogging] = useState(false);
+
+  // Helper to format macro values to 1 decimal point max, removing trailing .0
+  const formatMacro = (val: number | undefined | null) => {
+    if (val === undefined || val === null) return '0';
+    return Number(val.toFixed(1)).toString();
+  };
 
   useEffect(() => {
     loadRecipe();
@@ -237,7 +250,6 @@ export default function RecipeDetailScreen() {
     try {
       setLoading(true);
       console.log('🍳 Recipe Detail: Loading recipe with ID:', id);
-      console.log('🍳 Recipe Detail: ID type:', typeof id, 'ID value:', JSON.stringify(id));
       
       if (!id) {
         console.error('🍳 Recipe Detail: No ID provided');
@@ -245,7 +257,33 @@ export default function RecipeDetailScreen() {
         return;
       }
 
-      // Check if it's a mock ID
+      // First, check if it's a pre-baked recipe from JSON
+      const prebaked = getRecipeById(id as string);
+      if (prebaked) {
+        console.log('🍳 Recipe Detail: Found pre-baked recipe:', prebaked.name);
+        setPrebakedRecipe(prebaked);
+        // Convert prebaked to recipe format for display
+        setRecipe({
+          id: prebaked.id,
+          name: prebaked.name,
+          description: prebaked.description,
+          image_url: prebaked.image_url,
+          prep_time: prebaked.prep_time,
+          cook_time: prebaked.cook_time,
+          difficulty: prebaked.difficulty,
+          servings: prebaked.servings,
+          ingredients: prebaked.ingredients,
+          instructions: prebaked.instructions,
+          tags: prebaked.tags.map(tag => 
+            tag.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
+          ),
+          nutrition: prebaked.nutrition_per_serving,
+        });
+        setLoading(false);
+        return;
+      }
+
+      // Check if it's a mock ID (legacy support)
       const isMock = typeof id === 'string' && (id.startsWith('d') || id === '1' || id === '2');
       
       if (isMock) {
@@ -258,25 +296,82 @@ export default function RecipeDetailScreen() {
         }
       }
 
+      // Otherwise, load from Supabase (user-created recipes)
       const { data, error } = await getRecipeWithDetails(id as string);
       
       if (error) {
         console.error('🍳 Recipe Detail: Error loading recipe:', error);
-        console.error('🍳 Recipe Detail: Error details:', JSON.stringify(error));
       } else {
-        console.log('🍳 Recipe Detail: Loaded recipe:', data);
-        console.log('🍳 Recipe Detail: Recipe exists:', !!data);
-        if (data) {
-          console.log('🍳 Recipe Detail: Recipe name:', data.name);
-          console.log('🍳 Recipe Detail: Recipe ingredients count:', data.ingredients?.length || 0);
-          console.log('🍳 Recipe Detail: Recipe ai_analysis ingredients count:', data.ai_analysis?.ingredients?.length || 0);
-        }
+        console.log('🍳 Recipe Detail: Loaded recipe:', data?.name);
         setRecipe(data);
       }
     } catch (error) {
       console.error('🍳 Recipe Detail: Error:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleLogRecipe = async () => {
+    if (!user) {
+      Alert.alert('Sign In Required', 'Please sign in to log this recipe to your journal.');
+      return;
+    }
+
+    if (!recipe) return;
+
+    try {
+      setLogging(true);
+      console.log('🍳 Logging recipe to journal:', recipe.name);
+
+      // Prepare recipe data for logging
+      const recipeData = {
+        id: recipe.id,
+        name: recipe.name,
+        description: recipe.description,
+        image_url: recipe.image_url,
+        servings: recipe.servings || 1,
+        nutrition_per_serving: {
+          calories: recipe.nutrition?.calories || 0,
+          protein: recipe.nutrition?.protein || 0,
+          carbs: recipe.nutrition?.carbs || 0,
+          fat: recipe.nutrition?.fat || 0,
+          fiber: recipe.nutrition?.fiber,
+        },
+        ingredients: recipe.ingredients,
+        tags: recipe.tags,
+      };
+
+      const { data, error } = await saveRecipeAsMeal(user.id, recipeData, 1);
+
+      if (error) {
+        console.error('🍳 Error logging recipe:', error);
+        Alert.alert('Error', 'Failed to log recipe to journal. Please try again.');
+        return;
+      }
+
+      console.log('🍳 Recipe logged successfully:', data?.id);
+      
+      // Show success and navigate
+      Alert.alert(
+        'Recipe Logged!',
+        `${recipe.name} has been added to your journal.`,
+        [
+          {
+            text: 'View Journal',
+            onPress: () => router.push('/(tabs)/journal'),
+          },
+          {
+            text: 'Stay Here',
+            style: 'cancel',
+          },
+        ]
+      );
+    } catch (error) {
+      console.error('🍳 Error logging recipe:', error);
+      Alert.alert('Error', 'Failed to log recipe to journal. Please try again.');
+    } finally {
+      setLogging(false);
     }
   };
 
@@ -544,19 +639,19 @@ export default function RecipeDetailScreen() {
             </View>
             <View style={styles.nutritionRow}>
               <View style={styles.nutritionItem}>
-                <Text style={[TextStyles.h3, { color: colors.tint }]}>{recipe.nutrition.calories}</Text>
+                <Text style={[TextStyles.h3, { color: colors.tint }]}>{formatMacro(recipe.nutrition.calories)}</Text>
                 <Text style={[TextStyles.caption, { color: colors.icon }]}>Calories</Text>
               </View>
               <View style={styles.nutritionItem}>
-                <Text style={[TextStyles.h3, { color: colors.tint }]}>{recipe.nutrition.protein}g</Text>
+                <Text style={[TextStyles.h3, { color: colors.tint }]}>{formatMacro(recipe.nutrition.protein)}g</Text>
                 <Text style={[TextStyles.caption, { color: colors.icon }]}>Protein</Text>
               </View>
               <View style={styles.nutritionItem}>
-                <Text style={[TextStyles.h3, { color: colors.tint }]}>{recipe.nutrition.carbs}g</Text>
+                <Text style={[TextStyles.h3, { color: colors.tint }]}>{formatMacro(recipe.nutrition.carbs)}g</Text>
                 <Text style={[TextStyles.caption, { color: colors.icon }]}>Carbs</Text>
               </View>
               <View style={styles.nutritionItem}>
-                <Text style={[TextStyles.h3, { color: colors.tint }]}>{recipe.nutrition.fat}g</Text>
+                <Text style={[TextStyles.h3, { color: colors.tint }]}>{formatMacro(recipe.nutrition.fat)}g</Text>
                 <Text style={[TextStyles.caption, { color: colors.icon }]}>Fat</Text>
               </View>
             </View>
@@ -650,7 +745,29 @@ export default function RecipeDetailScreen() {
             </View>
           </AnimatedCard>
         )}
+        
+        {/* Spacer for fixed footer */}
+        <View style={{ height: 100 }} />
       </ContentContainer>
+
+      {/* Fixed Footer - Log Recipe Button */}
+      <View style={[styles.footerContainer, { paddingBottom: insets.bottom + Spacing.md }]}>
+        <TouchableOpacity
+          style={[styles.logRecipeButton, logging && styles.logRecipeButtonDisabled]}
+          onPress={handleLogRecipe}
+          disabled={logging}
+          activeOpacity={0.8}
+        >
+          {logging ? (
+            <ActivityIndicator size="small" color="#000000" />
+          ) : (
+            <IconSymbol name="plus.circle.fill" size={24} color="#000000" />
+          )}
+          <Text style={[TextStyles.button, { color: '#000000' }]}>
+            {logging ? 'Logging...' : 'Log to Journal'}
+          </Text>
+        </TouchableOpacity>
+      </View>
     </PageContainer>
   );
 }
@@ -839,5 +956,33 @@ const styles = StyleSheet.create({
   },
   skeletonCard: {
     borderRadius: 12,
+  },
+  footerContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: PageSpacing.containerPadding,
+    paddingTop: Spacing.md,
+    backgroundColor: glassSurface,
+    borderTopWidth: 1,
+    borderTopColor: glassBorder,
+  },
+  logRecipeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: neonGreen,
+    paddingVertical: 16,
+    borderRadius: 16,
+    gap: 10,
+    shadowColor: neonGreen,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  logRecipeButtonDisabled: {
+    opacity: 0.7,
   },
 }); 

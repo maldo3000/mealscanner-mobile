@@ -28,3 +28,12 @@ This Service is also subject to the Apple Standard Licensed Application End User
 ## 7. Contact
 For support or inquiries, contact support@mealscanner.app.
 
+
+
+
+
+
+
+
+
+

@@ -1,26 +1,45 @@
 import { Platform } from 'react-native';
+import { Brand } from './Brand';
+import { USE_EDITORIAL_HERBARIUM } from './brandExperiment';
 
 /**
- * MealScanner Glassmorphic Wellness Color System
- * Modern, sleek, dark green with glass effects
+ * MealScanner Color System
+ * 
+ * Brand colors are defined in Brand.ts - import { Brand } from '@/constants/Brand'
+ * This file provides backward-compatible exports and theme configuration.
  */
 
+// Re-export Brand for convenience (prefer importing Brand directly)
+export { Brand } from './Brand';
+
+// Legacy herbarium export (use Brand instead)
+export const herbarium = {
+  backgroundInk: Brand.ink,
+  backgroundInkAlt: Brand.inkAlt,
+  surface1: Brand.surface1,
+  surface2: Brand.surface2,
+  border: Brand.border,
+  textPrimary: Brand.bone,
+  textMuted: Brand.sage,
+  accentPrimary: Brand.matcha,
+} as const;
+
 // Base colors
-export const deepGreen = '#022c22'; // Very dark green background
-export const richGreen = '#064e3b'; // Slightly lighter green
-export const mossGreen = '#065f46'; // Accent background
-export const neonGreen = '#4ade80'; // Primary Action / Glow
-export const softMint = '#a7f3d0'; // Secondary Text / Accents
+export const deepGreen = USE_EDITORIAL_HERBARIUM ? Brand.ink : '#022c22'; // Very dark green background
+export const richGreen = USE_EDITORIAL_HERBARIUM ? Brand.inkAlt : '#064e3b'; // Slightly lighter green
+export const mossGreen = USE_EDITORIAL_HERBARIUM ? Brand.surface1 : '#065f46'; // Accent background
+export const neonGreen = USE_EDITORIAL_HERBARIUM ? Brand.matcha : '#4ade80'; // Primary Action / Glow
+export const softMint = USE_EDITORIAL_HERBARIUM ? Brand.sage : '#a7f3d0'; // Secondary Text / Accents
 
 // Glassmorphism tokens
-export const glassSurface = 'rgba(255, 255, 255, 0.05)';
-export const glassBorder = 'rgba(255, 255, 255, 0.1)';
-export const glassHighlight = 'rgba(255, 255, 255, 0.15)';
+export const glassSurface = USE_EDITORIAL_HERBARIUM ? Brand.surface1 : 'rgba(255, 255, 255, 0.05)';
+export const glassBorder = USE_EDITORIAL_HERBARIUM ? Brand.border : 'rgba(255, 255, 255, 0.1)';
+export const glassHighlight = USE_EDITORIAL_HERBARIUM ? Brand.surface2 : 'rgba(255, 255, 255, 0.15)';
 
 // Standard Tokens
 export const bgPrimary = deepGreen;
-export const textWhite = '#FFFFFF';
-export const textMuted = 'rgba(255, 255, 255, 0.6)';
+export const textWhite = USE_EDITORIAL_HERBARIUM ? Brand.bone : '#FFFFFF';
+export const textMuted = USE_EDITORIAL_HERBARIUM ? Brand.sage : 'rgba(255, 255, 255, 0.6)';
 export const borderLight = glassBorder;
 
 // Legacy exports mapped to new system
@@ -94,6 +113,7 @@ const glassTheme = {
   border: glassBorder,
   bgLight: bgPrimary,
   bgSoft: glassSurface,
+  surface2: USE_EDITORIAL_HERBARIUM ? Brand.surface2 : glassHighlight,
 };
 
 export const Colors = {

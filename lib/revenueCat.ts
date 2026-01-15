@@ -2,8 +2,8 @@ import { Platform } from 'react-native';
 import Purchases, {
   CustomerInfo,
   LOG_LEVEL,
-  PurchasesPackage,
   PurchasesOffering,
+  PurchasesPackage,
 } from 'react-native-purchases';
 
 // RevenueCat API Keys
@@ -24,7 +24,7 @@ export const PRODUCT_IDS = {
 
 // Feature limits for free tier
 export const FREE_TIER_LIMITS = {
-  DAILY_SCANS: 3,
+  DAILY_SCANS: 25,
 } as const;
 
 let isConfigured = false;
@@ -199,5 +199,5 @@ export function addCustomerInfoUpdateListener(
 }
 
 // Re-export types for convenience
-export type { CustomerInfo, PurchasesPackage, PurchasesOffering };
+export type { CustomerInfo, PurchasesOffering, PurchasesPackage };
 

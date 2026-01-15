@@ -14,6 +14,8 @@ interface ButtonProps extends TouchableOpacityProps {
   children: React.ReactNode;
   icon?: React.ReactNode;
   fullWidth?: boolean;
+  noShadow?: boolean;
+  textStyle?: any;
 }
 
 export function Button({ 
@@ -24,6 +26,8 @@ export function Button({
   disabled,
   icon,
   fullWidth = false,
+  noShadow = false,
+  textStyle,
   ...props 
 }: ButtonProps) {
   const colorScheme = useColorScheme();
@@ -37,11 +41,11 @@ export function Button({
         base.push({ 
           backgroundColor: neonGreen,
           borderColor: neonGreen,
-          shadowColor: neonGreen,
+          shadowColor: noShadow ? 'transparent' : neonGreen,
           shadowOffset: { width: 0, height: 0 },
-          shadowOpacity: disabled ? 0.3 : 0.6,
-          shadowRadius: 12,
-          elevation: 8,
+          shadowOpacity: noShadow ? 0 : (disabled ? 0.3 : 0.6),
+          shadowRadius: noShadow ? 0 : 12,
+          elevation: noShadow ? 0 : 8,
           opacity: disabled ? 0.5 : 1,
         });
         break;
@@ -120,6 +124,7 @@ export function Button({
             {
               fontSize: size === 'small' ? 13 : size === 'large' ? 18 : 15,
             },
+            textStyle,
           ]}
         >
           {children}

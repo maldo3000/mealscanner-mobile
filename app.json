@@ -9,6 +9,7 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
+      "icon": "./assets/images/ios-icon.png",
       "supportsTablet": true,
       "bundleIdentifier": "app.mealscanner",
       "buildNumber": "1",
@@ -47,7 +48,7 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
+          "image": "./assets/images/icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#143c23"
@@ -62,7 +63,13 @@
       "expo-secure-store",
       "expo-font",
       "expo-web-browser",
-      "@react-native-google-signin/google-signin",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosClientId": "406558558947-m8fffoskmmsicsj413t625h1tps031ei.apps.googleusercontent.com",
+          "iosUrlScheme": "com.googleusercontent.apps.406558558947-m8fffoskmmsicsj413t625h1tps031ei"
+        }
+      ],
       "expo-apple-authentication"
     ],
     "experiments": {

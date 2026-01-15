@@ -1,5 +1,7 @@
+import { AnalysisLoadingOverlay, AnalysisStatus } from '@/components/capture/AnalysisLoadingOverlay';
 import { ContentContainer } from '@/components/layout/ContentContainer';
 import { PageContainer } from '@/components/layout/PageContainer';
+import { UpgradePrompt } from '@/components/subscription/UpgradePrompt';
 import { AnimatedCard } from '@/components/ui/AnimatedCard';
 import { Button } from '@/components/ui/Button';
 import { IconSymbol } from '@/components/ui/IconSymbol';
@@ -8,36 +10,35 @@ import { Input } from '@/components/ui/Input';
 import { NutritionCard } from '@/components/ui/NutritionCard';
 import { ThumbnailImage } from '@/components/ui/OptimizedImage';
 import { ParallaxImage } from '@/components/ui/ParallaxImage';
-import { bgPrimary, Colors, neonGreen, primaryGreen } from '@/constants/Colors';
+import { bgPrimary, Colors, neonGreen, primaryGreen, createColoredGlass } from '@/constants/Colors';
 import { Shadows } from '@/constants/Layout';
 import { PageSpacing, Spacing } from '@/constants/Spacing';
 import { TextStyles } from '@/constants/Typography';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { useColorScheme } from '@/hooks/useColorScheme';
-import { useNutritionGoals } from '@/hooks/useNutritionGoals';
 import { useFeatureAccess } from '@/hooks/useFeatureAccess';
-import { UpgradePrompt } from '@/components/subscription/UpgradePrompt';
-import { Paywall } from '@/components/subscription/Paywall';
+import { useNutritionGoals } from '@/hooks/useNutritionGoals';
 import { analyzeMealMulti, deleteMeal, getMealById, getMealItems, setMealHeroItem, transcribeAudioDirect, updateMeal } from '@/lib/supabase';
+import { getMealTag } from '@/lib/nutritionTags';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { BlurView } from 'expo-blur';
 import React, { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Dimensions,
-    FlatList,
-    Keyboard,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    TouchableWithoutFeedback,
-    View
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  FlatList,
+  Keyboard,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AnalysisLoadingOverlay, AnalysisStatus } from '@/components/capture/AnalysisLoadingOverlay';
 
 interface Meal {
   id: string;
@@ -52,6 +53,9 @@ interface Meal {
     fat?: number;
     carbs?: number;
     fiber?: number;
+    sugar?: number;
+    sodium?: number;
+    cholesterol?: number;
   };
   health_score?: 'very_healthy' | 'healthy' | 'needs_improvement';
   qualitative_feedback?: string;
@@ -72,8 +76,9 @@ export default function MealDetailScreen() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
   const insets = useSafeAreaInsets();
+  const headerHeight = 44 + insets.top;
   const { activeGoal } = useNutritionGoals();
-  const { isPro, canScan, showPaywall } = useFeatureAccess();
+  const { isPro, canScan, showPaywall, ensureSubscriptionSynced } = useFeatureAccess();
   
   const [meal, setMeal] = useState<Meal | null>(null);
   const [mealItems, setMealItems] = useState<Array<{
@@ -104,6 +109,19 @@ export default function MealDetailScreen() {
   const [editedMealType, setEditedMealType] = useState('');
   const [editedCreatedAt, setEditedCreatedAt] = useState('');
   const [savingMeta, setSavingMeta] = useState(false);
+
+  const mealTag = getMealTag(meal ? {
+    calories: meal.calories || 0,
+    protein: meal.macros?.protein || 0,
+    carbs: meal.macros?.carbs || 0,
+    fat: meal.macros?.fat || 0
+  } : null);
+
+  // Helper to format macro values to 1 decimal point max, removing trailing .0
+  const formatMacro = (val: number | undefined | null) => {
+    if (val === undefined || val === null) return '0';
+    return Number(val.toFixed(1)).toString();
+  };
 
   useEffect(() => {
     const showSub = Keyboard.addListener(
@@ -283,6 +301,11 @@ export default function MealDetailScreen() {
     setAnalysisStatus('analyzing');
     
     try {
+      // CRITICAL: Ensure subscription tier is synced to database BEFORE re-analysis.
+      // This fixes a race condition where the user upgrades to Pro but the backend
+      // reads stale 'free' status, resulting in missing fiber/sugar/sodium/cholesterol.
+      await ensureSubscriptionSynced();
+
       const itemsPayload = mealItems.map((it, idx) => ({
         itemType: it.item_type,
         imageUrl: it.item_type === 'photo' ? it.image_url ?? undefined : undefined,
@@ -379,8 +402,16 @@ export default function MealDetailScreen() {
     const isGeneric = !meal?.description || 
                      meal.description === 'Meal' || 
                      meal.description === 'Analyzed meal' ||
+                     meal.description === 'Analyzed Snack' ||
+                     meal.description.includes('item)') ||
                      meal.description.includes('items)');
     
+    // Improved fallback for when analysis is still in progress
+    if (meal?.processing_status === 'processing' && isGeneric) {
+      const mealType = getMealType(meal.created_at || new Date().toISOString());
+      return `Analyzing ${mealType}...`;
+    }
+
     if (meal?.description && !isGeneric) {
       return meal.description;
     }
@@ -388,7 +419,7 @@ export default function MealDetailScreen() {
     // 2. Try to use the first item name from AI analysis if it exists but description is still generic
     if (meal?.ai_analysis?.items && Array.isArray(meal.ai_analysis.items) && meal.ai_analysis.items.length > 0) {
       const firstItem = meal.ai_analysis.items[0];
-      if (firstItem?.name && firstItem.name !== 'Item 1') {
+      if (firstItem?.name && firstItem.name !== 'Item 1' && firstItem.name !== 'Food item') {
         const base = firstItem.name;
         if (mealItems.length === 1) return base;
         return `${base} and ${mealItems.length - 1} more`;
@@ -403,7 +434,13 @@ export default function MealDetailScreen() {
       return `${base} + ${mealItems.length - 1} more`;
     }
 
-    // 4. Final fallback using meal type and item count
+    // 4. Construct from ingredients if AI analysis failed but identified some ingredients
+    if (meal?.ingredients && meal.ingredients.length > 0) {
+      const firstIng = meal.ingredients[0];
+      return `${firstIng.charAt(0).toUpperCase() + firstIng.slice(1)} Dish`;
+    }
+
+    // 5. Final fallback using meal type and item count
     const mealType = getMealType(meal?.created_at || new Date().toISOString());
     if (mealItems.length > 0) {
       return `${mealType} (${mealItems.length} item${mealItems.length > 1 ? 's' : ''})`;
@@ -433,55 +470,41 @@ export default function MealDetailScreen() {
     return `Item ${index + 1}`;
   };
 
-  const getHealthScoreStyle = (healthScore?: string) => {
-    switch (healthScore) {
-      case 'very_healthy':
-        return { backgroundColor: '#059669', color: 'white' }; // Very healthy - dark green
-      case 'healthy':
-        return { backgroundColor: '#10B981', color: 'white' }; // Healthy - standard green
-      case 'needs_improvement':
-        return { backgroundColor: '#F59E0B', color: 'white' }; // Needs improvement - amber
-      default:
-        return { backgroundColor: '#6B7280', color: 'white' };
-    }
-  };
-
-  const getHealthScoreText = (healthScore?: string) => {
-    switch (healthScore) {
-      case 'very_healthy':
-        return 'Very Healthy';
-      case 'healthy':
-        return 'Healthy';
-      case 'needs_improvement':
-        return 'Needs Improvement';
-      default:
-        return 'Not Analyzed';
-    }
-  };
-
   if (loading) {
     return (
-      <PageContainer noPadding>
+      <PageContainer noPadding edges={['bottom', 'left', 'right']}>
         {/* Skeleton Header */}
-        <View style={[styles.floatingHeader, { paddingTop: insets.top + Spacing.base }]}>
+        <BlurView 
+          intensity={Platform.OS === 'ios' ? 60 : 80} 
+          tint="dark" 
+          style={[
+            styles.floatingHeader, 
+            { 
+              height: headerHeight, 
+              paddingTop: insets.top,
+              backgroundColor: createColoredGlass(bgPrimary, 0.75)
+            }
+          ]}
+        >
           <View style={styles.headerContent}>
-            <View style={[styles.iconContainer, { opacity: 0.3 }]}>
-              <View style={styles.iconBackground} />
+            <View style={styles.headerButton}>
+              <View style={[styles.skeletonCircle, { width: 32, height: 32, backgroundColor: colors.border, opacity: 0.3 }]} />
             </View>
             <View style={styles.headerActions}>
-              <View style={[styles.iconContainer, { opacity: 0.3 }]}>
-                <View style={styles.iconBackground} />
+              <View style={styles.headerButton}>
+                <View style={[styles.skeletonCircle, { width: 32, height: 32, backgroundColor: colors.border, opacity: 0.3 }]} />
               </View>
-              <View style={[styles.iconContainer, { opacity: 0.3 }]}>
-                <View style={styles.iconBackground} />
+              <View style={styles.headerButton}>
+                <View style={[styles.skeletonCircle, { width: 32, height: 32, backgroundColor: colors.border, opacity: 0.3 }]} />
               </View>
             </View>
           </View>
-        </View>
+        </BlurView>
 
         <ContentContainer>
-          {/* Skeleton Hero Image */}
-          <View style={[styles.skeletonImage, { height: 380, backgroundColor: colors.border, opacity: 0.3 }]} />
+          <View style={{ paddingTop: 24 }}>
+            {/* Skeleton Hero Image */}
+            <View style={[styles.skeletonImage, { height: 380, backgroundColor: colors.border, opacity: 0.3 }]} />
 
           {/* Skeleton Title Card */}
           <AnimatedCard delay={0} style={styles.titleCard}>
@@ -510,10 +533,11 @@ export default function MealDetailScreen() {
               ))}
             </View>
           </AnimatedCard>
-        </ContentContainer>
-      </PageContainer>
-    );
-  }
+        </View>
+      </ContentContainer>
+    </PageContainer>
+  );
+}
 
   if (!meal) {
     return (
@@ -545,127 +569,146 @@ export default function MealDetailScreen() {
   const fatProgress = meal.macros?.fat ? Math.min(meal.macros.fat / dailyFat, 1) : 0;
   const carbsProgress = meal.macros?.carbs ? Math.min(meal.macros.carbs / dailyCarbs, 1) : 0;
 
+  // Only show the micronutrients section if the meal actually has meaningful data.
+  // Meals analyzed in free mode have 0 or missing values for fiber/sugar/sodium/cholesterol.
+  // We only show this section if at least one micronutrient is > 0, indicating the meal
+  // was analyzed with Pro features enabled at the time of analysis.
+  const hasMicronutrientData = !!meal.macros && (
+    (meal.macros.fiber ?? 0) > 0 ||
+    (meal.macros.sugar ?? 0) > 0 ||
+    (meal.macros.sodium ?? 0) > 0 ||
+    (meal.macros.cholesterol ?? 0) > 0
+  );
+
   return (
-    <PageContainer noPadding>
-      {/* Floating Header - Actions only, no title */}
-      <View style={[styles.floatingHeader, { paddingTop: insets.top + Spacing.base }]}>
+    <PageContainer noPadding edges={['bottom', 'left', 'right']}>
+      {/* Translucent Header Overlay */}
+      <BlurView 
+        intensity={Platform.OS === 'ios' ? 60 : 80} 
+        tint="dark" 
+        style={[
+          styles.floatingHeader, 
+          { 
+            height: headerHeight, 
+            paddingTop: insets.top,
+            backgroundColor: createColoredGlass(bgPrimary, 0.75)
+          }
+        ]}
+      >
         <View style={styles.headerContent}>
           <TouchableOpacity 
             style={styles.headerButton}
             onPress={() => router.back()}
-            activeOpacity={0.8}
+            activeOpacity={0.7}
+            accessibilityLabel="Back"
           >
-            <View style={styles.iconContainer}>
-              <View style={styles.iconBackground} />
-              <View style={styles.iconGlow}>
-                <IconSymbol name="chevron.left" size={22} color={neonGreen} style={styles.iconThick} />
-              </View>
-            </View>
+            <IconSymbol name="chevron.left" size={24} color={neonGreen} weight="semibold" />
           </TouchableOpacity>
+          
+          <View style={styles.headerTitleContainer}>
+            {/* Center area left empty for minimalist look */}
+          </View>
           
           <View style={styles.headerActions}>
             <TouchableOpacity 
-              style={styles.headerButtonEdit}
+              style={styles.headerButton}
               onPress={openEditMeta}
-              activeOpacity={0.8}
+              activeOpacity={0.7}
+              accessibilityLabel="Edit meal details"
             >
-              <View style={styles.iconContainer}>
-                <View style={styles.iconBackground} />
-                <View style={styles.iconGlow}>
-                  <IconSymbol name="pencil" size={18} color={neonGreen} style={styles.iconThick} />
-                </View>
-              </View>
+              <IconSymbol name="pencil" size={20} color={neonGreen} weight="semibold" />
             </TouchableOpacity>
-            {/* Hide reanalyze button for database-sourced meals */}
+
             {!isDatabaseMeal && (
               <TouchableOpacity 
-                style={styles.headerButtonEdit}
+                style={styles.headerButton}
                 onPress={openReanalyze}
-                activeOpacity={0.8}
+                activeOpacity={0.7}
+                accessibilityLabel="Reanalyze meal"
               >
-                <View style={styles.iconContainer}>
-                  <View style={styles.iconBackground} />
-                  <View style={styles.iconGlow}>
-                    <IconSymbol name="arrow.clockwise" size={18} color={neonGreen} style={styles.iconThick} />
-                  </View>
-                </View>
+                <IconSymbol name="arrow.clockwise" size={20} color={neonGreen} weight="semibold" />
               </TouchableOpacity>
             )}
+
             <TouchableOpacity 
-              style={styles.headerButtonDelete}
+              style={styles.headerButton}
               onPress={handleDelete}
-              activeOpacity={0.8}
+              activeOpacity={0.7}
+              accessibilityLabel="Delete meal"
             >
-              <View style={styles.iconContainer}>
-                <View style={styles.iconBackground} />
-                <View style={styles.iconGlow}>
-                  <IconSymbol name="trash" size={18} color={neonGreen} style={styles.iconThick} />
-                </View>
-              </View>
+              <IconSymbol name="trash" size={20} color={neonGreen} weight="semibold" />
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </BlurView>
 
       <ContentContainer>
-        {/* Hero Image with Parallax */}
-        {meal.image_url && (
-          <ParallaxImage source={{ uri: meal.image_url }} height={380} />
-        )}
+        {/* Wrap content in a View to handle dynamic padding based on image presence */}
+        <View style={{ paddingTop: meal.image_url ? 24 : headerHeight + 12 }}>
+          {/* Hero Image with Parallax */}
+          {meal.image_url && (
+            <ParallaxImage source={{ uri: meal.image_url }} height={380} />
+          )}
 
-        {/* Items carousel - Only show if there are multiple photos to switch between */}
-        {mealItems.filter((i) => i.item_type === 'photo').length > 1 && (
-          <View style={styles.itemsCarousel}>
-            <FlatList
-              data={mealItems}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={styles.itemsCarouselContent}
-              renderItem={({ item }) => {
-                const isPhoto = item.item_type === 'photo';
-                return (
-                  <TouchableOpacity
-                    style={styles.carouselItem}
-                    activeOpacity={0.85}
-                    onPress={() => {
-                      if (isPhoto) {
-                        void handleSetHero(item.id, item.image_url);
-                      }
-                    }}
-                    disabled={!isPhoto}
-                  >
-                    {isPhoto && item.image_url ? (
-                      <View style={styles.carouselPhotoWrapper}>
-                        <ThumbnailImage source={{ uri: item.image_url }} style={styles.carouselPhoto} />
-                        <View style={styles.carouselBadges}>
-                          <View />
-                          {item.is_hero && (
-                            <View style={styles.heroBadge}>
-                              <IconSymbol name="star.fill" size={14} color="#000000" />
-                            </View>
-                          )}
+          {/* Items carousel - Only show if there are multiple photos to switch between */}
+          {mealItems.filter((i) => i.item_type === 'photo').length > 1 && (
+            <View style={styles.itemsCarousel}>
+              <FlatList
+                data={mealItems}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={styles.itemsCarouselContent}
+                renderItem={({ item }) => {
+                  const isPhoto = item.item_type === 'photo';
+                  return (
+                    <TouchableOpacity
+                      style={styles.carouselItem}
+                      activeOpacity={0.85}
+                      onPress={() => {
+                        if (isPhoto) {
+                          void handleSetHero(item.id, item.image_url);
+                        }
+                      }}
+                      disabled={!isPhoto}
+                    >
+                      {isPhoto && item.image_url ? (
+                        <View style={styles.carouselPhotoWrapper}>
+                          <ThumbnailImage source={{ uri: item.image_url }} style={styles.carouselPhoto} />
+                          <View style={styles.carouselBadges}>
+                            <View />
+                            {item.is_hero && (
+                              <View style={styles.heroBadge}>
+                                <IconSymbol name="star.fill" size={14} color="#000000" />
+                              </View>
+                            )}
+                          </View>
                         </View>
-                      </View>
-                    ) : (
-                      <View style={styles.carouselTextCard}>
-                        <View style={styles.carouselTextHeader}>
-                          <IconSymbol name="text.alignleft" size={18} color={neonGreen} />
+                      ) : (
+                        <View style={styles.carouselTextCard}>
+                          <View style={styles.carouselTextHeader}>
+                            <IconSymbol name="text.alignleft" size={18} color={neonGreen} />
+                          </View>
+                          <Text style={styles.carouselText} numberOfLines={3}>
+                            {item.text || 'Text item'}
+                          </Text>
                         </View>
-                        <Text style={styles.carouselText} numberOfLines={3}>
-                          {item.text || 'Text item'}
-                        </Text>
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                );
-              }}
-            />
-          </View>
-        )}
+                      )}
+                    </TouchableOpacity>
+                  );
+                }}
+              />
+            </View>
+          )}
 
-        {/* Title Card - Elevated */}
-        <AnimatedCard delay={100} style={styles.titleCard}>
+          {/* Title Card - Elevated */}
+          <AnimatedCard 
+            delay={100} 
+            style={[
+              styles.titleCard,
+              !meal.image_url && { marginTop: 0 }
+            ]}
+          >
           {/* Database Source Badge - show for database-sourced meals */}
           {isDatabaseMeal && databaseSource && (
             <View style={styles.databaseSourceRow}>
@@ -694,21 +737,23 @@ export default function MealDetailScreen() {
                   Quick Logged
                 </Text>
               </View>
-            ) : !!meal.health_score && (
-              <View style={[styles.healthBadge, getHealthScoreStyle(meal.health_score)]}>
-                <IconSymbol name="checkmark.seal" size={16} color="white" />
+            ) : (
+              <View style={[styles.healthBadge, { backgroundColor: mealTag.color }]}>
+                <IconSymbol name={mealTag.icon as any} size={16} color="white" />
                 <Text style={[TextStyles.bodySmall, { color: 'white', fontWeight: '600' }]}>
-                  {getHealthScoreText(meal.health_score)}
+                  {mealTag.label}
                 </Text>
               </View>
             )}
           </View>
 
           {/* Only show AI description for non-database meals */}
-          {!isDatabaseMeal && (!!meal.ai_analysis?.description || meal.processing_status === 'processing') && (
+          {!isDatabaseMeal && (!!meal.ai_analysis?.description || !!meal.ai_analysis?.feedback || meal.processing_status === 'processing') && (
             <View style={styles.descriptionContainer}>
               <Text style={styles.descriptionText}>
-                {meal.ai_analysis?.description || 'AI is currently analyzing your meal details...'}
+                {meal.ai_analysis?.description || 
+                 meal.ai_analysis?.feedback || 
+                 (meal.processing_status === 'processing' ? 'AI is currently analyzing your meal details...' : 'Analysis completed but no description provided.')}
               </Text>
             </View>
           )}
@@ -740,13 +785,10 @@ export default function MealDetailScreen() {
             <View style={styles.sectionHeader}>
               <IconSymbol name="chart.bar" size={24} color={colors.tint} />
               <View style={{ flex: 1 }}>
-                <Text style={[TextStyles.h4, { color: colors.text }]}>
-                  Nutrition Overview
-                </Text>
+                <Text style={[TextStyles.h4, { color: colors.text }]}>Nutrition Overview</Text>
                 {activeGoal && (
                   <Text style={[TextStyles.bodySmall, { color: colors.icon }]}>
-                    Based on your {activeGoal.name.toLowerCase()} goal of{' '}
-                    {Math.round(activeGoal.dailyTargets.calories)} kcal / day
+                    Based on your {activeGoal.name.toLowerCase()} goal of {formatMacro(activeGoal.dailyTargets.calories)} kcal / day
                   </Text>
                 )}
               </View>
@@ -760,52 +802,99 @@ export default function MealDetailScreen() {
                 unit="cal"
                 size="large"
                 progressText={calorieProgress > 0 ? `${Math.round(calorieProgress * 100)}% of daily goal` : undefined}
-                delay={250}
+                delay={100}
                 style={styles.caloriesCard}
+                microArcs={meal.macros ? [
+                  { label: 'Protein', value: meal.macros.protein || 0, color: '#38bdf8' },
+                  { label: 'Fat', value: meal.macros.fat || 0, color: '#fb7185' },
+                  { label: 'Carbs', value: meal.macros.carbs || 0, color: '#fde047' },
+                ].filter(arc => arc.value > 0) : []}
               />
             </View>
 
-            {/* Macros Grid - 2x2 layout */}
+            {/* Macros Grid - 3-column layout */}
             {!!meal.macros && (
               <View style={styles.macrosGrid}>
-                <View style={styles.macroCardWrapper}>
+                <View style={styles.macroCardWrapper3}>
                   <NutritionCard
                     value={meal.macros.protein || 0}
                     label="Protein"
                     unit="g"
-                    delay={300}
+                    delay={200}
                     style={styles.macroCard}
                   />
                 </View>
-                <View style={styles.macroCardWrapper}>
+                <View style={styles.macroCardWrapper3}>
                   <NutritionCard
                     value={meal.macros.fat || 0}
                     label="Fat"
                     unit="g"
-                    delay={350}
+                    delay={280}
                     style={styles.macroCard}
                   />
                 </View>
-                <View style={styles.macroCardWrapper}>
+                <View style={styles.macroCardWrapper3}>
                   <NutritionCard
                     value={meal.macros.carbs || 0}
                     label="Carbs"
                     unit="g"
-                    delay={400}
+                    delay={360}
                     style={styles.macroCard}
                   />
                 </View>
-                {meal.macros.fiber && (
-                  <View style={styles.macroCardWrapper}>
+              </View>
+            )}
+
+            {/* Micronutrients Section (Pro Only) */}
+            {isPro && hasMicronutrientData && !!meal.macros && (
+              <View style={styles.microsSection}>
+                <Text style={[TextStyles.bodySmall, { color: colors.icon, marginBottom: Spacing.sm, fontWeight: '600' }]}>
+                  Micronutrients
+                </Text>
+                <View style={styles.macrosGrid}>
+                  <View style={styles.macroCardWrapper4}>
                     <NutritionCard
-                      value={meal.macros.fiber}
+                      value={meal.macros.fiber || 0}
                       label="Fiber"
                       unit="g"
-                      delay={450}
+                      size="small"
+                      delay={440}
                       style={styles.macroCard}
                     />
                   </View>
-                )}
+                  <View style={styles.macroCardWrapper4}>
+                    <NutritionCard
+                      value={meal.macros.sugar || 0}
+                      label="Sugar"
+                      unit="g"
+                      size="small"
+                      delay={500}
+                      style={styles.macroCard}
+                    />
+                  </View>
+                  <View style={styles.macroCardWrapper4}>
+                    <NutritionCard
+                      value={meal.macros.sodium !== undefined 
+                        ? (meal.macros.sodium >= 1000 ? (meal.macros.sodium / 1000).toFixed(1) : meal.macros.sodium) 
+                        : 0}
+                      label="Sodium"
+                      unit={meal.macros.sodium && meal.macros.sodium >= 1000 ? "g" : "mg"}
+                      size="small"
+                      delay={560}
+                      style={styles.macroCard}
+                    />
+                  </View>
+                  <View style={styles.macroCardWrapper4}>
+                    <NutritionCard
+                      value={meal.macros.cholesterol || 0}
+                      label="Cholesterol"
+                      unit="mg"
+                      size="small"
+                      delay={620}
+                      style={styles.macroCard}
+                    />
+                  </View>
+                </View>
               </View>
             )}
 
@@ -822,7 +911,7 @@ export default function MealDetailScreen() {
                   {mealItems.map((item, index) => {
                     const displayName = getItemDisplayName(item, index);
                     const nutrition = item.ai_nutrition_per_unit;
-                    const totalCalories = nutrition?.calories ? Math.round(nutrition.calories * item.quantity) : null;
+                    const totalCalories = nutrition?.calories ? nutrition.calories * item.quantity : null;
                     
                     return (
                       <View key={item.id} style={styles.itemChip}>
@@ -846,8 +935,8 @@ export default function MealDetailScreen() {
                         {totalCalories !== null && (
                           <View style={styles.itemChipNutrition}>
                             <Text style={[TextStyles.caption, { color: colors.icon }]}>
-                              {totalCalories} cal
-                              {nutrition?.protein && ` • ${Math.round(nutrition.protein * item.quantity)}g P`}
+                              {formatMacro(totalCalories)} cal
+                              {!!nutrition?.protein && ` • ${formatMacro(nutrition.protein * item.quantity)}g P`}
                             </Text>
                           </View>
                         )}
@@ -860,30 +949,82 @@ export default function MealDetailScreen() {
           </AnimatedCard>
         )}
 
-        {/* Health Assessment - Quote Style (only for AI-analyzed meals) */}
+        {/* Pro Features: Health Assessment & Recommendations */}
         {!isDatabaseMeal && (
           isPro ? (
-            meal.qualitative_feedback && (
-              <AnimatedCard delay={450} style={styles.quoteCard}>
-                <View style={styles.quoteHeader}>
-                  <IconSymbol name="brain.head.profile" size={24} color={colors.tint} />
-                  <Text style={[TextStyles.h4, { color: colors.text }]}>
-                    Health Assessment
-                  </Text>
-                </View>
-                <View style={styles.quoteContent}>
-                  <IconSymbol name="quote.opening" size={20} color={colors.tint} style={styles.quoteIcon} />
-                  <Text style={[TextStyles.body, { color: colors.text, lineHeight: 24, fontStyle: 'italic' }]}>
-                    {meal.qualitative_feedback}
-                  </Text>
-                </View>
-              </AnimatedCard>
-            )
+            <>
+              {/* Health Assessment - Quote Style */}
+              {meal.qualitative_feedback && (
+                <AnimatedCard delay={450} style={styles.quoteCard}>
+                  <View style={styles.quoteHeader}>
+                    <IconSymbol name="brain.head.profile" size={24} color={colors.tint} />
+                    <Text style={[TextStyles.h4, { color: colors.text }]}>
+                      Health Assessment
+                    </Text>
+                  </View>
+                  <View style={styles.quoteContent}>
+                    <IconSymbol name="quote.opening" size={20} color={colors.tint} style={styles.quoteIcon} />
+                    <Text style={[TextStyles.body, { color: colors.text, lineHeight: 24, fontStyle: 'italic' }]}>
+                      {meal.qualitative_feedback}
+                    </Text>
+                  </View>
+                </AnimatedCard>
+              )}
+
+              {/* Recommendations */}
+              {meal.ai_analysis?.recommendations && meal.ai_analysis.recommendations.length > 0 && (
+                <AnimatedCard delay={600}>
+                  <View style={styles.sectionHeader}>
+                    <IconSymbol name="lightbulb" size={24} color={colors.tint} />
+                    <Text style={[TextStyles.h4, { color: colors.text }]}>
+                      Recommendations
+                    </Text>
+                  </View>
+                  
+                  <View style={styles.recommendationsList}>
+                    {meal.ai_analysis.recommendations.map((rec: any, index: number) => (
+                      <View 
+                        key={index} 
+                        style={[
+                          styles.recommendationItem, 
+                          { 
+                            backgroundColor: colors.background,
+                            borderLeftWidth: 3,
+                            borderLeftColor: rec.priority === 3 ? '#EF4444' : 
+                                            rec.priority === 2 ? '#F59E0B' : '#10B981',
+                          }
+                        ]}
+                      >
+                        <View style={styles.recommendationHeader}>
+                          <View style={[
+                            styles.priorityBadge, 
+                            { 
+                              backgroundColor: rec.priority === 3 ? '#EF4444' : 
+                                              rec.priority === 2 ? '#F59E0B' : '#10B981' 
+                            }
+                          ]}>
+                            <Text style={[TextStyles.caption, { color: 'white', fontWeight: '600' }]}>
+                              {rec.priority === 3 ? 'High' : rec.priority === 2 ? 'Med' : 'Low'}
+                            </Text>
+                          </View>
+                          <Text style={[TextStyles.bodySmall, { color: colors.icon }]}>
+                            {rec.type?.charAt(0).toUpperCase() + rec.type?.slice(1) || 'General'}
+                          </Text>
+                        </View>
+                        <Text style={[TextStyles.body, { color: colors.text, marginTop: Spacing.sm }]}>
+                          {rec.content}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </AnimatedCard>
+              )}
+            </>
           ) : (
             <UpgradePrompt 
               feature="nutrition" 
-              title="Unlock Health Assessment"
-              message="Upgrade to Pro to see a qualitative health assessment of your meal."
+              title="Unlock Health Insights"
+              message="Upgrade to Pro for a qualitative health assessment and personalized recommendations for your meal."
               style={{ marginBottom: PageSpacing.sectionGap }}
             />
           )
@@ -917,66 +1058,6 @@ export default function MealDetailScreen() {
           </AnimatedCard>
         )}
 
-        {/* Recommendations (only for AI-analyzed meals) */}
-        {!isDatabaseMeal && (
-          isPro ? (
-            meal.ai_analysis?.recommendations && meal.ai_analysis.recommendations.length > 0 && (
-              <AnimatedCard delay={600}>
-                <View style={styles.sectionHeader}>
-                  <IconSymbol name="lightbulb" size={24} color={colors.tint} />
-                  <Text style={[TextStyles.h4, { color: colors.text }]}>
-                    Recommendations
-                  </Text>
-                </View>
-                
-                <View style={styles.recommendationsList}>
-                  {meal.ai_analysis.recommendations.map((rec: any, index: number) => (
-                    <View 
-                      key={index} 
-                      style={[
-                        styles.recommendationItem, 
-                        { 
-                          backgroundColor: colors.background,
-                          borderLeftWidth: 3,
-                          borderLeftColor: rec.priority === 3 ? '#EF4444' : 
-                                          rec.priority === 2 ? '#F59E0B' : '#10B981',
-                        }
-                      ]}
-                    >
-                      <View style={styles.recommendationHeader}>
-                        <View style={[
-                          styles.priorityBadge, 
-                          { 
-                            backgroundColor: rec.priority === 3 ? '#EF4444' : 
-                                            rec.priority === 2 ? '#F59E0B' : '#10B981' 
-                          }
-                        ]}>
-                          <Text style={[TextStyles.caption, { color: 'white', fontWeight: '600' }]}>
-                            {rec.priority === 3 ? 'High' : rec.priority === 2 ? 'Med' : 'Low'}
-                          </Text>
-                        </View>
-                        <Text style={[TextStyles.bodySmall, { color: colors.icon }]}>
-                          {rec.type?.charAt(0).toUpperCase() + rec.type?.slice(1) || 'General'}
-                        </Text>
-                      </View>
-                      <Text style={[TextStyles.body, { color: colors.text, marginTop: Spacing.sm }]}>
-                        {rec.content}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              </AnimatedCard>
-            )
-          ) : (
-            <UpgradePrompt 
-              feature="nutrition" 
-              title="Unlock Pro Recommendations"
-              message="Upgrade to Pro to get actionable nutrition tips for your meals."
-              style={{ marginBottom: PageSpacing.sectionGap }}
-            />
-          )
-        )}
-
         {/* Processing Status */}
         {meal.processing_status && meal.processing_status !== 'completed' && (
           <AnimatedCard delay={650}>
@@ -1000,7 +1081,8 @@ export default function MealDetailScreen() {
             </Text>
           </AnimatedCard>
         )}
-      </ContentContainer>
+      </View>
+    </ContentContainer>
 
       {/* Reanalyze Modal */}
       <Modal
@@ -1205,64 +1287,31 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 100,
-    backgroundColor: 'transparent',
-    paddingHorizontal: PageSpacing.containerPadding,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.05)',
   },
   headerContent: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingHorizontal: Spacing.sm,
   },
   headerButton: {
-    padding: Spacing.sm,
-  },
-  headerButtonEdit: {
-    padding: Spacing.sm,
-  },
-  headerButtonDelete: {
-    padding: Spacing.sm,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-  },
-  iconContainer: {
-    position: 'relative',
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconBackground: {
-    position: 'absolute',
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-    ...(Platform.OS === 'web' && {
-      filter: 'blur(8px)',
-    }),
-    ...(Platform.OS !== 'web' && {
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 0 },
-      shadowOpacity: 0.8,
-      shadowRadius: 12,
-    }),
+  headerTitleContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  iconThick: {
-    fontWeight: '900',
-    ...(Platform.OS === 'web' && {
-      textShadow: '0 0 2px rgba(74, 222, 128, 0.8)',
-    }),
-  },
-  iconGlow: {
-    shadowColor: neonGreen,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 20,
-    elevation: 20,
-    // Additional glow layers for web
-    ...(Platform.OS === 'web' && {
-      filter: 'drop-shadow(0 0 8px rgba(74, 222, 128, 1)) drop-shadow(0 0 16px rgba(74, 222, 128, 0.8))',
-    }),
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
   },
   loadingContainer: {
     flex: 1,
@@ -1344,7 +1393,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   caloriesHero: {
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.md,
   },
   caloriesCard: {
     width: '100%',
@@ -1352,15 +1401,36 @@ const styles = StyleSheet.create({
   macrosGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: Spacing.md,
+    gap: 8, // Fixed small gap for precision
     marginBottom: Spacing.base,
+    justifyContent: 'center',
   },
   macroCardWrapper: {
-    width: '48%', // 2 columns with gap
+    width: '48%', // Default for 2 columns
     alignItems: 'center',
+  },
+  macroCardWrapper3: {
+    width: '31%', // 3 columns
+    aspectRatio: 1, // Force squareness
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  macroCardWrapper4: {
+    width: '23%', // 4 columns
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   macroCard: {
     width: '100%',
+  },
+  microsSection: {
+    marginTop: Spacing.lg,
+    paddingTop: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  microDivider: {
+    marginBottom: Spacing.md,
   },
   confidenceRow: {
     flexDirection: 'row',
@@ -1418,6 +1488,9 @@ const styles = StyleSheet.create({
   },
   skeletonBadge: {
     borderRadius: 16,
+  },
+  skeletonCircle: {
+    borderRadius: 999,
   },
   skeletonIcon: {
     borderRadius: 4,
@@ -1547,9 +1620,7 @@ const styles = StyleSheet.create({
   },
   itemsBreakdown: {
     marginTop: Spacing.lg,
-    paddingTop: Spacing.lg,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+    paddingTop: Spacing.sm,
   },
   itemsChipsContainer: {
     flexDirection: 'row',

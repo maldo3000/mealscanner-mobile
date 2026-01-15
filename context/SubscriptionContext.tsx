@@ -16,6 +16,7 @@ import {
   type CustomerInfo,
   type PurchasesPackage,
 } from '@/lib/revenueCat';
+import { updateUserProfile } from '@/lib/supabase';
 import { useAuth } from './AuthContext';
 
 interface SubscriptionContextType {
@@ -37,6 +38,12 @@ interface SubscriptionContextType {
   showCustomerCenter: () => Promise<void>;
   /** Refresh customer info */
   refreshCustomerInfo: () => Promise<void>;
+  /** 
+   * Ensures the current subscription status is synced to the database.
+   * Call this before operations that depend on backend reading the subscription tier.
+   * Returns true if sync succeeded.
+   */
+  ensureSubscriptionSynced: () => Promise<boolean>;
 }
 
 const SubscriptionContext = createContext<SubscriptionContextType | undefined>(undefined);
@@ -116,6 +123,31 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     syncUser();
   }, [user?.id, isLoading]);
 
+  // Sync Pro status to Supabase profile
+  useEffect(() => {
+    async function syncProStatus() {
+      if (!user?.id || isLoading) return;
+
+      try {
+        const targetTier = isPro || isBetaTester ? 'pro' : 'free';
+        
+        const { error } = await updateUserProfile(user.id, { 
+          subscription_tier: targetTier 
+        });
+        
+        if (error) {
+          console.error('🛒 Failed to sync subscription to Supabase:', error);
+        } else {
+          console.log(`🛒 Synced subscription status to Supabase: ${targetTier}`);
+        }
+      } catch (error) {
+        console.error('🛒 Failed to sync subscription to Supabase:', error);
+      }
+    }
+
+    syncProStatus();
+  }, [user?.id, isPro, isBetaTester, isLoading]);
+
   const handlePurchasePackage = useCallback(async (pkg: PurchasesPackage): Promise<boolean> => {
     try {
       const info = await purchasePackage(pkg);
@@ -189,6 +221,41 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     }
   }, []);
 
+  /**
+   * Ensures the current subscription status is synced to the database.
+   * This is critical before operations that depend on backend reading the subscription tier
+   * (e.g., meal analysis, which checks isPro to determine extended nutrition data).
+   * 
+   * Without this, there's a race condition where the user upgrades, but the backend
+   * reads stale 'free' status from the database, resulting in missing fiber/sugar/sodium/cholesterol.
+   */
+  const handleEnsureSubscriptionSynced = useCallback(async (): Promise<boolean> => {
+    if (!user?.id) {
+      console.warn('🛒 Cannot sync subscription: no user');
+      return false;
+    }
+
+    try {
+      const targetTier = isPro || isBetaTester ? 'pro' : 'free';
+      console.log(`🛒 Ensuring subscription synced to database: ${targetTier}`);
+      
+      const { error } = await updateUserProfile(user.id, { 
+        subscription_tier: targetTier 
+      });
+      
+      if (error) {
+        console.error('🛒 Failed to sync subscription before operation:', error);
+        return false;
+      }
+      
+      console.log(`🛒 ✅ Subscription tier confirmed in database: ${targetTier}`);
+      return true;
+    } catch (error) {
+      console.error('🛒 Failed to sync subscription before operation:', error);
+      return false;
+    }
+  }, [user?.id, isPro, isBetaTester]);
+
   return (
     <SubscriptionContext.Provider
       value={{
@@ -201,6 +268,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         showPaywall: handleShowPaywall,
         showCustomerCenter: handleShowCustomerCenter,
         refreshCustomerInfo: handleRefreshCustomerInfo,
+        ensureSubscriptionSynced: handleEnsureSubscriptionSynced,
       }}
     >
       {children}

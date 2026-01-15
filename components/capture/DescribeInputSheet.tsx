@@ -13,6 +13,7 @@ import {
   TouchableWithoutFeedback,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/ui/Button';
 import { IconSymbol } from '@/components/ui/IconSymbol';
@@ -35,6 +36,7 @@ export interface DescribeInputSheetProps {
 
 export function DescribeInputSheet(props: DescribeInputSheetProps): React.ReactElement {
   const { userId, title, subtitle, placeholder, initialText = '', onCancel, onSubmit } = props;
+  const insets = useSafeAreaInsets();
 
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
@@ -150,7 +152,6 @@ export function DescribeInputSheet(props: DescribeInputSheetProps): React.ReactE
                   value={text}
                   onChangeText={setText}
                   multiline
-                  autoFocus
                   textAlignVertical="top"
                 />
               </View>
@@ -193,8 +194,8 @@ export function DescribeInputSheet(props: DescribeInputSheetProps): React.ReactE
               Add to meal
             </Button>
 
-            {/* Spacer to clear the floating bottom navigation bar */}
-            <View style={{ height: 140 }} />
+            {/* Spacer to clear the bottom edge */}
+            <View style={{ height: Math.max(insets.bottom, Spacing.xl) }} />
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

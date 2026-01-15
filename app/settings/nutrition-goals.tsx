@@ -77,6 +77,12 @@ function GoalWizard() {
   const colors = Colors[colorScheme ?? 'light'];
   const { activeGoal, setGoalFromWizard, loading, error } = useNutritionGoals();
 
+  // Helper to format macro values to 1 decimal point max, removing trailing .0
+  const formatMacro = (val: number | undefined | null) => {
+    if (val === undefined || val === null) return '0';
+    return Number(val.toFixed(1)).toString();
+  };
+
   const [sex, setSex] = useState<BiologicalSex>(activeGoal?.profileSnapshot.sex ?? 'female');
   const [ageYears, setAgeYears] = useState<string>(
     activeGoal?.profileSnapshot.ageYears != null
@@ -253,9 +259,9 @@ function GoalWizard() {
                   </Text>
                   <Text style={[TextStyles.bodySmall, { color: colors.icon }]}>
                     {activeGoal
-                      ? `${activeGoal.name} • ${Math.round(
+                      ? `${activeGoal.name} • ${formatMacro(
                           activeGoal.dailyTargets.calories,
-                        )} kcal • ${Math.round(
+                        )} kcal • ${formatMacro(
                           activeGoal.dailyTargets.proteinGrams,
                         )}g protein`
                       : 'Set a goal to personalise your feedback and daily targets.'}
@@ -417,7 +423,7 @@ function GoalWizard() {
                   value={customCalories}
                   onChangeText={setCustomCalories}
                   placeholder={
-                    previewTargets ? `${Math.round(previewTargets.calories)} kcal` : 'kcal / day'
+                    previewTargets ? `${formatMacro(previewTargets.calories)} kcal` : 'kcal / day'
                   }
                 />
               </View>
@@ -431,7 +437,7 @@ function GoalWizard() {
                   value={customProtein}
                   onChangeText={setCustomProtein}
                   placeholder={
-                    previewTargets ? `${Math.round(previewTargets.proteinGrams)} g` : 'g'
+                    previewTargets ? `${formatMacro(previewTargets.proteinGrams)} g` : 'g'
                   }
                 />
               </View>
@@ -442,7 +448,7 @@ function GoalWizard() {
                   value={customCarbs}
                   onChangeText={setCustomCarbs}
                   placeholder={
-                    previewTargets ? `${Math.round(previewTargets.carbGrams)} g` : 'g'
+                    previewTargets ? `${formatMacro(previewTargets.carbGrams)} g` : 'g'
                   }
                 />
               </View>
@@ -456,7 +462,7 @@ function GoalWizard() {
                   value={customFat}
                   onChangeText={setCustomFat}
                   placeholder={
-                    previewTargets ? `${Math.round(previewTargets.fatGrams)} g` : 'g'
+                    previewTargets ? `${formatMacro(previewTargets.fatGrams)} g` : 'g'
                   }
                 />
               </View>
@@ -467,7 +473,7 @@ function GoalWizard() {
                   value={customFibre}
                   onChangeText={setCustomFibre}
                   placeholder={
-                    previewTargets ? `${Math.round(previewTargets.fibreGrams)} g` : 'g'
+                    previewTargets ? `${formatMacro(previewTargets.fibreGrams)} g` : 'g'
                   }
                 />
               </View>
@@ -479,11 +485,11 @@ function GoalWizard() {
                   Daily target preview
                 </Text>
                 <Text style={[TextStyles.bodySmall, { color: colors.icon }]}>
-                  {Math.round(previewTargets.calories)} kcal •{' '}
-                  {Math.round(previewTargets.proteinGrams)}g protein •{' '}
-                  {Math.round(previewTargets.carbGrams)}g carbs •{' '}
-                  {Math.round(previewTargets.fatGrams)}g fat •{' '}
-                  {Math.round(previewTargets.fibreGrams)}g fibre
+                  {formatMacro(previewTargets.calories)} kcal •{' '}
+                  {formatMacro(previewTargets.proteinGrams)}g protein •{' '}
+                  {formatMacro(previewTargets.carbGrams)}g carbs •{' '}
+                  {formatMacro(previewTargets.fatGrams)}g fat •{' '}
+                  {formatMacro(previewTargets.fibreGrams)}g fibre
                 </Text>
               </Card>
             )}

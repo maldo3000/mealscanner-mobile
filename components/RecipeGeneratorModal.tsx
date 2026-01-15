@@ -25,6 +25,7 @@ import { Spacing } from '@/constants/Spacing';
 import { TextStyles } from '@/constants/Typography';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { useNutritionGoals } from '@/hooks/useNutritionGoals';
+import { useSubscription } from '@/context/SubscriptionContext';
 import { generateRecipeFromSuggestion, generateRecipeSuggestions } from '@/lib/supabase';
 
 interface RecipeSuggestion {
@@ -50,6 +51,7 @@ export function RecipeGeneratorModal({
   onClose,
   onRecipeGenerated,
 }: RecipeGeneratorModalProps) {
+  const { isPro } = useSubscription();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
   const { activeGoal } = useNutritionGoals();
@@ -59,6 +61,12 @@ export function RecipeGeneratorModal({
   const [generatingRecipe, setGeneratingRecipe] = useState(false);
   const [selectedSuggestion, setSelectedSuggestion] = useState<RecipeSuggestion | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Helper to format macro values to 1 decimal point max, removing trailing .0
+  const formatMacro = (val: number | undefined | null) => {
+    if (val === undefined || val === null) return '0';
+    return Number(val.toFixed(1)).toString();
+  };
 
   const handleGenerateSuggestions = async () => {
     if (!userInput.trim()) {
@@ -82,6 +90,7 @@ export function RecipeGeneratorModal({
       const { data, error: genError } = await generateRecipeSuggestions(
         userInput.trim(),
         userId,
+        isPro,
         nutritionGoals
       );
 
@@ -115,6 +124,7 @@ export function RecipeGeneratorModal({
       const { data, error: genError } = await generateRecipeFromSuggestion(
         suggestion,
         userId,
+        isPro,
         nutritionGoals
       );
 
@@ -168,7 +178,7 @@ export function RecipeGeneratorModal({
               <View style={styles.goalPill}>
                 <IconSymbol name="target" size={14} color={neonGreen} />
                 <Text style={styles.goalText}>
-                  AI KITCHEN • TARGET: {activeGoal ? `${Math.round(activeGoal.dailyTargets.calories)} KCAL` : 'GENERAL HEALTH'}
+                  AI KITCHEN • TARGET: {activeGoal ? `${formatMacro(activeGoal.dailyTargets.calories)} KCAL` : 'GENERAL HEALTH'}
                 </Text>
               </View>
               <TouchableOpacity
@@ -271,11 +281,11 @@ export function RecipeGeneratorModal({
                             <View style={styles.metaRow}>
                               <View style={styles.metaItem}>
                                 <IconSymbol name="flame" size={14} color={neonGreen} />
-                                <Text style={styles.metaText}>{suggestion.estimated_calories} kcal</Text>
+                                <Text style={styles.metaText}>{formatMacro(suggestion.estimated_calories)} kcal</Text>
                               </View>
                               <View style={styles.metaItem}>
                                 <IconSymbol name="sparkles" size={14} color={accentSky} />
-                                <Text style={styles.metaText}>{suggestion.estimated_protein}g protein</Text>
+                                <Text style={styles.metaText}>{formatMacro(suggestion.estimated_protein)}g protein</Text>
                               </View>
                             </View>
                             <IconSymbol name="chevron.right" size={20} color="rgba(255,255,255,0.3)" />

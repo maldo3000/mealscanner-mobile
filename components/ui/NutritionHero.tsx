@@ -15,7 +15,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Stop, Path, Circle, G } from 'react-native-svg';
 
-import { Colors, neonGreen, glassBorder, glassSurface, accentSky, accentCoral, accentYellow, textMuted, primaryGreen } from '@/constants/Colors';
+import { getMealTag } from '@/lib/nutritionTags';
+import { Colors, neonGreen, glassSurface, glassBorder, textWhite, textMuted, accentSky, accentYellow, accentCoral } from '@/constants/Colors';
 import { TextStyles } from '@/constants/Typography';
 import { Spacing } from '@/constants/Spacing';
 import { useNutritionGoals } from '@/hooks/useNutritionGoals';
@@ -72,6 +73,7 @@ const CircularProgress = ({ size, strokeWidth, progress, color, children, showGl
   const radius = (size - strokeWidth) / 2;
   const circumference = radius * 2 * Math.PI;
   const animatedProgress = useSharedValue(0);
+  const isFull = progress >= 1;
 
   useEffect(() => {
     animatedProgress.value = withSpring(progress, { damping: 15 });
@@ -108,25 +110,42 @@ const CircularProgress = ({ size, strokeWidth, progress, color, children, showGl
       )}
       <Svg width={size} height={size}>
         <G rotation="-90" origin={`${size / 2}, ${size / 2}`}>
-          <Circle
-            cx={size / 2}
-            cy={size / 2}
-            r={radius}
-            stroke={glassSurface}
-            strokeWidth={strokeWidth}
-            fill="transparent"
-          />
-          <AnimatedCircle
-            cx={size / 2}
-            cy={size / 2}
-            r={radius}
-            stroke={color}
-            strokeWidth={strokeWidth}
-            fill="transparent"
-            strokeDasharray={circumference}
-            animatedProps={animatedProps}
-            strokeLinecap="round"
-          />
+          {/* Background track - only show when not full */}
+          {!isFull && (
+            <Circle
+              cx={size / 2}
+              cy={size / 2}
+              r={radius}
+              stroke={glassSurface}
+              strokeWidth={strokeWidth}
+              fill="transparent"
+            />
+          )}
+          {/* Full circle when at/over 100% - no dash array means no gaps */}
+          {isFull && (
+            <Circle
+              cx={size / 2}
+              cy={size / 2}
+              r={radius}
+              stroke={color}
+              strokeWidth={strokeWidth}
+              fill="transparent"
+            />
+          )}
+          {/* Animated progress circle - only show when under 100% */}
+          {!isFull && (
+            <AnimatedCircle
+              cx={size / 2}
+              cy={size / 2}
+              r={radius}
+              stroke={color}
+              strokeWidth={strokeWidth}
+              fill="transparent"
+              strokeDasharray={circumference}
+              animatedProps={animatedProps}
+              strokeLinecap="round"
+            />
+          )}
         </G>
       </Svg>
       <View style={[StyleSheet.absoluteFill, styles.centerContent]}>
@@ -148,9 +167,22 @@ interface NutritionHeroProps {
   selectedWeekIndex: number; // 0-2
   onSelectDate: (weekIndex: number, dateIndex: number) => void;
   currentStreak: number;
+  themeOverrides?: {
+    cardBackground: string;
+    cardBorder: string;
+    textPrimary: string;
+    textMuted: string;
+    accent: string;
+    background: string;
+  };
 }
 
-export function NutritionHero({ stats, weeklyCalories, selectedDateIndex, selectedWeekIndex, onSelectDate, currentStreak }: NutritionHeroProps) {
+const formatMacro = (val: number | undefined | null) => {
+  if (val === undefined || val === null) return '0';
+  return Number(val.toFixed(1)).toString();
+};
+
+export function NutritionHero({ stats, weeklyCalories, selectedDateIndex, selectedWeekIndex, onSelectDate, currentStreak, themeOverrides }: NutritionHeroProps) {
   const { activeGoal } = useNutritionGoals();
   const scrollViewRef = useRef<ScrollView>(null);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -187,18 +219,31 @@ export function NutritionHero({ stats, weeklyCalories, selectedDateIndex, select
 
   const getDynamicSentence = () => {
     if (safeStats.totalCalories === 0) return "Ready to fuel your day?";
+    
+    // Use the getMealTag logic to drive the sentence vocabulary
+    const tag = getMealTag({
+      calories: safeStats.totalCalories,
+      protein: safeStats.totalProtein,
+      carbs: safeStats.totalCarbs,
+      fat: safeStats.totalFat
+    });
+
     const calRatio = safeStats.totalCalories / targets.calories;
     if (calRatio > 0.9 && calRatio < 1.1) return "Perfectly on target";
-    if (calRatio >= 1.1) return "A high fuel day";
     
-    const proteinRatio = safeStats.totalProtein / (targets.protein || 1);
-    const carbsRatio = safeStats.totalCarbs / (targets.carbs || 1);
-    const fatRatio = safeStats.totalFat / (targets.fat || 1);
-
-    if (proteinRatio > carbsRatio && proteinRatio > fatRatio) return "Protein-forward so far";
-    if (carbsRatio > proteinRatio && carbsRatio > fatRatio) return "Carb-rich start";
-    
-    return "Balanced start";
+    switch (tag.label) {
+      case 'Protein-heavy':
+        return "Powering up with protein";
+      case 'Light':
+        return "Keeping it light and clean";
+      case 'Carb-forward':
+        return "Fueling up with energy";
+      case 'Indulgent':
+        return "Enjoying an indulgent moment";
+      case 'Balanced':
+      default:
+        return calRatio >= 1.1 ? "A high fuel day" : "A balanced start to your day";
+    }
   };
 
   const getShorthandDate = () => {
@@ -232,23 +277,23 @@ export function NutritionHero({ stats, weeklyCalories, selectedDateIndex, select
   useEffect(() => {
     if (containerWidth > 0) {
       setTimeout(() => {
-        scrollViewRef.current?.scrollTo({ x: containerWidth * 2, animated: false });
+        scrollViewRef.current?.scrollTo({ x: containerWidth * selectedWeekIndex, animated: false });
       }, 100);
     }
-  }, [containerWidth]);
+  }, [containerWidth, selectedWeekIndex]);
 
   const calProgress = Math.min(safeStats.totalCalories / targets.calories, 1.2);
   const isWinState = calProgress >= 1;
 
   return (
-    <GlassCard variant="glass" style={styles.container} onLayout={onContainerLayout}>
+    <GlassCard variant="glass" style={[styles.container, themeOverrides && { backgroundColor: themeOverrides.cardBackground, borderColor: themeOverrides.cardBorder, borderWidth: 1 }]} onLayout={onContainerLayout}>
       {/* Background Arc Gradient */}
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
         <Svg width="100%" height="100%" viewBox="0 0 400 400">
           <Defs>
             <LinearGradient id="arcGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-              <Stop offset="0%" stopColor={neonGreen} stopOpacity="0.12" />
-              <Stop offset="70%" stopColor={neonGreen} stopOpacity="0.02" />
+              <Stop offset="0%" stopColor={themeOverrides ? themeOverrides.accent : neonGreen} stopOpacity="0.12" />
+              <Stop offset="70%" stopColor={themeOverrides ? themeOverrides.accent : neonGreen} stopOpacity="0.02" />
               <Stop offset="100%" stopColor="transparent" stopOpacity="0" />
             </LinearGradient>
           </Defs>
@@ -263,16 +308,16 @@ export function NutritionHero({ stats, weeklyCalories, selectedDateIndex, select
       <View style={styles.header}>
         <View style={styles.headerRow}>
           <View>
-            <Text style={[TextStyles.h2, { color: '#FFFFFF', fontSize: 26 }]}>
+            <Text style={[TextStyles.h2, { color: themeOverrides ? themeOverrides.textPrimary : '#FFFFFF', fontSize: 26 }]}>
               {getShorthandDate()}
             </Text>
-            <Text style={[TextStyles.bodySmall, { color: 'rgba(255, 255, 255, 0.6)', fontSize: 13 }]}>
+            <Text style={[TextStyles.bodySmall, { color: themeOverrides ? themeOverrides.textMuted : 'rgba(255, 255, 255, 0.6)', fontSize: 13 }]}>
               Your intake so far
             </Text>
           </View>
-          <View style={styles.streakBadge}>
-            <IconSymbol name="flame.fill" size={14} color={neonGreen} />
-            <Text style={[TextStyles.caption, { color: neonGreen, fontWeight: '700', marginLeft: 4, fontSize: 11 }]}>
+          <View style={[styles.streakBadge, themeOverrides && { backgroundColor: `${themeOverrides.textPrimary}05`, borderColor: `${themeOverrides.accent}20` }]}>
+            <IconSymbol name="flame.fill" size={14} color={themeOverrides ? themeOverrides.accent : neonGreen} />
+            <Text style={[TextStyles.caption, { color: themeOverrides ? themeOverrides.accent : neonGreen, fontWeight: '700', marginLeft: 4, fontSize: 11 }]}>
               {currentStreak}
             </Text>
           </View>
@@ -285,22 +330,22 @@ export function NutritionHero({ stats, weeklyCalories, selectedDateIndex, select
             size={160} 
             strokeWidth={14} 
             progress={calProgress} 
-            color={neonGreen}
+            color={themeOverrides ? themeOverrides.accent : neonGreen}
             showGlow={isWinState}
           >
             <View style={styles.calorieTextContainer}>
-              <Text style={[TextStyles.h1, { color: '#FFFFFF', fontSize: 40, fontWeight: '800', lineHeight: 48 }]}>
-                {Math.round(safeStats.totalCalories)}
+              <Text style={[TextStyles.h1, { color: themeOverrides ? themeOverrides.textPrimary : '#FFFFFF', fontSize: 40, fontWeight: '800', lineHeight: 48 }]}>
+                {formatMacro(safeStats.totalCalories)}
               </Text>
-              <Text style={[TextStyles.bodySmall, { color: 'rgba(255, 255, 255, 0.6)', marginTop: -2, fontSize: 12 }]}>
-                / {Math.round(targets.calories)}
+              <Text style={[TextStyles.bodySmall, { color: themeOverrides ? themeOverrides.textMuted : 'rgba(255, 255, 255, 0.6)', marginTop: -2, fontSize: 12 }]}>
+                / {formatMacro(targets.calories)}
               </Text>
             </View>
           </CircularProgress>
         </Animated.View>
 
         <View style={styles.dynamicSentenceContainer}>
-          <Text style={[TextStyles.body, { color: 'rgba(255, 255, 255, 0.7)', fontStyle: 'italic', textAlign: 'center', fontSize: 15 }]}>
+          <Text style={[TextStyles.body, { color: themeOverrides ? themeOverrides.textMuted : 'rgba(255, 255, 255, 0.7)', fontStyle: 'italic', textAlign: 'center', fontSize: 15 }]}>
             {getDynamicSentence()}
           </Text>
         </View>
@@ -395,17 +440,19 @@ interface MacroLineProps {
   value: number;
   target: number;
   color: string;
+  textMutedColor?: string;
+  textPrimaryColor?: string;
 }
 
-function MacroLine({ label, value, target, color }: MacroLineProps) {
+function MacroLine({ label, value, target, color, textMutedColor, textPrimaryColor }: MacroLineProps) {
   const progress = Math.min(value / (target || 1), 1);
   
   return (
     <View style={styles.macroLineWrapper}>
       <View style={styles.macroLineHeader}>
-        <Text style={[TextStyles.caption, { color: 'rgba(255, 255, 255, 0.6)', fontSize: 11 }]}>{label}</Text>
-        <Text style={[TextStyles.caption, { color: '#FFFFFF', fontWeight: '700', fontSize: 11 }]}>
-          {Math.round(value)}g
+        <Text style={[TextStyles.caption, { color: textMutedColor || 'rgba(255, 255, 255, 0.6)', fontSize: 11 }]}>{label}</Text>
+        <Text style={[TextStyles.caption, { color: textPrimaryColor || '#FFFFFF', fontWeight: '700', fontSize: 11 }]}>
+          {formatMacro(value)}g
         </Text>
       </View>
       <View style={styles.macroLineTrack}>

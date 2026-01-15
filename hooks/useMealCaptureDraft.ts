@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as FileSystem from 'expo-file-system/legacy';
 
 import type { DraftMealItem, MealCaptureDraft, DatabaseFoodItem } from '@/components/capture/types';
+import { useAuth } from '@/context/AuthContext';
 
 type AsyncStorageLike = {
   getItem(key: string): Promise<string | null>;
@@ -17,7 +18,7 @@ if (Platform.OS !== 'web') {
   AsyncStorage = require('@react-native-async-storage/async-storage').default as AsyncStorageLike;
 }
 
-const STORAGE_KEY = 'capture_meal_draft_v1';
+const STORAGE_BASE_KEY = 'capture_meal_draft_v1';
 const DRAFTS_DIR = `${FileSystem.documentDirectory ?? ''}captureDrafts`;
 const MAX_PHOTOS = 4 as const;
 
@@ -68,13 +69,13 @@ function parseDraft(raw: string | null): MealCaptureDraft | null {
   }
 }
 
-async function writeDraft(draft: MealCaptureDraft | null): Promise<void> {
+async function writeDraft(key: string, draft: MealCaptureDraft | null): Promise<void> {
   if (!AsyncStorage) return;
   if (!draft) {
-    await AsyncStorage.removeItem(STORAGE_KEY);
+    await AsyncStorage.removeItem(key);
     return;
   }
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(draft));
+  await AsyncStorage.setItem(key, JSON.stringify(draft));
 }
 
 export interface UseMealCaptureDraftResult {
@@ -100,8 +101,14 @@ export interface UseMealCaptureDraftResult {
 }
 
 export function useMealCaptureDraft(): UseMealCaptureDraftResult {
+  const { user } = useAuth();
   const [isReady, setIsReady] = useState<boolean>(false);
   const [draft, setDraft] = useState<MealCaptureDraft | null>(null);
+
+  const storageKey = useMemo(() => {
+    const userId = user?.id || 'guest';
+    return `${STORAGE_BASE_KEY}_${userId}`;
+  }, [user?.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -112,7 +119,7 @@ export function useMealCaptureDraft(): UseMealCaptureDraftResult {
           if (!cancelled) setDraft(null);
           return;
         }
-        const raw = await AsyncStorage.getItem(STORAGE_KEY);
+        const raw = await AsyncStorage.getItem(storageKey);
         const parsed = parseDraft(raw);
         if (!cancelled) setDraft(parsed);
       } finally {
@@ -124,7 +131,7 @@ export function useMealCaptureDraft(): UseMealCaptureDraftResult {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [storageKey]);
 
   const items = useMemo<DraftMealItem[]>(() => draft?.items ?? [], [draft]);
   const contextText = useMemo<string>(() => draft?.contextText ?? '', [draft]);
@@ -146,9 +153,9 @@ export function useMealCaptureDraft(): UseMealCaptureDraftResult {
     };
 
     setDraft(newDraft);
-    await writeDraft(newDraft);
+    await writeDraft(storageKey, newDraft);
     return newDraft;
-  }, [draft]);
+  }, [draft, storageKey]);
 
   const discardSession = useCallback(async (): Promise<void> => {
     const prevDraft = draft;
@@ -191,9 +198,9 @@ export function useMealCaptureDraft(): UseMealCaptureDraftResult {
   // Persistence effect
   useEffect(() => {
     if (isReady) {
-      void writeDraft(draft);
+      void writeDraft(storageKey, draft);
     }
-  }, [draft, isReady]);
+  }, [draft, isReady, storageKey]);
 
   const setContextTextSafe = useCallback(
     async (next: string): Promise<void> => {
