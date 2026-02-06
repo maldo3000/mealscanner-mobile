@@ -1,11 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { getLLMRouter } from '../_shared/llm/router.ts'
 import type { LLMConfig } from '../_shared/llm/types.ts'
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+import { verifyAuth, createUnauthorizedResponse, validateUserMatch } from '../_shared/auth.ts'
+import { SpeechToTextDirectRequestSchema, validateRequest, createValidationErrorResponse, validateAudioSize } from '../_shared/validation.ts'
+import { getSmartCorsHeaders, handleCorsPreflightRequest } from '../_shared/cors.ts'
+import { checkRateLimit, getRateLimitIdentifier, createRateLimitResponse, RateLimitPresets } from '../_shared/rateLimit.ts'
 
 interface SpeechToTextDirectRequest {
   audio_data: string // base64 data URL
@@ -71,22 +70,51 @@ function isHallucination(transcript: string): boolean {
 }
 
 serve(async (req) => {
+  // Get request-aware CORS headers
+  const corsHeaders = getSmartCorsHeaders(req)
+  
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return handleCorsPreflightRequest(req)
   }
 
   try {
-    const { audio_data, user_id, language = 'en', llm }: SpeechToTextDirectRequest = await req.json()
+    // Verify JWT authentication first
+    const auth = await verifyAuth(req)
+    if (!auth) {
+      return createUnauthorizedResponse(corsHeaders)
+    }
     
-    if (!audio_data || !user_id) {
+    // Check rate limit for speech-to-text (expensive operation)
+    const rateLimitId = getRateLimitIdentifier(req, auth.userId)
+    const rateLimitResult = await checkRateLimit(rateLimitId, RateLimitPresets.speechToText)
+    if (!rateLimitResult.allowed) {
+      return createRateLimitResponse(rateLimitResult, corsHeaders)
+    }
+
+    const rawPayload = await req.json()
+    
+    // Validate request payload with Zod schema
+    const validationResult = validateRequest(SpeechToTextDirectRequestSchema, rawPayload)
+    if (!validationResult.success) {
+      return createValidationErrorResponse(validationResult, corsHeaders)
+    }
+    
+    const { audio_data, user_id: payload_user_id, language = 'en', llm } = rawPayload as SpeechToTextDirectRequest
+    
+    // Use authenticated user ID, validate if payload specifies one
+    if (payload_user_id && !validateUserMatch(auth.userId, payload_user_id)) {
       return new Response(
-        JSON.stringify({ error: 'Missing required fields: audio_data and user_id' }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
+        JSON.stringify({ error: 'User ID mismatch: you can only access your own data' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
+    }
+    const user_id = auth.userId
+    
+    // Validate audio file size
+    const sizeError = validateAudioSize(audio_data, corsHeaders)
+    if (sizeError) {
+      return sizeError
     }
 
     console.log(`Starting direct speech-to-text for user ${user_id}`)

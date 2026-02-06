@@ -377,6 +377,71 @@ export const deleteMeal = async (mealId: string) => {
 }
 
 /**
+ * Duplicate an existing meal with a new timestamp (Log Again feature)
+ * Creates a copy of the meal with all nutrition data but a new created_at
+ */
+export const duplicateMealWithTimestamp = async (
+  originalMealId: string,
+  userId: string,
+  newCreatedAt: string,
+  newMealType?: string
+) => {
+  try {
+    // Fetch the original meal
+    const { data: original, error: fetchError } = await supabase
+      .from('meals')
+      .select('*')
+      .eq('id', originalMealId)
+      .single()
+    
+    if (fetchError || !original) {
+      console.error('Failed to fetch original meal for duplication:', fetchError)
+      return { data: null, error: fetchError }
+    }
+    
+    // Create new meal with same data but new timestamp
+    const { data, error } = await supabase
+      .from('meals')
+      .insert([{
+        description: original.description,
+        image_url: original.image_url,
+        user_id: userId,
+        ingredients: original.ingredients,
+        serving_estimate: original.serving_estimate,
+        calories: original.calories,
+        macros: original.macros,
+        health_score: original.health_score,
+        fiber_score: original.fiber_score,
+        qualitative_feedback: original.qualitative_feedback,
+        meal_type: newMealType || original.meal_type,
+        created_at: newCreatedAt,
+        // Mark as completed since we're copying existing analysis
+        processing_status: 'completed',
+        // Preserve AI analysis but mark as duplicated
+        ai_analysis: original.ai_analysis ? {
+          ...original.ai_analysis,
+          duplicated_from: originalMealId,
+          duplicated_at: new Date().toISOString(),
+        } : null,
+        analysis_version: original.analysis_version,
+      }])
+      .select()
+      .single()
+    
+    if (error) {
+      console.error('Failed to create duplicated meal:', error)
+      return { data: null, error }
+    }
+    
+    console.log('✅ Successfully duplicated meal:', { originalId: originalMealId, newId: data.id })
+    return { data, error: null }
+  } catch (err) {
+    console.error('Error duplicating meal:', err)
+    return { data: null, error: err }
+  }
+}
+
+/**
  * Save a recipe as a meal entry in the journal
  * This allows users to log a pre-baked recipe they've cooked
  */
@@ -1404,4 +1469,41 @@ export const generateRecipeFromSuggestion = async (
     console.error('Full recipe generation error:', error)
     return { data: null, error }
   }
-} 
+}
+
+// Account Management Functions
+
+/**
+ * Deletes the current user's account and all associated data.
+ * This calls the delete-account Edge Function which:
+ * 1. Deletes user's storage files (meal images, audio recordings)
+ * 2. Deletes user from auth.users (cascades to all related tables)
+ * 
+ * Required for Apple App Store compliance (Guideline 5.1.1).
+ */
+export const deleteAccount = async () => {
+  try {
+    console.log('🗑️ Initiating account deletion...')
+    
+    const { data, error } = await supabase.functions.invoke('delete-account', {
+      method: 'POST',
+    })
+
+    if (error) {
+      console.error('❌ Delete account error:', error)
+      throw error
+    }
+
+    // Check if the function returned an error in the response
+    if (data && !data.success) {
+      console.error('❌ Delete account failed:', data.error)
+      throw new Error(data.error || 'Failed to delete account')
+    }
+
+    console.log('✅ Account deleted successfully')
+    return { data, error: null }
+  } catch (error) {
+    console.error('❌ Delete account error:', error)
+    return { data: null, error }
+  }
+}

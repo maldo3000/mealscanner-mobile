@@ -54,10 +54,10 @@ export function GlassCircleButton({
   }));
 
   const shadowStyle = {
-    shadowColor: isPrimary ? neonGreen : '#000',
-    shadowOpacity: isPrimary ? 0.45 : 0.3,
-    shadowRadius: isPrimary ? 30 : 20,
-    shadowOffset: { width: 0, height: 10 },
+    shadowColor: isPrimary ? neonGreen : neonGreen,
+    shadowOpacity: isPrimary ? 0.45 : 0.2,
+    shadowRadius: isPrimary ? 30 : 15,
+    shadowOffset: { width: 0, height: isPrimary ? 10 : 6 },
   };
 
   return (
@@ -77,8 +77,8 @@ export function GlassCircleButton({
           
           {/* Milky Translucent Blur */}
           <BlurView
-            intensity={isPrimary ? 40 : 70}
-            tint={isPrimary ? 'dark' : 'light'}
+            intensity={isPrimary ? 40 : 50}
+            tint="dark"
             style={[StyleSheet.absoluteFill, { borderRadius: r }]}
           />
 
@@ -89,7 +89,7 @@ export function GlassCircleButton({
               StyleSheet.absoluteFill,
               { 
                 borderRadius: r, 
-                backgroundColor: isPrimary ? 'rgba(50, 255, 120, 0.85)' : 'rgba(255, 255, 255, 0.12)' 
+                backgroundColor: isPrimary ? 'rgba(50, 255, 120, 0.85)' : 'rgba(127, 226, 122, 0.15)' 
               },
             ]}
           />
@@ -128,15 +128,16 @@ export function GlassCircleButton({
             </Svg>
           </View>
 
-          {/* Subtle dark bottom edge for thickness definition */}
+          {/* Subtle edge for thickness definition */}
           <View
             pointerEvents="none"
             style={[
               StyleSheet.absoluteFill,
               {
                 borderRadius: r,
+                borderWidth: isPrimary ? 0 : 1,
                 borderBottomWidth: 1.5,
-                borderColor: 'rgba(0, 0, 0, 0.08)',
+                borderColor: isPrimary ? 'rgba(0, 0, 0, 0.08)' : 'rgba(127, 226, 122, 0.25)',
               },
             ]}
           />

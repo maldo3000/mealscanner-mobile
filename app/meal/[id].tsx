@@ -1,6 +1,7 @@
 import { AnalysisLoadingOverlay, AnalysisStatus } from '@/components/capture/AnalysisLoadingOverlay';
 import { ContentContainer } from '@/components/layout/ContentContainer';
 import { PageContainer } from '@/components/layout/PageContainer';
+import { MealShareModal } from '@/components/share/MealShareModal';
 import { UpgradePrompt } from '@/components/subscription/UpgradePrompt';
 import { AnimatedCard } from '@/components/ui/AnimatedCard';
 import { Button } from '@/components/ui/Button';
@@ -10,7 +11,7 @@ import { Input } from '@/components/ui/Input';
 import { NutritionCard } from '@/components/ui/NutritionCard';
 import { ThumbnailImage } from '@/components/ui/OptimizedImage';
 import { ParallaxImage } from '@/components/ui/ParallaxImage';
-import { bgPrimary, Colors, neonGreen, primaryGreen, createColoredGlass } from '@/constants/Colors';
+import { bgPrimary, Colors, createColoredGlass, neonGreen, primaryGreen } from '@/constants/Colors';
 import { Shadows } from '@/constants/Layout';
 import { PageSpacing, Spacing } from '@/constants/Spacing';
 import { TextStyles } from '@/constants/Typography';
@@ -18,25 +19,26 @@ import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { useFeatureAccess } from '@/hooks/useFeatureAccess';
 import { useNutritionGoals } from '@/hooks/useNutritionGoals';
-import { analyzeMealMulti, deleteMeal, getMealById, getMealItems, setMealHeroItem, transcribeAudioDirect, updateMeal } from '@/lib/supabase';
 import { getMealTag } from '@/lib/nutritionTags';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { analyzeMealMulti, deleteMeal, duplicateMealWithTimestamp, getMealById, getMealItems, setMealHeroItem, transcribeAudioDirect, updateMeal } from '@/lib/supabase';
+import { syncMealToHealthKit } from '@/lib/health/sync';
 import { BlurView } from 'expo-blur';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  FlatList,
-  Keyboard,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  TouchableWithoutFeedback,
-  View
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    FlatList,
+    Keyboard,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    TouchableWithoutFeedback,
+    View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -109,6 +111,15 @@ export default function MealDetailScreen() {
   const [editedMealType, setEditedMealType] = useState('');
   const [editedCreatedAt, setEditedCreatedAt] = useState('');
   const [savingMeta, setSavingMeta] = useState(false);
+  
+  // Log Again modal state
+  const [showLogAgainModal, setShowLogAgainModal] = useState(false);
+  const [logAgainMealType, setLogAgainMealType] = useState('');
+  const [logAgainCreatedAt, setLogAgainCreatedAt] = useState('');
+  const [savingLogAgain, setSavingLogAgain] = useState(false);
+  
+  // Share modal state
+  const [showShareModal, setShowShareModal] = useState(false);
 
   const mealTag = getMealTag(meal ? {
     calories: meal.calories || 0,
@@ -192,6 +203,11 @@ export default function MealDetailScreen() {
         return;
       }
       setMeal(data);
+      
+      // Sync to HealthKit if analysis is complete
+      if (data.processing_status === 'completed' && data.calories) {
+        syncMealToHealthKit(data.id);
+      }
 
       const { data: itemsData, error: itemsError } = await getMealItems(id);
       if (itemsError) {
@@ -293,6 +309,61 @@ export default function MealDetailScreen() {
     setEditedCreatedAt(date.toISOString());
   };
 
+  // Log Again functions
+  const openLogAgain = () => {
+    if (!meal) return;
+    // Default to current date/time, with meal type from original
+    setLogAgainMealType(meal.meal_type || getMealType(new Date().toISOString()));
+    setLogAgainCreatedAt(new Date().toISOString());
+    setShowLogAgainModal(true);
+  };
+
+  const adjustLogAgainDate = (type: 'hour' | 'day', amount: number) => {
+    const date = new Date(logAgainCreatedAt);
+    if (type === 'hour') {
+      date.setHours(date.getHours() + amount);
+    } else if (type === 'day') {
+      date.setDate(date.getDate() + amount);
+    }
+    setLogAgainCreatedAt(date.toISOString());
+  };
+
+  const handleLogAgain = async () => {
+    if (!meal) return;
+    setSavingLogAgain(true);
+    try {
+      console.log('🔁 Logging meal again:', { 
+        originalId: meal.id, 
+        meal_type: logAgainMealType, 
+        created_at: logAgainCreatedAt 
+      });
+
+      const { data, error } = await duplicateMealWithTimestamp(
+        meal.id,
+        meal.user_id,
+        logAgainCreatedAt,
+        logAgainMealType
+      );
+      
+      if (error) {
+        console.error('❌ Failed to log meal again:', error);
+        throw error;
+      }
+      
+      setShowLogAgainModal(false);
+      
+      // Navigate to the new meal
+      if (data?.id) {
+        router.replace(`/meal/${data.id}`);
+      }
+    } catch (e: any) {
+      console.error('❌ handleLogAgain error:', e);
+      Alert.alert('Error', `Failed to log meal again: ${e.message || 'Unknown error'}`);
+    } finally {
+      setSavingLogAgain(false);
+    }
+  };
+
   const handleReanalyze = async () => {
     if (!meal) return;
     
@@ -306,10 +377,22 @@ export default function MealDetailScreen() {
       // reads stale 'free' status, resulting in missing fiber/sugar/sodium/cholesterol.
       await ensureSubscriptionSynced();
 
-      const itemsPayload = mealItems.map((it, idx) => ({
+      // Filter out invalid items to prevent validation errors
+      // (e.g., photo items with missing URLs, text items with empty text)
+      const validMealItems = mealItems.filter((it) => {
+        if (it.item_type === 'photo' && !it.image_url) return false;
+        if (it.item_type === 'text' && (!it.text || it.text.trim().length < 2)) return false;
+        return true;
+      });
+
+      if (validMealItems.length === 0) {
+        throw new Error('No valid items to analyze');
+      }
+
+      const itemsPayload = validMealItems.map((it, idx) => ({
         itemType: it.item_type,
-        imageUrl: it.item_type === 'photo' ? it.image_url ?? undefined : undefined,
-        text: it.item_type === 'text' ? it.text ?? '' : undefined,
+        imageUrl: it.item_type === 'photo' ? (it.image_url ?? undefined) : undefined,
+        text: it.item_type === 'text' ? (it.text ?? undefined) : undefined,
         quantity: it.quantity,
         orderIndex: idx,
         isHero: it.item_type === 'photo' ? it.is_hero : false,
@@ -610,6 +693,24 @@ export default function MealDetailScreen() {
           </View>
           
           <View style={styles.headerActions}>
+            <TouchableOpacity 
+              style={styles.headerButton}
+              onPress={() => setShowShareModal(true)}
+              activeOpacity={0.7}
+              accessibilityLabel="Share meal"
+            >
+              <IconSymbol name="square.and.arrow.up" size={20} color={neonGreen} weight="semibold" />
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.headerButton}
+              onPress={openLogAgain}
+              activeOpacity={0.7}
+              accessibilityLabel="Log this meal again"
+            >
+              <IconSymbol name="repeat" size={20} color={neonGreen} weight="semibold" />
+            </TouchableOpacity>
+
             <TouchableOpacity 
               style={styles.headerButton}
               onPress={openEditMeta}
@@ -1275,7 +1376,138 @@ export default function MealDetailScreen() {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
+
+      {/* Log Again Modal */}
+      <Modal
+        visible={showLogAgainModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowLogAgainModal(false)}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContainer}>
+              <View style={styles.modalCard}>
+                <View style={styles.modalHeaderRow}>
+                  <Text style={[TextStyles.h3, { color: colors.text }]}>Log Again</Text>
+                  <TouchableOpacity
+                    onPress={() => setShowLogAgainModal(false)}
+                    style={styles.modalCloseButton}
+                    activeOpacity={0.8}
+                  >
+                    <IconSymbol name="xmark" size={22} color={colors.icon} />
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={[TextStyles.bodySmall, { color: colors.icon, marginBottom: Spacing.lg }]}>
+                  Create a new entry with the same nutrition data. Choose when you ate this meal.
+                </Text>
+
+                {/* Meal Type Selection */}
+                <Text style={[TextStyles.h4, { color: colors.text, marginBottom: Spacing.sm }]}>Meal Type</Text>
+                <View style={styles.mealTypeGrid}>
+                  {['Breakfast', 'Lunch', 'Dinner', 'Snack'].map((type) => (
+                    <TouchableOpacity
+                      key={type}
+                      style={[
+                        styles.mealTypeOption,
+                        logAgainMealType === type && { backgroundColor: neonGreen, borderColor: neonGreen }
+                      ]}
+                      onPress={() => setLogAgainMealType(type)}
+                    >
+                      <Text style={[
+                        TextStyles.bodySmall,
+                        { color: logAgainMealType === type ? '#000000' : colors.text, fontWeight: '600' }
+                      ]}>
+                        {type}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* Date/Time Adjustment */}
+                <Text style={[TextStyles.h4, { color: colors.text, marginTop: Spacing.lg, marginBottom: Spacing.sm }]}>
+                  Date & Time
+                </Text>
+                <View style={styles.dateDisplayCard}>
+                  <Text style={[TextStyles.body, { color: colors.text, textAlign: 'center' }]}>
+                    {formatDate(logAgainCreatedAt)}
+                  </Text>
+                  <Text style={[TextStyles.h2, { color: neonGreen, textAlign: 'center', marginTop: Spacing.xs }]}>
+                    {formatTime(logAgainCreatedAt)}
+                  </Text>
+                </View>
+
+                <View style={styles.adjustmentGrid}>
+                  <View style={styles.adjustmentColumn}>
+                    <Text style={[TextStyles.caption, { color: colors.icon, textAlign: 'center' }]}>Hours</Text>
+                    <View style={styles.adjustmentButtons}>
+                      <TouchableOpacity style={styles.adjustBtn} onPress={() => adjustLogAgainDate('hour', -1)}>
+                        <IconSymbol name="minus" size={16} color={colors.text} />
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.adjustBtn} onPress={() => adjustLogAgainDate('hour', 1)}>
+                        <IconSymbol name="plus" size={16} color={colors.text} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                  <View style={styles.adjustmentColumn}>
+                    <Text style={[TextStyles.caption, { color: colors.icon, textAlign: 'center' }]}>Days</Text>
+                    <View style={styles.adjustmentButtons}>
+                      <TouchableOpacity style={styles.adjustBtn} onPress={() => adjustLogAgainDate('day', -1)}>
+                        <IconSymbol name="minus" size={16} color={colors.text} />
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.adjustBtn} onPress={() => adjustLogAgainDate('day', 1)}>
+                        <IconSymbol name="plus" size={16} color={colors.text} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+
+                <View style={[styles.modalActions, { marginTop: Spacing.xl }]}>
+                  <Button variant="secondary" onPress={() => setShowLogAgainModal(false)} style={styles.modalActionBtn}>
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="primary"
+                    onPress={handleLogAgain}
+                    style={styles.modalActionBtn}
+                    disabled={savingLogAgain}
+                    icon={savingLogAgain ? <ActivityIndicator size="small" color="#000000" /> : undefined}
+                  >
+                    {savingLogAgain ? 'Logging...' : 'Log Again'}
+                  </Button>
+                </View>
+              </View>
+            </View>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
       <AnalysisLoadingOverlay status={analysisStatus} />
+
+      {/* Share Modal */}
+      {meal && (
+        <MealShareModal
+          visible={showShareModal}
+          onClose={() => setShowShareModal(false)}
+          mealData={{
+            id: meal.id,
+            mealName: getMealTitle(),
+            imageUrl: meal.image_url,
+            description: meal.description,
+            nutrition: meal.calories ? {
+              calories: meal.calories,
+              protein: meal.macros?.protein || 0,
+              carbs: meal.macros?.carbs || 0,
+              fat: meal.macros?.fat || 0,
+              fiber: meal.macros?.fiber,
+            } : undefined,
+            showStats: !!meal.calories,
+            mealType: getMealType(meal.created_at),
+            createdAt: meal.created_at,
+          }}
+        />
+      )}
     </PageContainer>
   );
 }

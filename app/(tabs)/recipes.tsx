@@ -1,38 +1,38 @@
 import { PageContainer } from '@/components/layout/PageContainer';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { RecipeGeneratorModal } from '@/components/RecipeGeneratorModal';
+import { CategoryCard } from '@/components/recipe/CategoryCard';
+import { RecipeCardDiscover } from '@/components/recipe/RecipeCardDiscover';
 import { RecipeFilters } from '@/components/recipe/RecipeFilters';
 import { RecipeFilterSheet } from '@/components/recipe/RecipeFilterSheet';
-import { RecipeCardDiscover } from '@/components/recipe/RecipeCardDiscover';
-import { CategoryCard } from '@/components/recipe/CategoryCard';
 import type { Recipe } from '@/components/recipe/types';
+import { RecipeGeneratorModal } from '@/components/RecipeGeneratorModal';
+import { Paywall } from '@/components/subscription/Paywall';
+import { UpgradePrompt } from '@/components/subscription/UpgradePrompt';
 import { IconSymbol } from '@/components/ui/IconSymbol';
-import { Colors, glassBorder, glassSurface, neonGreen, accentSky, herbarium } from '@/constants/Colors';
+import { accentSky, Colors, glassBorder, glassSurface, herbarium, neonGreen } from '@/constants/Colors';
+import {
+    CALORIE_RANGES,
+    DIET_TYPES,
+} from '@/constants/recipeCategories';
 import { PageSpacing, Spacing } from '@/constants/Spacing';
-import { TextStyles, FontFamilies } from '@/constants/Typography';
+import { FontFamilies, TextStyles } from '@/constants/Typography';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { useFeatureAccess } from '@/hooks/useFeatureAccess';
 import { useNutritionGoals } from '@/hooks/useNutritionGoals';
 import { useRecipes, type PrebakedRecipe } from '@/hooks/useRecipes';
-import { useFeatureAccess } from '@/hooks/useFeatureAccess';
-import { UpgradePrompt } from '@/components/subscription/UpgradePrompt';
-import { Paywall } from '@/components/subscription/Paywall';
 import { getCurrentUser } from '@/lib/supabase';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState, useMemo } from 'react';
-import Animated, { FadeIn, FadeInDown, FadeOut, Easing } from 'react-native-reanimated';
-import {
-  CALORIE_RANGES,
-  DIET_TYPES,
-} from '@/constants/recipeCategories';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
     FlatList,
+    ScrollView,
     StyleSheet,
     Text,
     TextInput,
     TouchableOpacity,
-    View,
-    ScrollView
+    View
 } from 'react-native';
+import Animated, { Easing, FadeIn, FadeInDown, FadeOut } from 'react-native-reanimated';
 
 // Feature flag to enable/disable AI recipe generation
 const ENABLE_RECIPE_GENERATION = false;
@@ -526,7 +526,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   sectionHeader: {
-    marginBottom: Spacing.sm,
+    marginBottom: Spacing.md,
     marginTop: Spacing.lg,
   },
   sectionTitle: {

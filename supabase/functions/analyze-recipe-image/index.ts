@@ -2,11 +2,8 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getLLMRouter } from '../_shared/llm/router.ts';
 import type { LLMConfig } from '../_shared/llm/types.ts';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { verifyAuth, createUnauthorizedResponse, validateUserMatch } from '../_shared/auth.ts';
+import { getSmartCorsHeaders, handleCorsPreflightRequest } from '../_shared/cors.ts';
 
 interface RecipeAnalysisRequest {
   image_url: string;
@@ -47,23 +44,41 @@ interface RecipeAnalysisResponse {
 }
 
 Deno.serve(async (req: Request) => {
+  // Get request-aware CORS headers
+  const corsHeaders = getSmartCorsHeaders(req);
+  
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return handleCorsPreflightRequest(req);
   }
 
   try {
+    // Verify JWT authentication first
+    const auth = await verifyAuth(req);
+    if (!auth) {
+      return createUnauthorizedResponse(corsHeaders);
+    }
+
     // Initialize Supabase client
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { image_url, user_id, is_pro, description, source_meal_id, llm } = await req.json() as RecipeAnalysisRequest;
-
-    if (!image_url || !user_id) {
+    const { image_url, user_id: payload_user_id, is_pro, description, source_meal_id, llm } = await req.json() as RecipeAnalysisRequest;
+    
+    // Use authenticated user ID, validate if payload specifies one
+    if (payload_user_id && !validateUserMatch(auth.userId, payload_user_id)) {
       return new Response(
-        JSON.stringify({ error: 'Missing required fields: image_url and user_id' }),
+        JSON.stringify({ error: 'User ID mismatch: you can only access your own data' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    const user_id = auth.userId;
+
+    if (!image_url) {
+      return new Response(
+        JSON.stringify({ error: 'Missing required field: image_url' }),
         { 
           status: 400, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 

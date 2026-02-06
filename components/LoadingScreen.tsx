@@ -238,7 +238,7 @@ export function LoadingScreen({
                 </ThemedText>
               </View>
               <ThemedText style={styles.tagline}>
-                snap • analyze • eat smarter
+                photo • analyze • eat smarter
               </ThemedText>
             </Animated.View>
 

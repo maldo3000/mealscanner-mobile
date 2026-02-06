@@ -146,11 +146,11 @@ export function CaptureActionSheet({
               size={BUTTON_SIZE_LARGE}
               isPrimary
               onPress={onSnap}
-              accessibilityLabel="Snap a photo of your meal"
+              accessibilityLabel="Take a photo of your meal"
             >
               <IconSymbol name="camera" size={BUTTON_SIZE_LARGE * 0.36} color="#000000" />
             </GlassCircleButton>
-            <Text style={[TextStyles.bodySmall, styles.buttonLabel]}>Snap</Text>
+            <Text style={[TextStyles.bodySmall, styles.buttonLabel]}>Photo</Text>
           </View>
         </AnimatedButtonWrapper>
 
@@ -176,11 +176,11 @@ export function CaptureActionSheet({
               <GlassCircleButton
                 size={BUTTON_SIZE}
                 onPress={onLog}
-                accessibilityLabel="Search and log food"
+                accessibilityLabel="Search food database"
               >
                 <IconSymbol name="magnifyingglass" size={BUTTON_SIZE * 0.36} color="rgba(255, 255, 255, 0.95)" />
               </GlassCircleButton>
-              <Text style={[TextStyles.bodySmall, styles.buttonLabel]}>Log</Text>
+              <Text style={[TextStyles.bodySmall, styles.buttonLabel]}>Database</Text>
             </View>
           </AnimatedButtonWrapper>
         </View>
@@ -195,7 +195,7 @@ export function CaptureActionSheet({
             >
               <IconSymbol name="book.closed" size={BUTTON_SIZE * 0.36} color="rgba(255, 255, 255, 0.95)" />
             </GlassCircleButton>
-            <Text style={[TextStyles.bodySmall, styles.buttonLabel]}>Log from Recipe</Text>
+            <Text style={[TextStyles.bodySmall, styles.buttonLabel]}>Recipe</Text>
           </View>
         </AnimatedButtonWrapper>
       </View>

@@ -1,41 +1,40 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  TouchableOpacity, 
-  Dimensions, 
-  Animated, 
-  ScrollView,
-  Platform,
-  TextInput
-} from 'react-native';
-import { Image } from 'expo-image';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
-import { FontAwesome } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
-import Reanimated, { 
-  useSharedValue, 
-  useAnimatedStyle, 
-  withSpring, 
-  withDelay, 
-  withSequence,
-  withTiming,
-  runOnJS
-} from 'react-native-reanimated';
+import { RulerSlider } from '@/components/onboarding/RulerSlider';
+import { Paywall } from '@/components/subscription/Paywall';
+import { AnimatedLogo } from '@/components/ui/AnimatedLogo';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { RulerSlider } from '@/components/onboarding/RulerSlider';
-import { AnimatedLogo } from '@/components/ui/AnimatedLogo';
 import { SpriteAnimation } from '@/components/ui/SpriteAnimation';
-import { Colors, neonGreen, textMuted, bgPrimary, glassBorder, glassSurface } from '@/constants/Colors';
+import { bgPrimary, glassBorder, glassSurface, neonGreen, textMuted } from '@/constants/Colors';
 import { TextStyles } from '@/constants/Typography';
-import { FoodIllustration, FoodType } from '@/components/illustrations/FoodIllustrations';
-import { supabase, signInWithApple, signInWithGoogle } from '@/lib/supabase';
-import { Paywall } from '@/components/subscription/Paywall';
 import { localGoalsRepository } from '@/lib/goals/LocalGoalsRepository';
-import type { NutritionGoal, NutritionGoalType, ActivityLevel, BiologicalSex } from '@/lib/goals/types';
+import type { ActivityLevel, BiologicalSex, NutritionGoal, NutritionGoalType } from '@/lib/goals/types';
+import { signInWithApple, signInWithGoogle, supabase } from '@/lib/supabase';
+import { AppleHealthService } from '@/lib/health/AppleHealthService';
+import { BiologicalSex as HKBiologicalSex } from '@kingstinct/react-native-healthkit';
+import { FontAwesome } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
+import { Image } from 'expo-image';
+import { useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+    Animated,
+    Dimensions,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
+} from 'react-native';
+import Reanimated, {
+    useAnimatedStyle,
+    useSharedValue,
+    withDelay,
+    withSpring,
+    withTiming
+} from 'react-native-reanimated';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 // Import dancing veggies sprite frames
 const spriteFrames = [
@@ -367,9 +366,9 @@ export default function OnboardingScreen() {
     });
   };
 
-  const updateData = (updates: Partial<QuizData>) => {
+  const updateData = useCallback((updates: Partial<QuizData>) => {
     setQuizData(prev => ({ ...prev, ...updates }));
-  };
+  }, []);
 
   const toggleDietary = (pref: string) => {
     const current = quizData.dietaryPreferences;
@@ -702,7 +701,31 @@ export default function OnboardingScreen() {
             <Text style={styles.stepDesc}>
               Automatically track your steps and activity to refine your daily nutrition targets.
             </Text>
-            <Button variant="primary" fullWidth onPress={handleNext}>
+            <Button 
+              variant="primary" 
+              fullWidth 
+              onPress={async () => {
+                const success = await AppleHealthService.requestPermissions();
+                if (success) {
+                  const profile = await AppleHealthService.getUserProfileData();
+                  if (profile) {
+                    const updates: Partial<QuizData> = {};
+                    if (profile.weightKg) updates.weight = profile.weightKg;
+                    if (profile.heightCm) updates.height = profile.heightCm;
+                    if (profile.biologicalSex) {
+                      updates.gender = profile.biologicalSex === HKBiologicalSex.female ? 'female' : 
+                                      profile.biologicalSex === HKBiologicalSex.male ? 'male' : 'other';
+                    }
+                    if (profile.dateOfBirth) {
+                      const age = new Date().getFullYear() - profile.dateOfBirth.getFullYear();
+                      updates.age = age;
+                    }
+                    updateData(updates);
+                  }
+                }
+                handleNext();
+              }}
+            >
               Connect Apple Health
             </Button>
             <Button variant="ghost" fullWidth onPress={handleNext}>

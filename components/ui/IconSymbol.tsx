@@ -80,6 +80,9 @@ const MAPPING = {
   'paperplane.fill': 'send',
   'chevron.left.forwardslash.chevron.right': 'code',
   'rectangle.portrait.and.arrow.right': 'logout',
+  
+  // Log Again / Repeat
+  'repeat': 'repeat',
 } as IconMapping;
 
 /**

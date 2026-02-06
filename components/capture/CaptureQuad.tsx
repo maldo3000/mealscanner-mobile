@@ -78,7 +78,7 @@ export function CaptureQuad(props: CaptureQuadProps): React.ReactElement {
       <View style={styles.grid}>
         <View style={styles.row}>
           <QuadOption
-            title="Snap"
+            title="Photo"
             subtitle="Open the camera and take a photo"
             icon="camera"
             onPress={onSnap}

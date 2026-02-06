@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { KeyboardAvoidingView, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -116,6 +116,27 @@ function GoalWizard() {
 
   const [validationError, setValidationError] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+
+  // Track if we've already synced from activeGoal to avoid overwriting user edits
+  const hasSyncedFromGoal = useRef(false);
+
+  // Sync local state from activeGoal when it loads (only once after initial load)
+  useEffect(() => {
+    if (!loading && activeGoal && !hasSyncedFromGoal.current) {
+      hasSyncedFromGoal.current = true;
+      setSex(activeGoal.profileSnapshot.sex);
+      setAgeYears(
+        activeGoal.profileSnapshot.ageYears != null
+          ? String(activeGoal.profileSnapshot.ageYears)
+          : '',
+      );
+      setHeightCm(String(activeGoal.profileSnapshot.heightCm));
+      setWeightKg(String(activeGoal.profileSnapshot.weightKg));
+      setActivityLevel(activeGoal.profileSnapshot.activityLevel);
+      setGoalType(activeGoal.type);
+      setSelectedQualitativeGoals(activeGoal.meta?.focusAreas ?? []);
+    }
+  }, [loading, activeGoal]);
 
   const numericOrUndefined = (value: string): number | undefined => {
     if (!value.trim()) return undefined;

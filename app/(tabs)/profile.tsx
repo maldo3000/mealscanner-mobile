@@ -19,7 +19,7 @@ import React, { useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View, Alert, ActivityIndicator, Linking } from 'react-native';
 import Animated, { FadeInDown, Easing } from 'react-native-reanimated';
 
-import { getAllUserMeals, deleteMeal } from '@/lib/supabase';
+import { getAllUserMeals, deleteMeal, deleteAccount } from '@/lib/supabase';
 
 interface MenuRowProps {
   icon: any;
@@ -86,6 +86,7 @@ export default function ProfileTabScreen() {
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [paywallVisible, setPaywallVisible] = useState(false);
   const router = useRouter();
   const colorScheme = useColorScheme();
@@ -185,6 +186,60 @@ export default function ProfileTabScreen() {
               console.error('Clear history error:', error);
               Alert.alert('Error', 'Failed to clear some data. Please try again.');
             }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleDeleteAccount = () => {
+    // First confirmation: Explain the consequences
+    Alert.alert(
+      'Delete Account',
+      'This will permanently delete your account and all associated data including:\n\n' +
+      '• Your profile information\n' +
+      '• All meal history and photos\n' +
+      '• Saved recipes\n' +
+      '• Nutrition goals\n\n' +
+      'This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Continue',
+          style: 'destructive',
+          onPress: () => {
+            // Second confirmation: Final warning with prompt
+            Alert.alert(
+              'Are you absolutely sure?',
+              'Type DELETE to confirm account deletion. This is permanent and cannot be reversed.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Delete My Account',
+                  style: 'destructive',
+                  onPress: async () => {
+                    setIsDeleting(true);
+                    try {
+                      const { error } = await deleteAccount();
+                      if (error) {
+                        throw error;
+                      }
+                      // Sign out after successful deletion
+                      await signOut();
+                      // The auth context will handle navigation to login
+                    } catch (error) {
+                      console.error('Delete account error:', error);
+                      Alert.alert(
+                        'Deletion Failed',
+                        'Could not delete your account. Please try again or contact support if the problem persists.'
+                      );
+                    } finally {
+                      setIsDeleting(false);
+                    }
+                  },
+                },
+              ]
+            );
           },
         },
       ]
@@ -324,6 +379,14 @@ export default function ProfileTabScreen() {
               icon="trash" 
               title="Clear History" 
               onPress={handleClearHistory}
+            />
+            <MenuRow 
+              icon="person.crop.circle.badge.minus" 
+              title="Delete Account" 
+              onPress={handleDeleteAccount}
+              color={semanticColors.error}
+              showChevron={false}
+              isLoading={isDeleting}
             />
             <MenuRow 
               icon="info.circle" 

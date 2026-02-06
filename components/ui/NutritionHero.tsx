@@ -1,5 +1,6 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { StyleSheet, Text, View, Dimensions, TouchableOpacity, ScrollView, LayoutChangeEvent } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import Animated, { 
   useSharedValue, 
   withSpring, 
@@ -167,6 +168,10 @@ interface NutritionHeroProps {
   selectedWeekIndex: number; // 0-2
   onSelectDate: (weekIndex: number, dateIndex: number) => void;
   currentStreak: number;
+  healthData?: {
+    steps: number;
+    activeCalories: number;
+  };
   themeOverrides?: {
     cardBackground: string;
     cardBorder: string;
@@ -182,10 +187,17 @@ const formatMacro = (val: number | undefined | null) => {
   return Number(val.toFixed(1)).toString();
 };
 
-export function NutritionHero({ stats, weeklyCalories, selectedDateIndex, selectedWeekIndex, onSelectDate, currentStreak, themeOverrides }: NutritionHeroProps) {
-  const { activeGoal } = useNutritionGoals();
+export function NutritionHero({ stats, weeklyCalories, selectedDateIndex, selectedWeekIndex, onSelectDate, currentStreak, healthData, themeOverrides }: NutritionHeroProps) {
+  const { activeGoal, refresh } = useNutritionGoals();
   const scrollViewRef = useRef<ScrollView>(null);
   const [containerWidth, setContainerWidth] = useState(0);
+
+  // Refresh goals when screen is focused to pick up changes from settings
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh])
+  );
   
   const targets = activeGoal?.dailyTargets || {
     calories: 2000,
@@ -585,5 +597,40 @@ const styles = StyleSheet.create({
   centerContent: {
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  healthDataContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderRadius: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginBottom: Spacing.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  healthItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  healthValue: {
+    ...TextStyles.body,
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  healthLabel: {
+    ...TextStyles.caption,
+    color: 'rgba(255, 255, 255, 0.5)',
+    fontSize: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  healthDivider: {
+    width: 1,
+    height: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
 });

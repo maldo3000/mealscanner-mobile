@@ -8,6 +8,7 @@ import { TextStyles } from '@/constants/Typography';
 import { FontAwesome } from '@expo/vector-icons';
 import { supabase, signInWithApple, signInWithGoogle } from '@/lib/supabase';
 import { PageContainer } from '@/components/layout/PageContainer';
+import { loginValidator, validateField, EmailSchema, PasswordSchemaSimple } from '@/lib/validation';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -15,14 +16,40 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  const validateEmailField = (value: string) => {
+    const result = validateField(EmailSchema, value);
+    setFieldErrors(prev => ({
+      ...prev,
+      email: result.error || '',
+    }));
+    return result.valid;
+  };
+
+  const validatePasswordField = (value: string) => {
+    const result = validateField(PasswordSchemaSimple, value);
+    setFieldErrors(prev => ({
+      ...prev,
+      password: result.error || '',
+    }));
+    return result.valid;
+  };
 
   const handleEmailSignIn = async () => {
-    if (!email || !password) {
-      setError('Please fill in all fields');
+    // Validate all fields
+    const validation = loginValidator.validate({ email, password });
+    
+    if (!validation.success) {
+      setError(validation.error || 'Please check your input');
+      setFieldErrors(validation.errors || {});
       return;
     }
+    
+    setFieldErrors({});
     setLoading(true);
     setError(null);
+    
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
       if (error.message.includes('Email not confirmed')) {
@@ -99,21 +126,35 @@ export default function LoginScreen() {
             </View>
 
             <View style={styles.form}>
-              <Input
-                label="Email"
-                placeholder="your@email.com"
-                value={email}
-                onChangeText={setEmail}
-                autoCapitalize="none"
-                keyboardType="email-address"
-              />
-              <Input
-                label="Password"
-                placeholder="••••••••"
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-              />
+              <View>
+                <Input
+                  label="Email"
+                  placeholder="your@email.com"
+                  value={email}
+                  onChangeText={(text) => {
+                    setEmail(text);
+                    if (fieldErrors.email) validateEmailField(text);
+                  }}
+                  onBlur={() => validateEmailField(email)}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                />
+                {fieldErrors.email && <Text style={styles.fieldError}>{fieldErrors.email}</Text>}
+              </View>
+              <View>
+                <Input
+                  label="Password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChangeText={(text) => {
+                    setPassword(text);
+                    if (fieldErrors.password) validatePasswordField(text);
+                  }}
+                  onBlur={() => validatePasswordField(password)}
+                  secureTextEntry
+                />
+                {fieldErrors.password && <Text style={styles.fieldError}>{fieldErrors.password}</Text>}
+              </View>
               
               {error && <Text style={styles.errorText}>{error}</Text>}
 
@@ -199,6 +240,12 @@ const styles = StyleSheet.create({
     ...TextStyles.caption,
     color: '#ef4444',
     textAlign: 'center',
+  },
+  fieldError: {
+    ...TextStyles.caption,
+    color: '#ef4444',
+    marginTop: 4,
+    marginLeft: 4,
   },
   submitButton: {
     marginTop: 12,

@@ -1,10 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { verifyAuth, createUnauthorizedResponse, validateUserMatch } from '../_shared/auth.ts';
+import { getSmartCorsHeaders, handleCorsPreflightRequest } from '../_shared/cors.ts';
 
 interface GenerateRecipeRequest {
   suggestion: {
@@ -59,21 +56,39 @@ interface RecipeAnalysisResponse {
 }
 
 Deno.serve(async (req) => {
+  // Get request-aware CORS headers
+  const corsHeaders = getSmartCorsHeaders(req);
+  
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return handleCorsPreflightRequest(req);
   }
 
   try {
+    // Verify JWT authentication first
+    const auth = await verifyAuth(req);
+    if (!auth) {
+      return createUnauthorizedResponse(corsHeaders);
+    }
+
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { suggestion, user_id, is_pro, nutrition_goals } = await req.json() as GenerateRecipeRequest;
-
-    if (!suggestion || !user_id) {
+    const { suggestion, user_id: payload_user_id, is_pro, nutrition_goals } = await req.json() as GenerateRecipeRequest;
+    
+    // Use authenticated user ID, validate if payload specifies one
+    if (payload_user_id && !validateUserMatch(auth.userId, payload_user_id)) {
       return new Response(
-        JSON.stringify({ error: 'Missing required fields: suggestion and user_id' }),
+        JSON.stringify({ error: 'User ID mismatch: you can only access your own data' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    const user_id = auth.userId;
+
+    if (!suggestion) {
+      return new Response(
+        JSON.stringify({ error: 'Missing required field: suggestion' }),
         { 
           status: 400, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 

@@ -1,6 +1,6 @@
 # Privacy Policy for MealScanner
 
-**Last Updated: January 4, 2026**
+**Last Updated: January 20, 2026**
 
 MealScanner ("we", "our", or "us") is committed to protecting your privacy. This Privacy Policy explains how your information is collected, used, and disclosed by MealScanner.
 
@@ -8,6 +8,7 @@ MealScanner ("we", "our", or "us") is committed to protecting your privacy. This
 - **Account Information:** When you sign up, we collect your email address and any profile information you provide through Supabase Auth.
 - **Meal Data:** We collect photos of food you scan, nutritional data generated, and journal entries to provide the core functionality of the app.
 - **Usage Data:** We collect information about how you interact with the app to improve our services.
+- **Security Data:** We collect IP addresses for security purposes, including abuse prevention and rate limiting. This data is not linked to your personal account and is used solely for security monitoring.
 - **Purchase Information:** We use RevenueCat to process subscriptions. We do not store your credit card information; it is handled by the Apple App Store.
 
 ## 2. How We Use Your Information

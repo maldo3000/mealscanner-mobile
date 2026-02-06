@@ -1,11 +1,11 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { getLLMRouter } from '../_shared/llm/router.ts'
 import type { ChatMessage, LLMConfig } from '../_shared/llm/types.ts'
-
-const corsHeaders: Record<string, string> = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+import { verifyAuth, createUnauthorizedResponse, validateUserMatch } from '../_shared/auth.ts'
+import { AnalyzeMealMultiRequestSchema, validateRequest, createValidationErrorResponse } from '../_shared/validation.ts'
+import { getSmartCorsHeaders, handleCorsPreflightRequest } from '../_shared/cors.ts'
+import { checkRateLimit, getRateLimitIdentifier, createRateLimitResponse, RateLimitPresets, addRateLimitHeaders } from '../_shared/rateLimit.ts'
+import { ipBlocklistMiddleware } from '../_shared/ipBlocklist.ts'
 
 export interface MealMultiItemInput {
   itemType: 'photo' | 'text' | 'verified'
@@ -424,8 +424,11 @@ function normalizeLLMResponse(raw: AnalyzeMealMultiLLMResponse, itemCount: numbe
 }
 
 export async function handleAnalyzeMealMulti(req: Request): Promise<Response> {
+  // Get request-aware CORS headers
+  const corsHeaders = getSmartCorsHeaders(req)
+  
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return handleCorsPreflightRequest(req)
   }
 
   const startTime = Date.now()
@@ -433,17 +436,48 @@ export async function handleAnalyzeMealMulti(req: Request): Promise<Response> {
   let activeMealId: string | undefined
 
   try {
-    const payload: AnalyzeMealMultiRequest = await req.json()
-    const { userId, mealId, contextText, llm } = payload
-    activeMealId = mealId
-    const rawItems = Array.isArray(payload.items) ? payload.items : []
+    // Check IP blocklist first (before any processing)
+    const blockedResponse = await ipBlocklistMiddleware(req, corsHeaders, true)
+    if (blockedResponse) {
+      return blockedResponse
+    }
+    
+    // Verify JWT authentication
+    const auth = await verifyAuth(req)
+    if (!auth) {
+      return createUnauthorizedResponse(corsHeaders)
+    }
+    const authenticatedUserId = auth.userId
+    
+    // Check rate limit for AI analysis (expensive operation)
+    const rateLimitId = getRateLimitIdentifier(req, authenticatedUserId)
+    const rateLimitResult = await checkRateLimit(rateLimitId, RateLimitPresets.aiAnalysis)
+    if (!rateLimitResult.allowed) {
+      return createRateLimitResponse(rateLimitResult, corsHeaders)
+    }
 
-    if (!userId || rawItems.length === 0) {
+    const rawPayload = await req.json()
+    
+    // Validate request payload with Zod schema
+    const validationResult = validateRequest(AnalyzeMealMultiRequestSchema, rawPayload)
+    if (!validationResult.success) {
+      return createValidationErrorResponse(validationResult, corsHeaders)
+    }
+    
+    const payload = validationResult.data!
+    const { userId: payloadUserId, mealId, contextText, llm } = payload
+    
+    // Use authenticated user ID, but validate if payload also specifies one
+    if (payloadUserId && !validateUserMatch(authenticatedUserId, payloadUserId)) {
       return new Response(
-        JSON.stringify({ success: false, error: 'Missing required fields: userId and items[] are required' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        JSON.stringify({ success: false, error: 'User ID mismatch: you can only access your own data' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 }
       )
     }
+    
+    const userId = authenticatedUserId
+    activeMealId = mealId
+    const rawItems = payload.items
 
     const supabase = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '')
 

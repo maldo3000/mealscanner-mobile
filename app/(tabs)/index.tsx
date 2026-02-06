@@ -1,27 +1,31 @@
-import { useRouter, useFocusEffect } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, RefreshControl, StyleSheet, Text, View, TouchableOpacity } from 'react-native';
-import Animated, { FadeInDown, LinearTransition, Easing } from 'react-native-reanimated';
+import BottomSheet from '@gorhom/bottom-sheet';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import Animated, { Easing, FadeInDown } from 'react-native-reanimated';
 
 import { ContentContainer } from '@/components/layout/ContentContainer';
 import { PageContainer } from '@/components/layout/PageContainer';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Section } from '@/components/layout/Section';
-import { Badge } from '@/components/ui/Badge';
+import { StreakCard, StreakHubSheet } from '@/components/streak';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DiscoveryCard } from '@/components/ui/DiscoveryCard';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { NutritionHero } from '@/components/ui/NutritionHero';
 import { ProBadge } from '@/components/ui/ProBadge';
-import { Tag } from '@/components/ui/Tag';
-import { Colors, glassSurface, neonGreen, primaryGreen } from '@/constants/Colors';
-import { PageSpacing, Spacing } from '@/constants/Spacing';
+import { Colors, neonGreen, primaryGreen } from '@/constants/Colors';
+import { Spacing } from '@/constants/Spacing';
 import { TextStyles } from '@/constants/Typography';
-import { useColorScheme } from '@/hooks/useColorScheme';
+import { useCaptureOptional } from '@/context/CaptureContext';
 import { useSubscription } from '@/context/SubscriptionContext';
+import { useColorScheme } from '@/hooks/useColorScheme';
 import { calculateCurrentStreak, calculateLongestStreak } from '@/lib/streakUtils';
 import { getAllUserMeals, getCurrentUser, supabase } from '@/lib/supabase';
+import { computeStreakSummary } from '@/services/streakService';
+import type { StreakCardState, StreakSummary } from '@/types/streak';
+import { AppleHealthService } from '@/lib/health/AppleHealthService';
 
 interface Meal {
   id: string;
@@ -64,11 +68,21 @@ export default function HomeScreen() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
   const router = useRouter();
+  const capture = useCaptureOptional();
+
+  // Streak Hub sheet ref
+  const streakHubRef = useRef<BottomSheet>(null);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [currentStreak, setCurrentStreak] = useState(0);
   const [longestStreak, setLongestStreak] = useState(0);
+  
+  // Streak summary state
+  const [streakSummary, setStreakSummary] = useState<StreakSummary | null>(null);
+  const [previousCardState, setPreviousCardState] = useState<StreakCardState | undefined>(undefined);
+  const [userId, setUserId] = useState<string | null>(null);
+
   const [weeklyCalories, setWeeklyCalories] = useState<number[][]>([
     [0, 0, 0, 0, 0, 0, 0],
     [0, 0, 0, 0, 0, 0, 0],
@@ -82,25 +96,13 @@ export default function HomeScreen() {
     Array.from({ length: 7 }, () => ({ mealsCount: 0, totalCalories: 0, totalProtein: 0, totalFat: 0, totalCarbs: 0 })),
   ]);
   const [allMeals, setAllMeals] = useState<Meal[]>([]);
+  const [healthData, setHealthData] = useState<{ steps: number; activeCalories: number } | undefined>(undefined);
 
   // Helper to format macro values to 1 decimal point max, removing trailing .0
   const formatMacro = (val: number | undefined | null) => {
     if (val === undefined || val === null) return '0';
     return Number(val.toFixed(1)).toString();
   };
-
-  // Mock data for XP/Level
-  const currentLevel = 3;
-  const currentXP = 450;
-  const nextLevelXP = 600;
-  const xpProgress = (currentXP / nextLevelXP) * 100;
-
-  // Mock achievements
-  const achievements = [
-    { icon: 'star.fill', title: '7 Day Streak', unlocked: true, color: 'neon' as const },
-    { icon: 'sparkles', title: 'Consistency', unlocked: true, color: '#FF9500' },
-    { icon: 'trophy.fill', title: 'Balanced Week', unlocked: true, color: 'sky' as const },
-  ];
 
   useEffect(() => {
     loadData();
@@ -130,6 +132,9 @@ export default function HomeScreen() {
   const resetState = () => {
     setCurrentStreak(0);
     setLongestStreak(0);
+    setStreakSummary(null);
+    setPreviousCardState(undefined);
+    setUserId(null);
     setWeeklyCalories([
       [0, 0, 0, 0, 0, 0, 0],
       [0, 0, 0, 0, 0, 0, 0],
@@ -141,6 +146,7 @@ export default function HomeScreen() {
       Array.from({ length: 7 }, () => ({ mealsCount: 0, totalCalories: 0, totalProtein: 0, totalFat: 0, totalCarbs: 0 })),
     ]);
     setAllMeals([]);
+    setHealthData(undefined);
   };
 
   const loadData = async (isRefreshing = false, silent = false): Promise<void> => {
@@ -154,6 +160,8 @@ export default function HomeScreen() {
         return;
       }
 
+      setUserId(user.id);
+
       // Free users are limited to 7 days of history
       const daysLimit = isPro ? undefined : 7;
       const { data: meals, error } = await getAllUserMeals(user.id, daysLimit);
@@ -165,6 +173,22 @@ export default function HomeScreen() {
       setAllMeals(meals);
       setCurrentStreak(calculateCurrentStreak(meals));
       setLongestStreak(calculateLongestStreak(meals));
+
+      // Compute streak summary
+      // Save previous state for transition detection
+      if (streakSummary) {
+        setPreviousCardState(streakSummary.cardState);
+      }
+      
+      // Convert meals to the format needed for streak service
+      const mealsForStreak = meals.map(m => ({
+        id: m.id,
+        created_at: m.created_at,
+        health_score: m.health_score,
+      }));
+      
+      const newStreakSummary = await computeStreakSummary(mealsForStreak, user.id);
+      setStreakSummary(newStreakSummary);
       
       // Calculate 3-week stats (2 Weeks Ago, Last Week, Current Week)
       const newWeeklyStats = [
@@ -289,7 +313,7 @@ export default function HomeScreen() {
       >
         {/* Hero Section */}
         <Animated.View entering={FadeInDown.duration(600).delay(100).easing(Easing.out(Easing.quad))}>
-          <Section gap={Spacing.lg}>
+          <Section gap={Spacing.xl}>
             <NutritionHero 
               stats={weeklyStats[selectedWeekIndex][selectedDateIndex]} 
               weeklyCalories={weeklyCalories} 
@@ -300,13 +324,14 @@ export default function HomeScreen() {
                 setSelectedDateIndex(dateIdx);
               }}
               currentStreak={currentStreak}
+              healthData={healthData}
             />
           </Section>
         </Animated.View>
 
         {/* Recent Meal Section */}
         <Animated.View entering={FadeInDown.duration(600).delay(200).easing(Easing.out(Easing.quad))}>
-          <Section gap={Spacing.md}>
+          <Section gap={Spacing.xl}>
             <View style={styles.sectionHeader}>
               <Text style={[TextStyles.h4, { color: colors.text }]}>Recent Meal</Text>
               {allMeals.length > 0 && (
@@ -341,68 +366,56 @@ export default function HomeScreen() {
           </Section>
         </Animated.View>
 
-        {/* Progress Hub */}
+        {/* Progress / Streak Card */}
         <Animated.View entering={FadeInDown.duration(600).delay(300).easing(Easing.out(Easing.quad))}>
-          <Section gap={Spacing.md}>
+          <Section gap={Spacing.xl}>
             <View style={styles.sectionHeader}>
               <Text style={[TextStyles.h4, { color: colors.text }]}>Progress</Text>
+              <TouchableOpacity onPress={() => streakHubRef.current?.expand()}>
+                <View style={styles.viewButton}>
+                  <Text style={[TextStyles.bodySmall, { color: neonGreen, fontWeight: '600' }]}>View</Text>
+                  <IconSymbol name="chevron.right" size={14} color={neonGreen} />
+                </View>
+              </TouchableOpacity>
             </View>
             
-            <Card variant="glass" style={styles.progressHubCard}>
-              {/* Centered Streak Section */}
-              <View style={styles.hubHeroSection}>
-                <View style={styles.hubStreakIconContainer}>
-                  <View style={styles.iconBacklight} />
-                  <IconSymbol name="star.fill" size={36} color={neonGreen} />
-                </View>
-                
-                <View style={styles.hubStreakTextContainer}>
-                  <View style={styles.hubStreakRow}>
-                    <Text style={[TextStyles.h1, { color: colors.text, fontSize: 48, lineHeight: 56 }]}>
-                      {currentStreak}
-                    </Text>
-                    <Text style={[TextStyles.h4, { color: colors.text, opacity: 0.9, letterSpacing: 1 }]}>
-                      DAY STREAK
-                    </Text>
-                  </View>
-                  <Text style={[TextStyles.bodySmall, { color: colors.icon, marginTop: -4 }]}>
-                    {currentStreak > 0 ? "You're on fire! Keep it up." : "Log a meal to start."}
+            {streakSummary ? (
+              <StreakCard
+                streakSummary={streakSummary}
+                onLogNow={() => {
+                  // Open capture sheet via context if available
+                  if (capture?.openCaptureSheet) {
+                    capture.openCaptureSheet();
+                  } else {
+                    // Fallback to navigation
+                    router.push('/(tabs)/log');
+                  }
+                }}
+                onViewStreak={() => streakHubRef.current?.expand()}
+                previousCardState={previousCardState}
+              />
+            ) : (
+              <Card variant="glass" style={styles.progressHubCard}>
+                <View style={styles.hubHeroSection}>
+                  <ActivityIndicator size="small" color={neonGreen} />
+                  <Text style={[TextStyles.bodySmall, { color: colors.icon, marginTop: Spacing.sm }]}>
+                    Loading streak data...
                   </Text>
                 </View>
-
-                <View style={styles.hubBestStreakPill}>
-                  <IconSymbol name="star.fill" size={10} color={neonGreen} />
-                  <Text style={[TextStyles.caption, { color: neonGreen, fontWeight: '700' }]}>
-                    BEST: {longestStreak} DAYS
-                  </Text>
-                </View>
-              </View>
-
-              {/* Horizontal Divider */}
-              <View style={styles.hubDivider} />
-
-              {/* Achievements Grid inside the Card */}
-              <View style={styles.hubBadgesGrid}>
-                {achievements.map((achievement, index) => (
-                  <Animated.View 
-                    key={index}
-                    entering={FadeInDown.duration(400).delay(400 + index * 100).springify()}
-                  >
-                    <Badge
-                      icon={achievement.icon}
-                      title={achievement.title}
-                      unlocked={achievement.unlocked}
-                      accentColor={achievement.color as any}
-                    />
-                  </Animated.View>
-                ))}
-              </View>
-            </Card>
+              </Card>
+            )}
           </Section>
         </Animated.View>
 
         <View style={{ height: 40 }} />
       </ContentContainer>
+
+      {/* Streak Hub Bottom Sheet */}
+      <StreakHubSheet
+        ref={streakHubRef}
+        streakSummary={streakSummary}
+        onClose={() => {}}
+      />
     </PageContainer>
   );
 }
@@ -417,7 +430,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: Spacing.md,
+  },
+  viewButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   progressHubCard: {
     padding: Spacing.base,
@@ -427,74 +445,7 @@ const styles = StyleSheet.create({
   hubHeroSection: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingBottom: Spacing.xl,
-  },
-  hubStreakIconContainer: {
-    width: 72,
-    height: 72,
-    borderRadius: 20, // Squircle
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: `${neonGreen}15`,
-    marginBottom: Spacing.lg,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  hubStreakTextContainer: {
-    alignItems: 'center',
-    marginBottom: Spacing.lg,
-  },
-  hubStreakRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 8,
-  },
-  hubBestStreakPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-    gap: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-  },
-  hubDivider: {
-    height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    width: '100%',
-    marginBottom: Spacing.xl,
-  },
-  hubBadgesGrid: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: Spacing.sm,
-    width: '100%',
-  },
-  iconBacklight: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: neonGreen,
-    opacity: 0.1,
-  },
-  xpCard: {
-    padding: Spacing.md,
-  },
-  xpHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.sm,
-  },
-  xpBarTrack: {
-    height: 8,
-    backgroundColor: glassSurface,
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  xpBarFill: {
-    height: '100%',
-    borderRadius: 4,
+    paddingVertical: Spacing.xl,
   },
   emptyRecentMeal: {
     padding: Spacing.xl,

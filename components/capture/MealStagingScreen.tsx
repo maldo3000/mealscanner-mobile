@@ -269,7 +269,7 @@ export function MealStagingScreen(props: MealStagingScreenProps): React.ReactEle
               <IconSymbol name="tray" size={28} color={colors.icon} />
               <Text style={[TextStyles.h4, { color: colors.text, marginTop: 10 }]}>Your tray is empty</Text>
               <Text style={[TextStyles.bodySmall, { color: colors.icon, marginTop: 6, textAlign: 'center' }]}>
-                Snap a photo, upload an image, or add a quick description to get started.
+                Take a photo, upload an image, or add a quick description to get started.
               </Text>
             </View>
           )}
@@ -279,7 +279,7 @@ export function MealStagingScreen(props: MealStagingScreenProps): React.ReactEle
           <View style={[styles.quickAddPill, { borderColor: glassBorder, backgroundColor: 'rgba(2, 44, 34, 0.85)' }]}>
             <TouchableOpacity onPress={onQuickSnap} style={styles.quickAddButton} activeOpacity={0.85}>
               <IconSymbol name="camera" size={20} color="white" />
-              <Text style={styles.quickAddText}>Snap</Text>
+              <Text style={styles.quickAddText}>Photo</Text>
             </TouchableOpacity>
             <View style={styles.quickDivider} />
             <TouchableOpacity onPress={onQuickUpload} style={styles.quickAddButton} activeOpacity={0.85}>

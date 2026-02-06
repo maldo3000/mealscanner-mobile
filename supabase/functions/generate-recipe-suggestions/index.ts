@@ -1,10 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { verifyAuth, createUnauthorizedResponse, validateUserMatch } from '../_shared/auth.ts';
+import { getSmartCorsHeaders, handleCorsPreflightRequest } from '../_shared/cors.ts';
 
 interface RecipeSuggestionRequest {
   user_input: string;
@@ -34,21 +31,39 @@ interface RecipeSuggestion {
 }
 
 Deno.serve(async (req) => {
+  // Get request-aware CORS headers
+  const corsHeaders = getSmartCorsHeaders(req);
+  
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return handleCorsPreflightRequest(req);
   }
 
   try {
+    // Verify JWT authentication first
+    const auth = await verifyAuth(req);
+    if (!auth) {
+      return createUnauthorizedResponse(corsHeaders);
+    }
+
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { user_input, user_id, is_pro, nutrition_goals } = await req.json() as RecipeSuggestionRequest;
-
-    if (!user_input || !user_id) {
+    const { user_input, user_id: payload_user_id, is_pro, nutrition_goals } = await req.json() as RecipeSuggestionRequest;
+    
+    // Use authenticated user ID, validate if payload specifies one
+    if (payload_user_id && !validateUserMatch(auth.userId, payload_user_id)) {
       return new Response(
-        JSON.stringify({ error: 'Missing required fields: user_input and user_id' }),
+        JSON.stringify({ error: 'User ID mismatch: you can only access your own data' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    const user_id = auth.userId;
+
+    if (!user_input) {
+      return new Response(
+        JSON.stringify({ error: 'Missing required field: user_input' }),
         { 
           status: 400, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 

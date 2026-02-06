@@ -1,15 +1,17 @@
 import { Slot, Tabs, usePathname, useRouter } from 'expo-router';
-import React, { useState, useCallback } from 'react';
+import React, { useCallback } from 'react';
 import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
-import { IconSymbol } from '@/components/ui/IconSymbol';
-import { AnimatedTabIcon } from '@/components/ui/AnimatedTabIcon';
-import { CustomTabBar } from '@/components/ui/CustomTabBar';
-import { BrandLogo } from '@/components/ui/BrandLogo';
 import { CaptureActionSheet } from '@/components/capture/CaptureActionSheet';
 import { GlobalCaptureController } from '@/components/capture/GlobalCaptureController';
+import { AnimatedTabIcon } from '@/components/ui/AnimatedTabIcon';
+import { BrandLogo } from '@/components/ui/BrandLogo';
+import { CustomTabBar } from '@/components/ui/CustomTabBar';
+import { IconSymbol } from '@/components/ui/IconSymbol';
 import { Colors, bgPrimary } from '@/constants/Colors';
 import { TextStyles } from '@/constants/Typography';
+import { CaptureProvider, useCapture } from '@/context/CaptureContext';
 import { useColorScheme } from '@/hooks/useColorScheme';
 
 const navigationItems = [
@@ -120,43 +122,36 @@ function SidebarLayout() {
   );
 }
 
-export default function TabLayout() {
+function TabLayoutContent() {
   const colorScheme = useColorScheme();
   const router = useRouter();
-  const [captureSheetVisible, setCaptureSheetVisible] = useState(false);
-  const [captureAction, setCaptureAction] = useState<'snap' | 'describe' | 'log' | 'recipe' | null>(null);
-  const [isCaptureVisible, setIsCaptureVisible] = useState(false);
+  const {
+    isCaptureSheetVisible,
+    openCaptureSheet,
+    closeCaptureSheet,
+    captureAction,
+    setCaptureAction,
+    isCaptureVisible,
+    setIsCaptureVisible,
+  } = useCapture();
 
   // Handle capture action selection from the action sheet
   const handleCaptureAction = useCallback((action: 'snap' | 'describe' | 'log' | 'recipe') => {
-    setCaptureSheetVisible(false);
+    closeCaptureSheet();
     setCaptureAction(action);
     setIsCaptureVisible(true);
-  }, []);
-
-  const handleOpenCaptureSheet = useCallback(() => {
-    setCaptureSheetVisible(true);
-  }, []);
-
-  const handleCloseCaptureSheet = useCallback(() => {
-    setCaptureSheetVisible(false);
-  }, []);
+  }, [closeCaptureSheet, setCaptureAction, setIsCaptureVisible]);
 
   const handleCloseCapture = useCallback(() => {
     setCaptureAction(null);
     setIsCaptureVisible(false);
-  }, []);
-
-  // Use sidebar layout on web, bottom tabs on mobile
-  if (Platform.OS === 'web') {
-    return <SidebarLayout />;
-  }
+  }, [setCaptureAction, setIsCaptureVisible]);
 
   return (
     <>
       <Tabs
         tabBar={(props) => (
-          <CustomTabBar {...props} onCapturePress={handleOpenCaptureSheet} />
+          <CustomTabBar {...props} onCapturePress={openCaptureSheet} />
         )}
         screenOptions={{
           headerShown: false,
@@ -217,8 +212,8 @@ export default function TabLayout() {
 
       {/* Capture Action Sheet Overlay */}
       <CaptureActionSheet
-        visible={captureSheetVisible}
-        onClose={handleCloseCaptureSheet}
+        visible={isCaptureSheetVisible}
+        onClose={closeCaptureSheet}
         onSnap={() => handleCaptureAction('snap')}
         onDescribe={() => handleCaptureAction('describe')}
         onLog={() => handleCaptureAction('log')}
@@ -232,6 +227,21 @@ export default function TabLayout() {
         onClose={handleCloseCapture}
       />
     </>
+  );
+}
+
+export default function TabLayout() {
+  // Use sidebar layout on web, bottom tabs on mobile
+  if (Platform.OS === 'web') {
+    return <SidebarLayout />;
+  }
+
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <CaptureProvider>
+        <TabLayoutContent />
+      </CaptureProvider>
+    </GestureHandlerRootView>
   );
 }
 
