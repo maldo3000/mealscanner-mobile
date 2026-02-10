@@ -262,12 +262,11 @@ function GoalWizard() {
   };
 
   return (
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={insets.top + 64}
-      >
-        <ContentContainer keyboardAvoiding scrollable>
+        <ContentContainer 
+          keyboardAvoiding 
+          scrollable
+          keyboardVerticalOffset={insets.top + 64}
+        >
           <View style={styles.summaryContainer}>
             <Card variant="glass" padding="md">
               <View style={styles.summaryHeader}>
@@ -626,7 +625,6 @@ function GoalWizard() {
             </Button>
           </View>
         </ContentContainer>
-      </KeyboardAvoidingView>
   );
 }
 

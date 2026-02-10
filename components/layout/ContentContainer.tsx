@@ -9,6 +9,7 @@ interface ContentContainerProps extends ViewProps {
   scrollable?: boolean;
   keyboardAvoiding?: boolean;
   keyboardBehavior?: 'padding' | 'height' | 'position';
+  keyboardVerticalOffset?: number;
   contentPadding?: boolean;
   refreshControl?: React.ReactElement<typeof RefreshControl>;
 }
@@ -22,6 +23,7 @@ export function ContentContainer({
   scrollable = true,
   keyboardAvoiding = false,
   keyboardBehavior = Platform.OS === 'ios' ? 'padding' : 'height',
+  keyboardVerticalOffset = Platform.OS === 'ios' ? 0 : 20,
   contentPadding = true,
   refreshControl,
   style,
@@ -46,7 +48,7 @@ export function ContentContainer({
       <KeyboardAvoidingView
         style={[styles.container, style]}
         behavior={keyboardBehavior}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        keyboardVerticalOffset={keyboardVerticalOffset}
         {...props}
       >
         {scrollable ? (
