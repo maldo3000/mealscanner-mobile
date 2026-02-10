@@ -55,6 +55,7 @@ export function Section({
 const styles = StyleSheet.create({
   section: {
     width: '100%',
+    overflow: 'visible',
   },
 });
 

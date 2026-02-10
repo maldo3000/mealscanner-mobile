@@ -684,7 +684,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: Spacing.sm,
-    marginBottom: Spacing.md,
+    // Add padding to prevent shadow clipping
+    padding: Spacing.sm,
+    // Compensate for padding to maintain alignment
+    marginHorizontal: -Spacing.sm,
+    marginTop: -Spacing.sm,
+    marginBottom: Spacing.xs, // Reduced to account for paddingBottom
   },
   chipButton: {
     paddingHorizontal: Spacing.lg,
