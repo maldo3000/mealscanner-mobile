@@ -31,7 +31,7 @@ export function DashboardCard({
           {headerRight}
         </View>
       )}
-      <View style={noPadding ? undefined : styles.body}>{children}</View>
+      <View style={[noPadding ? styles.bodyNoPad : styles.body, style?.flex ? { flex: 1 } : undefined]}>{children}</View>
     </View>
   );
 }
@@ -71,5 +71,8 @@ const styles = StyleSheet.create({
   body: {
     padding: 24,
     paddingTop: 16,
+  },
+  bodyNoPad: {
+    flex: 1,
   },
 });

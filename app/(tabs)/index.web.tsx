@@ -211,10 +211,10 @@ export default function HomeScreenWeb() {
         {isPro && <ProBadge style={{ marginTop: 4 }} />}
       </View>
 
-      {/* ── Row 1: Summary + Quick Actions ── */}
+      {/* ── Row 1: Summary | Quick Actions + Progress ── */}
       <View style={styles.row}>
         <View style={styles.colMain}>
-          <DashboardCard title="Today Summary" subtitle="Calories + macros at a glance">
+          <DashboardCard title="Today Summary" subtitle="Calories + macros at a glance" style={styles.fillCard}>
             <NutritionHero
               stats={weeklyStats[selectedWeekIndex][selectedDateIndex]}
               weeklyCalories={weeklyCalories}
@@ -228,25 +228,9 @@ export default function HomeScreenWeb() {
             />
           </DashboardCard>
         </View>
-        <View style={styles.colSide}>
+        <View style={styles.colSideStack}>
           <QuickActions />
-        </View>
-      </View>
-
-      {/* ── Row 2: Recent Meals + Daily Tip ── */}
-      <View style={styles.row}>
-        <View style={styles.colMain}>
-          <RecentMealsList meals={allMeals} maxItems={5} />
-        </View>
-        <View style={styles.colSide}>
-          <DailyTip />
-        </View>
-      </View>
-
-      {/* ── Row 3: Progress + Weekly Overview + Weekly Report ── */}
-      <View style={styles.rowThirds}>
-        <View style={styles.colThird}>
-          <DashboardCard title="Progress" subtitle="Streak + badges">
+          <DashboardCard title="Progress" subtitle="Streak + badges" style={styles.fillCard}>
             {streakSummary ? (
               <StreakCard
                 streakSummary={streakSummary}
@@ -261,42 +245,57 @@ export default function HomeScreenWeb() {
             )}
           </DashboardCard>
         </View>
-        <View style={styles.colThird}>
-          <DashboardCard title="Weekly Overview" subtitle="7-day calorie strip">
-            <View style={styles.weekDots}>
-              {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day, i) => {
-                const cal = weeklyCalories[2]?.[i] ?? 0;
-                const isToday = i === (new Date().getDay() + 6) % 7;
-                return (
-                  <TouchableOpacity
-                    key={i}
-                    style={styles.dayCol}
-                    onPress={() => {
-                      setSelectedDateWeekIndex(2);
-                      setSelectedDateIndex(i);
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <View
-                      style={[
-                        styles.dot,
-                        cal > 0 && styles.dotFilled,
-                        isToday && styles.dotToday,
-                      ]}
-                    />
-                    <Text style={[styles.dayLabel, isToday && styles.dayLabelActive]}>
-                      {day}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </DashboardCard>
+      </View>
+
+      {/* ── Row 2: Recent Meals | Daily Tip + Weekly Report ── */}
+      <View style={styles.row}>
+        <View style={styles.colMain}>
+          <RecentMealsList meals={allMeals} maxItems={6} />
         </View>
-        <View style={styles.colThird}>
+        <View style={styles.colSideStack}>
+          <DailyTip />
           <WeeklyReport totalMeals={weekReport.totalMeals} avgCalories={weekReport.avgCalories} />
         </View>
       </View>
+
+      {/* ── Row 3: Full-width Weekly Overview strip ── */}
+      <DashboardCard title="Weekly Overview" subtitle="7-day calorie strip">
+        <View style={styles.weekStrip}>
+          {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, i) => {
+            const cal = weeklyCalories[2]?.[i] ?? 0;
+            const isToday = i === (new Date().getDay() + 6) % 7;
+            const isSelected = selectedWeekIndex === 2 && selectedDateIndex === i;
+            return (
+              <TouchableOpacity
+                key={i}
+                style={[
+                  styles.weekDay,
+                  isSelected && styles.weekDaySelected,
+                ]}
+                onPress={() => {
+                  setSelectedDateWeekIndex(2);
+                  setSelectedDateIndex(i);
+                }}
+                activeOpacity={0.7}
+              >
+                <View
+                  style={[
+                    styles.dot,
+                    cal > 0 && styles.dotFilled,
+                    isToday && styles.dotToday,
+                  ]}
+                />
+                <Text style={[styles.dayLabel, isToday && styles.dayLabelActive]}>
+                  {day}
+                </Text>
+                <Text style={styles.weekCal}>
+                  {cal > 0 ? `${Math.round(cal)}` : '—'}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </DashboardCard>
 
       <View style={{ height: 32 }} />
     </ScrollView>
@@ -340,24 +339,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 20,
     marginBottom: 20,
+    // @ts-ignore
+    alignItems: 'stretch',
   },
   colMain: {
     flex: 2,
     minWidth: 0,
   },
-  colSide: {
+  colSideStack: {
     flex: 1,
     minWidth: 280,
-    maxWidth: 380,
-  },
-  rowThirds: {
-    flexDirection: 'row',
+    maxWidth: 400,
     gap: 20,
-    marginBottom: 20,
   },
-  colThird: {
+  fillCard: {
     flex: 1,
-    minWidth: 0,
   },
 
   /* ── Loading ── */
@@ -378,26 +374,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
-  /* ── Weekly Overview dots ── */
-  weekDots: {
+  /* ── Weekly Overview strip ── */
+  weekStrip: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: 8,
+    gap: 8,
   },
-  dayCol: {
+  weekDay: {
+    flex: 1,
     alignItems: 'center',
     gap: 8,
-    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
     // @ts-ignore
     cursor: 'pointer',
+    // @ts-ignore
+    transition: 'background-color 0.15s',
+  },
+  weekDaySelected: {
+    backgroundColor: Brand.surface2,
   },
   dot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
     backgroundColor: Brand.surface2,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: Brand.border,
   },
   dotFilled: {
@@ -410,11 +412,17 @@ const styles = StyleSheet.create({
   },
   dayLabel: {
     fontFamily: "'Source Sans 3', sans-serif",
-    fontSize: 12,
+    fontSize: 13,
     color: Brand.sage,
   },
   dayLabelActive: {
     color: Brand.matcha,
     fontWeight: '600',
+  },
+  weekCal: {
+    fontFamily: "'Source Sans 3', sans-serif",
+    fontSize: 11,
+    color: Brand.sage,
+    opacity: 0.7,
   },
 });

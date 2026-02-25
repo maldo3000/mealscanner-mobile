@@ -56,6 +56,7 @@ export function RecentMealsList({ meals, maxItems = 5 }: RecentMealsListProps) {
       subtitle={`Last ${displayed.length} entries`}
       headerRight={headerRight}
       noPadding
+      style={{ flex: 1 }}
     >
       {displayed.length === 0 ? (
         <View style={styles.empty}>
