@@ -1,26 +1,26 @@
+import { BlurView } from 'expo-blur';
+import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Modal,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-  ScrollView,
-  Linking,
+    Modal,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
 } from 'react-native';
-import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { IconSymbol } from '@/components/ui/IconSymbol';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { Colors, glassBorder, glassSurface, neonGreen, accentSky } from '@/constants/Colors';
-import { Spacing, PageSpacing } from '@/constants/Spacing';
+import { IconSymbol } from '@/components/ui/IconSymbol';
+import { SwirlingSpinner } from '@/components/ui/SwirlingSpinner';
+import { accentSky, Colors, glassBorder, glassSurface, neonGreen } from '@/constants/Colors';
+import { PageSpacing, Spacing } from '@/constants/Spacing';
 import { TextStyles } from '@/constants/Typography';
-import { useColorScheme } from '@/hooks/useColorScheme';
 import { useSubscription } from '@/context/SubscriptionContext';
-import { getOfferings, type PurchasesPackage, type PurchasesOffering } from '@/lib/revenueCat';
+import { useColorScheme } from '@/hooks/useColorScheme';
+import { getOfferings, type PurchasesOffering, type PurchasesPackage } from '@/lib/revenueCat';
 
 interface PaywallProps {
   visible: boolean;
@@ -127,6 +127,7 @@ function PackageCard({ pkg, isSelected, onSelect, isBestValue }: PackageCardProp
 }
 
 export function Paywall({ visible, onClose, title, subtitle, feature }: PaywallProps): React.ReactElement {
+  const router = useRouter();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
   const insets = useSafeAreaInsets();
@@ -169,11 +170,12 @@ export function Paywall({ visible, onClose, title, subtitle, feature }: PaywallP
   }, [isPro, visible, onClose]);
 
   const handlePurchase = async () => {
-    if (!selectedPackage) return;
+    const packageToPurchase = selectedPackage ?? offerings?.availablePackages[0];
+    if (!packageToPurchase) return;
 
     setIsPurchasing(true);
     try {
-      const success = await purchasePackage(selectedPackage);
+      const success = await purchasePackage(packageToPurchase);
       if (success) {
         onClose();
       }
@@ -199,7 +201,7 @@ export function Paywall({ visible, onClose, title, subtitle, feature }: PaywallP
       case 'scans':
         return 'Unlock Unlimited Scans';
       case 'recipes':
-        return 'Unlock AI Recipe Generation';
+        return 'Unlock the Entire Recipe Database';
       case 'nutrition':
         return 'Get Full Nutrition Insights';
       default:
@@ -212,7 +214,7 @@ export function Paywall({ visible, onClose, title, subtitle, feature }: PaywallP
       case 'scans':
         return 'Scan as many meals as you want with MealScanner Pro';
       case 'recipes':
-        return 'Generate custom recipes tailored to your nutrition goals';
+        return 'Access the full recipe database tailored to your nutrition goals';
       case 'nutrition':
         return 'Access detailed micronutrients and nutrition analysis';
       default:
@@ -222,7 +224,7 @@ export function Paywall({ visible, onClose, title, subtitle, feature }: PaywallP
 
   const proFeatures = [
     { icon: 'camera.fill', text: 'Unlimited meal scans' },
-    { icon: 'sparkles', text: 'AI Recipe Generation' },
+    { icon: 'sparkles', text: 'Unlock the entire recipe database' },
     { icon: 'chart.bar.fill', text: 'Full nutrition breakdown' },
     { icon: 'arrow.clockwise', text: 'Unlimited re-analysis' },
   ];
@@ -236,7 +238,7 @@ export function Paywall({ visible, onClose, title, subtitle, feature }: PaywallP
     >
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         {/* Fixed Header */}
-        <View style={[styles.header, { paddingTop: insets.top + Spacing.sm }]}>
+        <View style={[styles.header, { paddingTop: Spacing.md }]}>
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
             <IconSymbol name="xmark" size={20} color={colors.icon} />
           </TouchableOpacity>
@@ -275,7 +277,7 @@ export function Paywall({ visible, onClose, title, subtitle, feature }: PaywallP
 
           {/* Packages */}
           {isLoading ? (
-            <ActivityIndicator size="large" color={neonGreen} style={styles.loader} />
+            <SwirlingSpinner size="large" color={neonGreen} />
           ) : (
             <View style={styles.packages}>
               {offerings?.availablePackages.map((pkg) => (
@@ -303,8 +305,10 @@ export function Paywall({ visible, onClose, title, subtitle, feature }: PaywallP
           <Button
             variant="primary"
             onPress={handlePurchase}
-            disabled={!selectedPackage || isPurchasing || isRestoring}
+            disabled={isPurchasing || isRestoring}
             fullWidth
+            style={styles.subscribeButton}
+            textStyle={styles.subscribeButtonText}
           >
             {isPurchasing ? 'Processing...' : 'Subscribe Now'}
           </Button>
@@ -320,11 +324,17 @@ export function Paywall({ visible, onClose, title, subtitle, feature }: PaywallP
           </TouchableOpacity>
 
           <View style={styles.legalLinks}>
-            <TouchableOpacity onPress={() => Linking.openURL(process.env.EXPO_PUBLIC_PRIVACY_POLICY_URL || 'https://gist.github.com/maldo3000/01cb8245058b25733d89fb3c16cca7b5')}>
+            <TouchableOpacity onPress={() => {
+              onClose();
+              router.push('/settings/privacy-policy');
+            }}>
               <Text style={styles.legalLinkText}>Privacy Policy</Text>
             </TouchableOpacity>
             <Text style={styles.legalSeparator}> • </Text>
-            <TouchableOpacity onPress={() => Linking.openURL(process.env.EXPO_PUBLIC_TERMS_URL || 'https://gist.github.com/maldo3000/d239c3302e64e053b31ea79611f86265')}>
+            <TouchableOpacity onPress={() => {
+              onClose();
+              router.push('/settings/terms-of-service');
+            }}>
               <Text style={styles.legalLinkText}>Terms of Service</Text>
             </TouchableOpacity>
           </View>
@@ -461,6 +471,12 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: glassBorder,
     overflow: 'hidden',
+  },
+  subscribeButton: {
+    opacity: 1,
+  },
+  subscribeButtonText: {
+    color: '#0A2012',
   },
   restoreButton: {
     alignItems: 'center',

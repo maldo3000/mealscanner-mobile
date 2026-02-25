@@ -1,17 +1,17 @@
+import { Image } from 'expo-image';
 import React, { useEffect } from 'react';
 import { StyleSheet, View, ViewStyle } from 'react-native';
 import Animated, {
-  Easing,
-  interpolate,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withSequence,
-  withTiming,
-  withDelay,
-  runOnJS,
+    cancelAnimation,
+    Easing,
+    runOnJS,
+    useAnimatedStyle,
+    useSharedValue,
+    withDelay,
+    withRepeat,
+    withSequence,
+    withTiming,
 } from 'react-native-reanimated';
-import { Image } from 'expo-image';
 
 // Import logo assets
 const blobImage = require('@/assets/images/Mealscanner-logo_blob-isolation.png');
@@ -34,6 +34,8 @@ interface AnimatedLogoProps {
   onExitComplete?: () => void;
   /** Additional container styles */
   style?: ViewStyle;
+  /** Whether animations should be running (pause when not visible to save GPU) */
+  isActive?: boolean;
 }
 
 /**
@@ -51,6 +53,7 @@ export function AnimatedLogo({
   onIntroComplete,
   onExitComplete,
   style,
+  isActive = true,
 }: AnimatedLogoProps) {
   // Animation values
   const blobRotation = useSharedValue(0);
@@ -60,28 +63,43 @@ export function AnimatedLogo({
   const exitScale = useSharedValue(1);
   const exitOpacity = useSharedValue(1);
 
-  // Start continuous animations
+  // Start/stop continuous animations based on isActive
   useEffect(() => {
-    // Continuous blob rotation (slow, smooth)
-    blobRotation.value = withRepeat(
-      withTiming(360, {
-        duration: 8000,
-        easing: Easing.linear,
-      }),
-      -1, // Infinite
-      false // Don't reverse
-    );
+    if (isActive) {
+      // Continuous blob rotation (slow, smooth)
+      blobRotation.value = withRepeat(
+        withTiming(360, {
+          duration: 8000,
+          easing: Easing.linear,
+        }),
+        -1, // Infinite
+        false // Don't reverse
+      );
 
-    // Continuous pulse effect (subtle breathing)
-    pulse.value = withRepeat(
-      withSequence(
-        withTiming(1.03, { duration: 1200, easing: Easing.inOut(Easing.ease) }),
-        withTiming(0.97, { duration: 1200, easing: Easing.inOut(Easing.ease) })
-      ),
-      -1, // Infinite
-      true // Reverse (oscillate)
-    );
-  }, [blobRotation, pulse]);
+      // Continuous pulse effect (subtle breathing)
+      pulse.value = withRepeat(
+        withSequence(
+          withTiming(1.03, { duration: 1200, easing: Easing.inOut(Easing.ease) }),
+          withTiming(0.97, { duration: 1200, easing: Easing.inOut(Easing.ease) })
+        ),
+        -1, // Infinite
+        true // Reverse (oscillate)
+      );
+    } else {
+      // Stop animations to save GPU resources
+      cancelAnimation(blobRotation);
+      cancelAnimation(pulse);
+      // Reset to neutral values
+      blobRotation.value = 0;
+      pulse.value = 1;
+    }
+
+    return () => {
+      // Cleanup on unmount
+      cancelAnimation(blobRotation);
+      cancelAnimation(pulse);
+    };
+  }, [isActive, blobRotation, pulse]);
 
   // Intro animation
   useEffect(() => {

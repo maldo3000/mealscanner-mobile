@@ -56,6 +56,11 @@ export interface GoalCalculationParams {
   goalType: NutritionGoalType;
   pace?: GoalPace;
   /**
+   * Qualitative focus areas that influence macro distribution.
+   * e.g. "Eat less carbs", "Increase protein", "Improve fibre intake"
+   */
+  focusAreas?: string[];
+  /**
    * Optional overrides for custom goals. If provided, these take precedence over
    * calculated values on a per-field basis.
    */

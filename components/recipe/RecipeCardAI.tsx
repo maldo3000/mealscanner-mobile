@@ -1,12 +1,12 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { ThumbnailImage } from '@/components/ui/OptimizedImage';
 import { IconSymbol } from '@/components/ui/IconSymbol';
-import { SourceBadge } from './SourceBadge';
-import { Colors, neonGreen, accentSky } from '@/constants/Colors';
-import { TextStyles, FontFamilies } from '@/constants/Typography';
-import { Spacing } from '@/constants/Spacing';
+import { ThumbnailImage } from '@/components/ui/OptimizedImage';
+import { accentSky, Colors, neonGreen } from '@/constants/Colors';
+import { FontFamilies, TextStyles } from '@/constants/Typography';
+import { getRecipeImageSource } from '@/data/recipeImages';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import React from 'react';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SourceBadge } from './SourceBadge';
 import type { Recipe } from './types';
 
 interface RecipeCardAIProps {
@@ -34,9 +34,9 @@ export function RecipeCardAI({ recipe, onPress }: RecipeCardAIProps) {
       <View style={styles.layout}>
         {/* Circular Thumbnail */}
         <View style={styles.imageWrapper}>
-          {recipe.image_url ? (
+          {(recipe.image_url || recipe.id) ? (
             <ThumbnailImage 
-              source={recipe.image_url} 
+              source={getRecipeImageSource(recipe.id, recipe.image_url) || recipe.image_url} 
               style={styles.image} 
             />
           ) : (

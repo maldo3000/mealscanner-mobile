@@ -17,7 +17,6 @@
         "NSCameraUsageDescription": "MealScanner needs access to your camera to scan and analyze meal images for nutritional information.",
         "NSPhotoLibraryUsageDescription": "MealScanner needs access to your photo library to select meal images for nutritional analysis.",
         "NSMicrophoneUsageDescription": "MealScanner needs access to your microphone for voice input to describe meals.",
-        "NSFaceIDUsageDescription": "MealScanner uses Face ID to securely authenticate and protect your account information.",
         "NSHealthShareUsageDescription": "MealScanner reads your active energy and steps to adjust your daily nutrition targets.",
         "NSHealthUpdateUsageDescription": "MealScanner logs your meal calories and macros to your Apple Health history."
       },
@@ -31,18 +30,14 @@
       "edgeToEdgeEnabled": true,
       "permissions": [
         "android.permission.RECORD_AUDIO",
-        "android.permission.MODIFY_AUDIO_SETTINGS",
-        "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS"
       ],
-      "runtimeVersion": {
-        "policy": "appVersion"
-      },
+      "runtimeVersion": "1.0.0",
       "package": "app.mealscanner"
     },
     "web": {
       "bundler": "metro",
-      "output": "static",
+      "output": "single",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
@@ -63,6 +58,7 @@
         }
       ],
       "expo-secure-store",
+      "expo-notifications",
       "expo-font",
       "expo-web-browser",
       [
@@ -73,7 +69,14 @@
         }
       ],
       "expo-apple-authentication",
-      "@kingstinct/react-native-healthkit"
+      [
+        "@kingstinct/react-native-healthkit",
+        {
+          "NSHealthShareUsageDescription": "MealScanner reads your active energy and steps to adjust your daily nutrition targets.",
+          "NSHealthUpdateUsageDescription": "MealScanner logs your meal calories and macros to your Apple Health history."
+        }
+      ],
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true

@@ -1,18 +1,20 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { LayoutChangeEvent, NativeSyntheticEvent, TextInputContentSizeChangeEventData } from 'react-native';
 import {
-  ActivityIndicator,
-  Keyboard,
-  KeyboardAvoidingView,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  TouchableWithoutFeedback,
-  View,
+    Keyboard,
+    KeyboardAvoidingView,
+    Platform,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    TouchableWithoutFeedback,
+    View,
 } from 'react-native';
+
+import { SwirlingSpinner } from '@/components/ui/SwirlingSpinner';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/ui/Button';
@@ -23,6 +25,8 @@ import { TextStyles } from '@/constants/Typography';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { transcribeAudioDirect } from '@/lib/supabase';
+import { getCleanTranscript } from '@/lib/transcription';
+import { VoicePulseSkia } from './VoicePulseSkia';
 
 export interface DescribeInputSheetProps {
   userId: string;
@@ -43,8 +47,42 @@ export function DescribeInputSheet(props: DescribeInputSheetProps): React.ReactE
 
   const [text, setText] = useState<string>(initialText);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [isPreparingSubmit, setIsPreparingSubmit] = useState<boolean>(false);
   const [isTranscribing, setIsTranscribing] = useState<boolean>(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState<boolean>(false);
+
+  // Refs for UI elements
+  const inputRef = useRef<TextInput>(null);
+  const scrollRef = useRef<ScrollView>(null);
+
+  // Track input viewport + content height so programmatic updates never clip the last line.
+  // We use a ScrollView wrapper for reliable scrollToEnd without focusing the TextInput
+  // (focusing would pop the keyboard during voice dictation).
+  const [inputViewportHeight, setInputViewportHeight] = useState<number>(0);
+  const [inputContentHeight, setInputContentHeight] = useState<number>(0);
+
+  // Refs for async submit flow (stop -> transcribe -> submit)
+  const isSubmittingRef = useRef<boolean>(false);
+  const isTranscribingRef = useRef<boolean>(isTranscribing);
+  const textRef = useRef<string>(text);
+  const transcriptionPromiseRef = useRef<Promise<void> | null>(null);
+
+  useEffect(() => {
+    isTranscribingRef.current = isTranscribing;
+  }, [isTranscribing]);
+
+  useEffect(() => {
+    textRef.current = text;
+  }, [text]);
+
+  const scrollToEndSoon = useCallback((animated: boolean = true): void => {
+    // Two RAFs ensures the ScrollView has measured the updated content size.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        scrollRef.current?.scrollToEnd({ animated });
+      });
+    });
+  }, []);
 
   useEffect(() => {
     const showSubscription = Keyboard.addListener(
@@ -63,63 +101,135 @@ export function DescribeInputSheet(props: DescribeInputSheetProps): React.ReactE
   }, []);
 
   const handleTranscription = useCallback(
-    async (audioUri: string): Promise<void> => {
-      if (!audioUri) return;
-      setIsTranscribing(true);
-      try {
-        const { data, error } = await transcribeAudioDirect(audioUri, userId);
-        if (error) throw error;
-        const transcript = data?.transcript?.trim();
-        if (transcript) {
-          setText((prev) => {
-            const p = prev.trim();
-            return p ? `${p} ${transcript}` : transcript;
-          });
+    (audioUri: string): Promise<void> => {
+      if (!audioUri) return Promise.resolve();
+      const task = (async () => {
+        setIsTranscribing(true);
+        try {
+          const { data, error } = await transcribeAudioDirect(audioUri, userId);
+          if (error) throw error;
+          const transcript = getCleanTranscript(data?.transcript);
+          if (transcript) {
+            setText((prev) => {
+              const p = prev.trim();
+              const newText = p ? `${p} ${transcript}` : transcript;
+
+              // After programmatic text update, scroll to reveal all content
+              // and move the cursor to the end so the user sees the new text
+              setTimeout(() => {
+                scrollToEndSoon(true);
+                inputRef.current?.setNativeProps({
+                  selection: { start: newText.length, end: newText.length },
+                });
+              }, 50);
+
+              return newText;
+            });
+          }
+        } finally {
+          setIsTranscribing(false);
         }
-      } finally {
-        setIsTranscribing(false);
-      }
+      })();
+
+      transcriptionPromiseRef.current = task;
+      return task.finally(() => {
+        if (transcriptionPromiseRef.current === task) {
+          transcriptionPromiseRef.current = null;
+        }
+      });
     },
-    [userId]
+    [scrollToEndSoon, userId]
   );
 
-  const { isRecording, startRecording, stopRecording } = useAudioRecorder({
+  const { isRecording, metering, startRecording, stopRecording } = useAudioRecorder({
     onRecordingComplete: handleTranscription,
+    enableMetering: true,
     onError: () => {
       setIsTranscribing(false);
     },
   });
 
-  const canSubmit = useMemo<boolean>(() => !!text.trim() && !isSubmitting, [isSubmitting, text]);
+  const canSubmit = useMemo<boolean>(() => {
+    const hasText = text.trim().length > 0;
+    const hasVoiceInFlight = isRecording || isTranscribing || isPreparingSubmit || isSubmitting;
+    return hasText || hasVoiceInFlight;
+  }, [isPreparingSubmit, isRecording, isSubmitting, isTranscribing, text]);
+
+  const submitLabel = useMemo<string>(() => {
+    if (isPreparingSubmit || isTranscribing) return 'Transcribing...';
+    if (isSubmitting) return 'Adding...';
+    return 'Add to meal';
+  }, [isPreparingSubmit, isSubmitting, isTranscribing]);
 
   const toggleRecording = useCallback(async (): Promise<void> => {
-    if (isTranscribing) return;
+    if (isTranscribing || isSubmitting || isPreparingSubmit) return;
     if (isRecording) {
       await stopRecording();
       return;
     }
     await startRecording();
-  }, [isRecording, isTranscribing, startRecording, stopRecording]);
+  }, [isPreparingSubmit, isRecording, isSubmitting, isTranscribing, startRecording, stopRecording]);
+
+  const waitForTranscription = useCallback(async (): Promise<void> => {
+    if (transcriptionPromiseRef.current) {
+      await transcriptionPromiseRef.current;
+      return;
+    }
+    // Fallback for rare edge cases where UI says transcribing but no tracked promise exists.
+    if (isTranscribingRef.current) {
+      let attempts = 0;
+      const maxAttempts = 200;
+      while (isTranscribingRef.current && attempts < maxAttempts) {
+        await new Promise((r) => setTimeout(r, 100));
+        attempts += 1;
+      }
+    }
+  }, []);
 
   const submit = useCallback(async (): Promise<void> => {
-    const trimmed = text.trim();
-    if (!trimmed || isSubmitting) return;
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
     setIsSubmitting(true);
+    try {
+      const shouldWaitForTranscription = isRecording || isTranscribing;
+      if (shouldWaitForTranscription) {
+        setIsPreparingSubmit(true);
+      }
+
+      if (isRecording) {
+        await stopRecording();
+      }
+
+      if (shouldWaitForTranscription) {
+        await waitForTranscription();
+        setIsPreparingSubmit(false);
+      }
+
+      const trimmed = textRef.current.trim();
+      if (!trimmed) return;
+
+      await onSubmit(trimmed);
+      setText('');
+    } finally {
+      setIsPreparingSubmit(false);
+      setIsSubmitting(false);
+      isSubmittingRef.current = false;
+    }
+  }, [isRecording, isTranscribing, onSubmit, stopRecording, waitForTranscription]);
+
+  const close = useCallback(async (): Promise<void> => {
     try {
       if (isRecording) {
         await stopRecording();
       }
-      await onSubmit(trimmed);
-      setText('');
-    } finally {
-      setIsSubmitting(false);
+    } catch {
+      // Ensure we always proceed to cancel even if stopRecording fails
     }
-  }, [isRecording, isSubmitting, onSubmit, stopRecording, text]);
-
-  const close = useCallback(async (): Promise<void> => {
-    if (isRecording) {
-      await stopRecording();
-    }
+    // Reset all loading states so the UI isn't left in a stuck state
+    setIsSubmitting(false);
+    setIsPreparingSubmit(false);
+    setIsTranscribing(false);
+    isSubmittingRef.current = false;
     setText('');
     onCancel();
   }, [isRecording, onCancel, stopRecording]);
@@ -135,69 +245,105 @@ export function DescribeInputSheet(props: DescribeInputSheetProps): React.ReactE
       </View>
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.keyboardAvoidingView}>
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <View>
-              <Text style={[TextStyles.body, { color: colors.icon, marginBottom: Spacing.xl }]}>{subtitle}</Text>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={styles.scrollContent}>
+            <Text style={[TextStyles.body, { color: colors.icon, marginBottom: Spacing.md }]}>{subtitle}</Text>
 
-              <View style={styles.inputArea}>
+            <View
+              style={styles.inputArea}
+              onLayout={(e: LayoutChangeEvent) => {
+                const next = Math.ceil(e.nativeEvent.layout.height);
+                setInputViewportHeight((prev) => (prev === next ? prev : next));
+              }}
+            >
+              <ScrollView
+                ref={scrollRef}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator
+                style={styles.inputScroll}
+              >
                 <TextInput
-                  style={[styles.largeInput, { color: colors.text }]}
+                  ref={inputRef}
+                  style={[
+                    styles.largeInput,
+                    {
+                      color: colors.text,
+                      height:
+                        inputViewportHeight > 0 || inputContentHeight > 0
+                          ? Math.max(inputViewportHeight, inputContentHeight + Spacing.xl)
+                          : undefined,
+                    },
+                  ]}
                   placeholder={placeholder}
                   placeholderTextColor={colors.icon}
                   value={text}
                   onChangeText={setText}
                   multiline
                   textAlignVertical="top"
+                  scrollEnabled={false}
+                  onContentSizeChange={(e: NativeSyntheticEvent<TextInputContentSizeChangeEventData>) => {
+                    const next = Math.ceil(e.nativeEvent.contentSize.height);
+                    setInputContentHeight((prev) => (prev === next ? prev : next));
+                    scrollToEndSoon(true);
+                  }}
                 />
-              </View>
+              </ScrollView>
             </View>
-          </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
 
           <View style={styles.footer}>
             {!isKeyboardVisible && (
               <>
-                <TouchableOpacity
-                  onPress={toggleRecording}
-                  disabled={isTranscribing}
-                  style={[
-                    styles.hugeMicButton,
-                    {
-                      backgroundColor: isRecording ? 'rgba(239, 68, 68, 0.15)' : `${neonGreen}15`,
-                      borderColor: isRecording ? '#EF4444' : `${neonGreen}40`,
-                    },
-                  ]}
-                  activeOpacity={0.8}
-                >
-                  {isTranscribing ? (
-                    <ActivityIndicator size="large" color={neonGreen} />
-                  ) : (
-                    <IconSymbol
-                      name={isRecording ? 'stop.fill' : 'mic'}
-                      size={36}
-                      color={isRecording ? '#EF4444' : neonGreen}
-                    />
-                  )}
-                </TouchableOpacity>
+                <View style={styles.micButtonContainer}>
+                  <VoicePulseSkia metering={metering} isRecording={isRecording} size={88} />
+                  <TouchableOpacity
+                    onPress={toggleRecording}
+                    disabled={isTranscribing || isSubmitting || isPreparingSubmit}
+                    style={[
+                      styles.hugeMicButton,
+                      {
+                        backgroundColor: isRecording ? 'rgba(255, 255, 255, 0.10)' : `${neonGreen}15`,
+                        borderColor: isRecording ? '#FFFFFF' : `${neonGreen}40`,
+                      },
+                    ]}
+                    activeOpacity={0.8}
+                  >
+                    {isTranscribing ? (
+                      <SwirlingSpinner size={36} color={neonGreen} />
+                    ) : (
+                  <IconSymbol
+                    name={isRecording ? 'stop.fill' : 'mic.fill'}
+                    size={36}
+                    color={isRecording ? '#FFFFFF' : neonGreen}
+                  />
+                    )}
+                  </TouchableOpacity>
+                </View>
 
-                <Text style={[TextStyles.bodySmall, { color: colors.icon, marginBottom: Spacing.xl }]}>
+                <Text style={[TextStyles.bodySmall, { color: colors.icon, marginBottom: Spacing.lg }]}>
                   {isRecording ? 'Listening... tap to stop' : 'Tap to speak'}
                 </Text>
               </>
             )}
 
-            <Button variant="primary" onPress={submit} disabled={!canSubmit} fullWidth style={styles.submitButton}>
-              Add to meal
-            </Button>
+            <View style={styles.buttonContainer}>
+            <Button
+              variant="primary"
+              onPress={submit}
+              disabled={!canSubmit}
+              fullWidth
+              style={styles.submitButton}
+              textStyle={{ color: 'white' }}
+              icon={isSubmitting ? <SwirlingSpinner size="small" color="white" /> : undefined}
+            >
+              {submitLabel}
+              </Button>
+            </View>
 
             {/* Spacer to clear the bottom edge */}
             <View style={{ height: Math.max(insets.bottom, Spacing.xl) }} />
           </View>
-        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -227,22 +373,32 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    flexGrow: 1,
+    flex: 1,
     paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.md,
   },
   inputArea: {
-    minHeight: 200,
+    flex: 1,
+    marginBottom: Spacing.md,
+  },
+  inputScroll: {
+    flex: 1,
   },
   largeInput: {
     ...TextStyles.h3,
     fontSize: 24,
     lineHeight: 32,
+    paddingBottom: Spacing.xl,
   },
   footer: {
     alignItems: 'center',
-    marginTop: 'auto',
-    paddingTop: Spacing.xl,
+    paddingTop: Spacing.md,
+    paddingHorizontal: Spacing.xl,
+  },
+  micButtonContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.md,
   },
   hugeMicButton: {
     width: 88,
@@ -251,7 +407,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    marginBottom: Spacing.md,
+    zIndex: 1,
+  },
+  buttonContainer: {
+    width: '100%',
+    zIndex: 2,
+    position: 'relative',
   },
   submitButton: {
     height: 56,

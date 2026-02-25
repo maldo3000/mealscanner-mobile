@@ -1,9 +1,8 @@
-import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, TouchableOpacityProps, View } from 'react-native';
-import { Colors, neonGreen, glassBorder, glassSurface, glassHighlight } from '@/constants/Colors';
 import { ComponentSpacing } from '@/constants/Spacing';
 import { TextStyles } from '@/constants/Typography';
-import { useColorScheme } from '@/hooks/useColorScheme';
+import { useTheme } from '@/context/ThemeContext';
+import React from 'react';
+import { Platform, StyleSheet, Text, TouchableOpacity, TouchableOpacityProps, View } from 'react-native';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'glass' | 'ghost';
 export type ButtonSize = 'small' | 'medium' | 'large';
@@ -30,8 +29,9 @@ export function Button({
   textStyle,
   ...props 
 }: ButtonProps) {
-  const colorScheme = useColorScheme();
-  const colors = Colors[colorScheme ?? 'dark']; // Force dark mode preference for this theme
+  const { tokens } = useTheme();
+  const shouldUseGlowWrapper = variant === 'primary' && !noShadow;
+  const fullWidthGlowInset = fullWidth ? 12 : 0;
 
   const getContainerStyle = () => {
     const base = [styles.button];
@@ -39,27 +39,27 @@ export function Button({
     switch (variant) {
       case 'primary':
         base.push({ 
-          backgroundColor: neonGreen,
-          borderColor: neonGreen,
-          shadowColor: noShadow ? 'transparent' : neonGreen,
+          backgroundColor: tokens.accent,
+          borderColor: tokens.accent,
+          shadowColor: noShadow || shouldUseGlowWrapper ? 'transparent' : tokens.accent,
           shadowOffset: { width: 0, height: 0 },
-          shadowOpacity: noShadow ? 0 : (disabled ? 0.3 : 0.6),
-          shadowRadius: noShadow ? 0 : 12,
-          elevation: noShadow ? 0 : 8,
+          shadowOpacity: noShadow || shouldUseGlowWrapper ? 0 : (disabled ? 0.3 : 0.6),
+          shadowRadius: noShadow || shouldUseGlowWrapper ? 0 : 12,
+          elevation: noShadow || shouldUseGlowWrapper ? 0 : 8,
           opacity: disabled ? 0.5 : 1,
         });
         break;
       case 'secondary':
         base.push({
           backgroundColor: 'transparent',
-          borderColor: neonGreen,
+          borderColor: tokens.accent,
           borderWidth: 1,
         });
         break;
       case 'glass':
         base.push({
-          backgroundColor: glassSurface,
-          borderColor: glassHighlight,
+          backgroundColor: tokens.glassSurface,
+          borderColor: tokens.glassHighlight,
           borderWidth: 1,
         });
         break;
@@ -75,20 +75,21 @@ export function Button({
 
   const getTextStyle = () => {
     if (disabled && variant !== 'primary') {
-      return { color: 'rgba(255,255,255,0.3)' };
+      return { color: tokens.textMuted };
     }
     
     switch (variant) {
       case 'primary':
-        return { color: disabled ? 'rgba(0,0,0,0.5)' : '#000000' }; // Black text on neon green, dimmed when disabled
+        // Use a dark green for better contrast on the accent background
+        return { color: disabled ? '#1F1F1F' : '#0A2012', fontWeight: '600' as const };
       case 'secondary':
-        return { color: neonGreen };
+        return { color: tokens.accent };
       case 'glass':
-        return { color: '#FFFFFF' };
+        return { color: tokens.textPrimary };
       case 'ghost':
-        return { color: '#FFFFFF' };
+        return { color: tokens.textPrimary };
       default:
-        return { color: '#FFFFFF' };
+        return { color: tokens.textPrimary };
     }
   };
 
@@ -100,36 +101,83 @@ export function Button({
     }
   };
 
+  const buttonStyle = [
+    ...getContainerStyle(),
+    {
+      height: getHeight(),
+      paddingHorizontal: size === 'small' ? ComponentSpacing.buttonPadding : 24,
+      width: fullWidth ? '100%' : undefined,
+    },
+  ];
+
+  const content = (
+    <View style={styles.contentContainer}>
+      {icon && <View style={styles.iconContainer}>{icon}</View>}
+      <Text
+        style={[
+          TextStyles.button,
+          getTextStyle(),
+          {
+            fontSize: size === 'small' ? 13 : size === 'large' ? 18 : 15,
+          },
+          textStyle,
+        ]}
+      >
+        {children}
+      </Text>
+    </View>
+  );
+
+  if (shouldUseGlowWrapper) {
+    return (
+      <View
+        style={[
+          styles.primaryWrapper,
+          { width: fullWidth ? '100%' : undefined },
+        ]}
+      >
+        <View
+          pointerEvents="none"
+          style={[
+            styles.primaryGlow,
+            {
+              left: fullWidthGlowInset,
+              right: fullWidthGlowInset,
+              backgroundColor: Platform.OS === 'android' ? `${tokens.accent}20` : 'transparent',
+              shadowColor: tokens.accent,
+              shadowOffset: { width: 0, height: 0 },
+              shadowOpacity: disabled ? 0.25 : fullWidth ? 0.6 : 0.45,
+              shadowRadius: fullWidth ? 12 : 9,
+              elevation: fullWidth ? 8 : 6,
+            },
+          ]}
+        />
+        <TouchableOpacity
+          style={[
+            ...buttonStyle,
+            style,
+          ]}
+          disabled={disabled}
+          activeOpacity={0.8}
+          {...props}
+        >
+          {content}
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
     <TouchableOpacity
       style={[
-        ...getContainerStyle(),
-        {
-          height: getHeight(),
-          paddingHorizontal: size === 'small' ? ComponentSpacing.buttonPadding : 24,
-          width: fullWidth ? '100%' : undefined,
-        },
+        ...buttonStyle,
         style,
       ]}
       disabled={disabled}
       activeOpacity={0.8}
       {...props}
     >
-      <View style={styles.contentContainer}>
-        {icon && <View style={styles.iconContainer}>{icon}</View>}
-        <Text
-          style={[
-            TextStyles.button,
-            getTextStyle(),
-            {
-              fontSize: size === 'small' ? 13 : size === 'large' ? 18 : 15,
-            },
-            textStyle,
-          ]}
-        >
-          {children}
-        </Text>
-      </View>
+      {content}
     </TouchableOpacity>
   );
 }
@@ -140,6 +188,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1, // Thin sleek border
+    overflow: 'visible',
+  },
+  primaryWrapper: {
+    position: 'relative',
+    borderRadius: 9999,
+    overflow: 'visible',
+  },
+  primaryGlow: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    borderRadius: 9999,
+    overflow: 'visible',
   },
   contentContainer: {
     flexDirection: 'row',

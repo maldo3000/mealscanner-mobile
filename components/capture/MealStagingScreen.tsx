@@ -1,33 +1,36 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Keyboard,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  TouchableWithoutFeedback,
-  View,
+    Alert,
+    Keyboard,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    TouchableWithoutFeedback,
+    View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Image } from 'expo-image';
 
 import { Button } from '@/components/ui/Button';
+import { GlassCard } from '@/components/ui/GlassCard';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { Input } from '@/components/ui/Input';
-import { bgPrimary, Colors, glassBorder, glassSurface, neonGreen } from '@/constants/Colors';
+import { SwirlingSpinner } from '@/components/ui/SwirlingSpinner';
+import { Colors } from '@/constants/Colors';
 import { PageSpacing, Spacing } from '@/constants/Spacing';
 import { FontFamilies, TextStyles } from '@/constants/Typography';
+import { useTheme } from '@/context/ThemeContext';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { transcribeAudioDirect } from '@/lib/supabase';
+import { getCleanTranscript } from '@/lib/transcription';
 import { AnalysisLoadingOverlay, AnalysisStatus } from './AnalysisLoadingOverlay';
+import { VoicePulseSkia } from './VoicePulseSkia';
 import type { DraftMealItem } from './types';
 
 const MAX_PHOTOS = 4 as const;
@@ -50,6 +53,7 @@ export interface MealStagingScreenProps {
   onRemoveItem: (localId: string) => void;
   onSetHero: (localId: string) => void;
   onUpdateQuantity: (localId: string, nextQuantity: number) => void;
+  onEditTextItem: (localId: string, currentText: string) => void;
 
   onSaveContext: (next: string) => Promise<void> | void;
   onAnalyze: () => Promise<void> | void;
@@ -62,10 +66,12 @@ interface MealItemRowProps {
   onSetHero: () => void;
   onDecrement: () => void;
   onIncrement: () => void;
+  onEditTextItem: () => void;
 }
 
 function MealItemRow(props: MealItemRowProps): React.ReactElement {
-  const { item, isHero, onRemove, onSetHero, onDecrement, onIncrement } = props;
+  const { item, isHero, onRemove, onSetHero, onDecrement, onIncrement, onEditTextItem } = props;
+  const { tokens } = useTheme();
 
   return (
     <View style={styles.itemRow}>
@@ -77,27 +83,38 @@ function MealItemRow(props: MealItemRowProps): React.ReactElement {
             <IconSymbol name="text.alignleft" size={18} color="white" />
           </View>
         )}
-        <View style={styles.itemMain}>
-          {item.itemType === 'photo' ? (
-            <Text style={styles.itemTitle} numberOfLines={1}>
-              Photo
-            </Text>
-          ) : item.itemType === 'verified' ? (
-            <Text style={styles.itemTitle} numberOfLines={2}>
-              {item.foodItem.name}
-            </Text>
-          ) : (
+        {item.itemType === 'text' ? (
+          <TouchableOpacity
+            style={styles.itemMain}
+            onPress={onEditTextItem}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel="Edit described meal item"
+          >
             <Text style={styles.itemTitle} numberOfLines={2}>
               {item.text}
             </Text>
-          )}
-          {item.itemType === 'photo' && (
-            <TouchableOpacity onPress={onSetHero} style={styles.heroButton} activeOpacity={0.85}>
-              <IconSymbol name={isHero ? 'star.fill' : 'star'} size={16} color={isHero ? neonGreen : 'white'} />
-              {!isHero && <Text style={styles.heroButtonText}>Set hero</Text>}
-            </TouchableOpacity>
-          )}
-        </View>
+            <Text style={styles.editHint}>Tap to edit</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.itemMain}>
+            {item.itemType === 'photo' ? (
+              <Text style={styles.itemTitle} numberOfLines={1}>
+                Photo
+              </Text>
+            ) : (
+              <Text style={styles.itemTitle} numberOfLines={2}>
+                {item.foodItem.name}
+              </Text>
+            )}
+            {item.itemType === 'photo' && (
+              <TouchableOpacity onPress={onSetHero} style={styles.heroButton} activeOpacity={0.85}>
+                <IconSymbol name={isHero ? 'star.fill' : 'star'} size={16} color={isHero ? tokens.accent : 'white'} />
+                {!isHero && <Text style={styles.heroButtonText}>Set hero</Text>}
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
       </View>
 
       <View style={styles.itemRight}>
@@ -133,11 +150,13 @@ export function MealStagingScreen(props: MealStagingScreenProps): React.ReactEle
     onRemoveItem,
     onSetHero,
     onUpdateQuantity,
+    onEditTextItem,
     onSaveContext,
     onAnalyze,
   } = props;
 
   const insets = useSafeAreaInsets();
+  const { tokens } = useTheme();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
 
@@ -145,6 +164,22 @@ export function MealStagingScreen(props: MealStagingScreenProps): React.ReactEle
   const [tempContext, setTempContext] = useState<string>(contextText);
   const [isTranscribing, setIsTranscribing] = useState<boolean>(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState<boolean>(false);
+  const [isPreparingAnalyze, setIsPreparingAnalyze] = useState<boolean>(false);
+  const [isAnalyzeInFlight, setIsAnalyzeInFlight] = useState<boolean>(false);
+
+  // Refs to access latest values in async callbacks
+  const isTranscribingRef = useRef(isTranscribing);
+  const tempContextRef = useRef(tempContext);
+  const isAnalyzeInFlightRef = useRef<boolean>(false);
+  const transcriptionPromiseRef = useRef<Promise<void> | null>(null);
+
+  useEffect(() => {
+    isTranscribingRef.current = isTranscribing;
+  }, [isTranscribing]);
+
+  useEffect(() => {
+    tempContextRef.current = tempContext;
+  }, [tempContext]);
 
   useEffect(() => {
     const showSub = Keyboard.addListener(
@@ -161,27 +196,38 @@ export function MealStagingScreen(props: MealStagingScreenProps): React.ReactEle
     };
   }, []);
 
-  const handleAudioTranscription = useCallback(async (audioUri: string) => {
-    if (!audioUri) return;
-    setIsTranscribing(true);
-    try {
-      const { data, error } = await transcribeAudioDirect(audioUri, userId);
-      if (error) throw error;
-      if (data?.transcript) {
-        setTempContext((prev) => {
-          const trimmed = prev.trim();
-          return trimmed ? `${trimmed} ${data.transcript}` : data.transcript;
-        });
+  const handleAudioTranscription = useCallback((audioUri: string): Promise<void> => {
+    if (!audioUri) return Promise.resolve();
+    const task = (async () => {
+      setIsTranscribing(true);
+      try {
+        const { data, error } = await transcribeAudioDirect(audioUri, userId);
+        if (error) throw error;
+        const transcript = getCleanTranscript(data?.transcript);
+        if (transcript) {
+          setTempContext((prev) => {
+            const trimmed = prev.trim();
+            return trimmed ? `${trimmed} ${transcript}` : transcript;
+          });
+        }
+      } catch {
+        Alert.alert('Transcription Error', 'Failed to transcribe audio. Please try again or type your feedback.');
+      } finally {
+        setIsTranscribing(false);
       }
-    } catch (e) {
-      Alert.alert('Transcription Error', 'Failed to transcribe audio. Please try again or type your feedback.');
-    } finally {
-      setIsTranscribing(false);
-    }
+    })();
+
+    transcriptionPromiseRef.current = task;
+    return task.finally(() => {
+      if (transcriptionPromiseRef.current === task) {
+        transcriptionPromiseRef.current = null;
+      }
+    });
   }, [userId]);
 
-  const { isRecording, startRecording, stopRecording } = useAudioRecorder({
+  const { isRecording, metering, startRecording, stopRecording } = useAudioRecorder({
     onRecordingComplete: handleAudioTranscription,
+    enableMetering: true,
     onError: (error) => {
       Alert.alert('Recording Error', error.message);
     },
@@ -200,7 +246,13 @@ export function MealStagingScreen(props: MealStagingScreenProps): React.ReactEle
   }, [isRecording, startRecording, stopRecording]);
 
   const isAnalyzing = analysisStatus === 'analyzing' || analysisStatus === 'success';
-  const canAnalyze = items.length > 0 && analysisStatus === 'idle';
+  const canAnalyze =
+    items.length > 0 &&
+    analysisStatus === 'idle' &&
+    !isAnalyzeInFlight &&
+    !isPreparingAnalyze &&
+    !isRecording &&
+    !isTranscribing;
 
   const headerSubtitle = useMemo<string>(() => {
     if (items.length === 0) return 'Throw in photos or quick notes before we analyze.';
@@ -228,11 +280,56 @@ export function MealStagingScreen(props: MealStagingScreenProps): React.ReactEle
     setShowContextModal(false);
   }, [isRecording, onSaveContext, stopRecording, tempContext]);
 
+  const waitForTranscription = useCallback(async (): Promise<void> => {
+    if (transcriptionPromiseRef.current) {
+      await transcriptionPromiseRef.current;
+      return;
+    }
+    // Fallback for rare edge cases where transcribing is true without a tracked promise.
+    if (isTranscribingRef.current) {
+      let attempts = 0;
+      const maxAttempts = 200;
+      while (isTranscribingRef.current && attempts < maxAttempts) {
+        await new Promise((r) => setTimeout(r, 100));
+        attempts += 1;
+      }
+    }
+  }, []);
+
+  const handleAnalyze = useCallback(async (): Promise<void> => {
+    if (isAnalyzeInFlightRef.current || analysisStatus !== 'idle') return;
+
+    isAnalyzeInFlightRef.current = true;
+    setIsAnalyzeInFlight(true);
+    setIsPreparingAnalyze(true);
+    try {
+      // If recording is active, stop it first. stopRecording now awaits transcription callback.
+      if (isRecording) {
+        await stopRecording();
+      }
+
+      // If transcription is already in-flight, wait deterministically before saving and analyzing.
+      await waitForTranscription();
+
+      const finalContext = tempContextRef.current.trim();
+      if (finalContext) {
+        await onSaveContext(finalContext);
+      }
+
+      await onAnalyze();
+    } finally {
+      setIsPreparingAnalyze(false);
+      setIsAnalyzeInFlight(false);
+      isAnalyzeInFlightRef.current = false;
+    }
+  }, [analysisStatus, isRecording, onAnalyze, onSaveContext, stopRecording, waitForTranscription]);
+
   return (
     <View style={styles.container}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 140 }]}
+        style={{ overflow: 'visible' }}
       >
         <View style={styles.header}>
           <View style={styles.headerLeft}>
@@ -261,11 +358,16 @@ export function MealStagingScreen(props: MealStagingScreenProps): React.ReactEle
               onSetHero={() => onSetHero(item.localId)}
               onDecrement={() => onUpdateQuantity(item.localId, item.quantity - 1)}
               onIncrement={() => onUpdateQuantity(item.localId, item.quantity + 1)}
+              onEditTextItem={() => {
+                if (item.itemType === 'text') {
+                  onEditTextItem(item.localId, item.text);
+                }
+              }}
             />
           ))}
 
           {items.length === 0 && (
-            <View style={[styles.emptyState, { borderColor: glassBorder, backgroundColor: glassSurface }]}>
+            <View style={[styles.emptyState, { borderColor: tokens.glassBorder, backgroundColor: tokens.glassSurface }]}>
               <IconSymbol name="tray" size={28} color={colors.icon} />
               <Text style={[TextStyles.h4, { color: colors.text, marginTop: 10 }]}>Your tray is empty</Text>
               <Text style={[TextStyles.bodySmall, { color: colors.icon, marginTop: 6, textAlign: 'center' }]}>
@@ -275,8 +377,38 @@ export function MealStagingScreen(props: MealStagingScreenProps): React.ReactEle
           )}
         </View>
 
+        <TouchableOpacity
+          onPress={openContext}
+          disabled={isAnalyzing}
+          activeOpacity={0.85}
+        >
+          <GlassCard
+            intensity={15}
+            padding={14}
+            style={{
+              marginBottom: Spacing.lg,
+              borderColor: tokens.glassBorder,
+            }}
+          >
+            <View style={styles.contextRow}>
+              <View style={styles.contextIcon}>
+                <IconSymbol name="sparkles" size={20} color={tokens.accent} />
+              </View>
+              <View style={styles.contextLeft}>
+                <Text style={[TextStyles.bodySmall, { color: tokens.textPrimary, fontWeight: '800' }]}>
+                  {contextText.trim() ? 'Edit context' : 'Add context'}
+                </Text>
+                <Text style={[TextStyles.caption, { color: tokens.textMuted, marginTop: 2 }]}>
+                  Portions, oils, timing, or anything the camera missed
+                </Text>
+              </View>
+              <IconSymbol name="chevron.right" size={16} color={tokens.textMuted} />
+            </View>
+          </GlassCard>
+        </TouchableOpacity>
+
         <View style={styles.quickAddContainer}>
-          <View style={[styles.quickAddPill, { borderColor: glassBorder, backgroundColor: 'rgba(2, 44, 34, 0.85)' }]}>
+          <View style={[styles.quickAddPill, { borderColor: tokens.glassBorder, backgroundColor: 'rgba(2, 44, 34, 0.85)' }]}>
             <TouchableOpacity onPress={onQuickSnap} style={styles.quickAddButton} activeOpacity={0.85}>
               <IconSymbol name="camera" size={20} color="white" />
               <Text style={styles.quickAddText}>Photo</Text>
@@ -294,51 +426,31 @@ export function MealStagingScreen(props: MealStagingScreenProps): React.ReactEle
           </View>
         </View>
 
-        <Pressable
-          onPress={openContext}
-          disabled={isAnalyzing}
-          style={({ pressed }) => [
-            styles.contextCard,
-            {
-              borderColor: 'rgba(255,255,255,0.10)',
-              backgroundColor: 'rgba(255,255,255,0.04)',
-              opacity: pressed ? 0.92 : 1,
-            },
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel="Add context"
-          accessibilityHint="Add portions, oils, timing, or anything the camera missed"
-        >
-          <View style={styles.contextLeft}>
-            <Text style={[TextStyles.bodySmall, { color: colors.text, fontWeight: '700' }]}>
-              {contextText.trim() ? 'Edit context' : 'Add context'}
-            </Text>
-            <Text style={[TextStyles.caption, { color: colors.icon, marginTop: 4 }]}>
-              Portions, oils, timing, or anything the camera missed
-            </Text>
-          </View>
-          <IconSymbol name="chevron.right" size={16} color={colors.icon} />
-        </Pressable>
-
         <View style={styles.analyzeContainer}>
           <Button
             variant="primary"
-            onPress={onAnalyze}
+            onPress={handleAnalyze}
             disabled={!canAnalyze}
             fullWidth
             style={[
               styles.analyzeButton,
               canAnalyze && {
-                shadowColor: neonGreen,
+                shadowColor: tokens.accent,
                 shadowOpacity: 0.45,
                 shadowRadius: 18,
                 shadowOffset: { width: 0, height: 8 },
                 elevation: 8,
               },
             ]}
-            icon={<IconSymbol name="brain.head.profile" size={18} color="#000000" />}
+            icon={
+              isPreparingAnalyze ? (
+                <SwirlingSpinner size="small" color="#000000" />
+              ) : (
+                <IconSymbol name="brain.head.profile" size={18} color="#000000" />
+              )
+            }
           >
-            Analyze meal
+            {isPreparingAnalyze ? 'Preparing analysis...' : 'Analyze meal'}
           </Button>
         </View>
       </ScrollView>
@@ -350,7 +462,7 @@ export function MealStagingScreen(props: MealStagingScreenProps): React.ReactEle
               behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
               style={styles.modalContainer}
             >
-              <View style={styles.modalCard}>
+              <View style={[styles.modalCard, { backgroundColor: tokens.background }]}>
                 <View style={styles.modalHeader}>
                   <Text style={[TextStyles.h3, { color: colors.text }]}>Add context</Text>
                   <TouchableOpacity onPress={closeContext} style={styles.modalClose} activeOpacity={0.85}>
@@ -369,18 +481,29 @@ export function MealStagingScreen(props: MealStagingScreenProps): React.ReactEle
                   textAlignVertical="top"
                   rightIcon={
                     !isKeyboardVisible && (
-                      <TouchableOpacity
-                        onPress={handleVoiceInput}
-                        disabled={isTranscribing}
-                        activeOpacity={0.7}
-                        style={styles.voiceInputButton}
-                      >
-                        <IconSymbol
-                          name={isRecording ? 'stop.fill' : isTranscribing ? 'hourglass' : 'mic'}
-                          size={26}
-                          color={isRecording ? '#EF4444' : neonGreen}
-                        />
-                      </TouchableOpacity>
+                      <View style={styles.voiceInputWrapper}>
+                        <View style={styles.voicePulseClip}>
+                          <VoicePulseSkia metering={metering} isRecording={isRecording} size={56} />
+                        </View>
+                        <TouchableOpacity
+                          onPress={handleVoiceInput}
+                          disabled={isTranscribing}
+                          activeOpacity={0.7}
+                          style={[
+                            styles.voiceInputButton,
+                            {
+                              backgroundColor: isRecording ? 'rgba(239, 68, 68, 0.15)' : `${tokens.accent}15`,
+                              borderColor: isRecording ? '#EF4444' : `${tokens.accent}40`,
+                            },
+                          ]}
+                        >
+                          <IconSymbol
+                            name={isRecording ? 'stop.fill' : isTranscribing ? 'hourglass' : 'mic'}
+                            size={24}
+                            color={isRecording ? '#EF4444' : tokens.accent}
+                          />
+                        </TouchableOpacity>
+                      </View>
                     )
                   }
                   containerStyle={{ marginBottom: Spacing.lg }}
@@ -398,7 +521,7 @@ export function MealStagingScreen(props: MealStagingScreenProps): React.ReactEle
                 {/* Transcribing indicator */}
                 {isTranscribing && (
                   <View style={styles.transcribingIndicator}>
-                    <ActivityIndicator size="small" color={neonGreen} />
+                    <SwirlingSpinner size="small" />
                     <Text style={[TextStyles.bodySmall, { color: colors.icon }]}>Transcribing…</Text>
                   </View>
                 )}
@@ -467,6 +590,7 @@ const styles = StyleSheet.create({
   quickAddContainer: {
     alignItems: 'center',
     marginBottom: Spacing.xl,
+    marginTop: Spacing.sm,
   },
   quickAddPill: {
     flexDirection: 'row',
@@ -502,12 +626,28 @@ const styles = StyleSheet.create({
     minHeight: 66,
     marginBottom: Spacing.lg,
   },
+  contextRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    gap: 12,
+  },
+  contextIcon: {
+    backgroundColor: 'rgba(52, 211, 153, 0.1)',
+    padding: 8,
+    borderRadius: 12,
+    flexShrink: 0,
+  },
   contextLeft: {
     flex: 1,
-    paddingRight: 10,
+    minWidth: 0,
   },
   analyzeContainer: {
     width: '100%',
+    paddingVertical: 20,
+    paddingHorizontal: 12,
+    marginTop: Spacing.md,
+    overflow: 'visible',
   },
   analyzeButton: {
     minHeight: 56,
@@ -548,6 +688,11 @@ const styles = StyleSheet.create({
   itemMain: {
     flex: 1,
     gap: 8,
+  },
+  editHint: {
+    ...TextStyles.caption,
+    color: 'rgba(255,255,255,0.75)',
+    fontWeight: '600',
   },
   itemTitle: {
     ...TextStyles.body,
@@ -622,7 +767,6 @@ const styles = StyleSheet.create({
     maxWidth: 520,
   },
   modalCard: {
-    backgroundColor: bgPrimary,
     borderRadius: 20,
     padding: Spacing.xl,
     borderWidth: 1,
@@ -644,8 +788,29 @@ const styles = StyleSheet.create({
   modalButton: {
     flex: 1,
   },
+  voiceInputWrapper: {
+    width: 72,
+    height: 72,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  voicePulseClip: {
+    position: 'absolute',
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    overflow: Platform.OS === 'android' ? 'visible' : 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   voiceInputButton: {
-    padding: Spacing.xs,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    zIndex: 1,
   },
   recordingIndicator: {
     flexDirection: 'row',

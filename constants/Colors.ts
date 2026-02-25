@@ -1,68 +1,105 @@
 import { Platform } from 'react-native';
-import { Brand } from './Brand';
-import { USE_EDITORIAL_HERBARIUM } from './brandExperiment';
+
+import {
+    HerbariumPalette,
+    herbariumTokens,
+    ThemeTokens
+} from './themes';
 
 /**
  * MealScanner Color System
  * 
- * Brand colors are defined in Brand.ts - import { Brand } from '@/constants/Brand'
- * This file provides backward-compatible exports and theme configuration.
+ * This file provides backward-compatible exports that default to Herbarium.
+ * For theme-aware components, use the ThemeContext instead:
+ * 
+ *   import { useTheme } from '@/context/ThemeContext';
+ *   const { tokens, accentAlpha } = useTheme();
+ * 
+ * Migration guide:
+ * - neonGreen → tokens.accent
+ * - bgPrimary/deepGreen → tokens.background
+ * - textWhite → tokens.textPrimary
+ * - textMuted → tokens.textMuted
+ * - glassSurface → tokens.glassSurface
+ * - glassBorder → tokens.glassBorder
+ * - rgba(74, 222, 128, x) → accentAlpha(x)
  */
 
-// Re-export Brand for convenience (prefer importing Brand directly)
+// ═══════════════════════════════════════════════════════════
+// RE-EXPORTS FROM THEMES (prefer using these via ThemeContext)
+// ═══════════════════════════════════════════════════════════
+
+export { alpha, withAlpha } from './themes';
+export type { ThemeTokens } from './themes';
+
+// ═══════════════════════════════════════════════════════════
+// BRAND PALETTE (for direct Brand.* usage)
+// ═══════════════════════════════════════════════════════════
+
 export { Brand } from './Brand';
 
-// Legacy herbarium export (use Brand instead)
+// ═══════════════════════════════════════════════════════════
+// LEGACY herbarium OBJECT (for app/_layout.tsx compatibility)
+// ═══════════════════════════════════════════════════════════
+
 export const herbarium = {
-  backgroundInk: Brand.ink,
-  backgroundInkAlt: Brand.inkAlt,
-  surface1: Brand.surface1,
-  surface2: Brand.surface2,
-  border: Brand.border,
-  textPrimary: Brand.bone,
-  textMuted: Brand.sage,
-  accentPrimary: Brand.matcha,
+  backgroundInk: HerbariumPalette.ink,
+  backgroundInkAlt: HerbariumPalette.inkAlt,
+  surface1: HerbariumPalette.surface1,
+  surface2: HerbariumPalette.surface2,
+  border: HerbariumPalette.border,
+  textPrimary: HerbariumPalette.bone,
+  textMuted: HerbariumPalette.sage,
+  accentPrimary: HerbariumPalette.matcha,
 } as const;
 
+// ═══════════════════════════════════════════════════════════
+// STATIC EXPORTS (default to Herbarium for backward compat)
+// These are what existing components import directly.
+// ═══════════════════════════════════════════════════════════
+
+// Current default tokens (Herbarium)
+const tokens = herbariumTokens;
+
 // Base colors
-export const deepGreen = USE_EDITORIAL_HERBARIUM ? Brand.ink : '#022c22'; // Very dark green background
-export const richGreen = USE_EDITORIAL_HERBARIUM ? Brand.inkAlt : '#064e3b'; // Slightly lighter green
-export const mossGreen = USE_EDITORIAL_HERBARIUM ? Brand.surface1 : '#065f46'; // Accent background
-export const neonGreen = USE_EDITORIAL_HERBARIUM ? Brand.matcha : '#4ade80'; // Primary Action / Glow
-export const softMint = USE_EDITORIAL_HERBARIUM ? Brand.sage : '#a7f3d0'; // Secondary Text / Accents
+export const deepGreen = tokens.background;
+export const richGreen = tokens.backgroundAlt;
+export const mossGreen = tokens.surface1;
+export const neonGreen = tokens.accent;
+export const softMint = tokens.textMuted;
 
 // Glassmorphism tokens
-export const glassSurface = USE_EDITORIAL_HERBARIUM ? Brand.surface1 : 'rgba(255, 255, 255, 0.05)';
-export const glassBorder = USE_EDITORIAL_HERBARIUM ? Brand.border : 'rgba(255, 255, 255, 0.1)';
-export const glassHighlight = USE_EDITORIAL_HERBARIUM ? Brand.surface2 : 'rgba(255, 255, 255, 0.15)';
+export const glassSurface = tokens.glassSurface;
+export const glassBorder = tokens.glassBorder;
+export const glassHighlight = tokens.glassHighlight;
 
-// Standard Tokens
-export const bgPrimary = deepGreen;
-export const textWhite = USE_EDITORIAL_HERBARIUM ? Brand.bone : '#FFFFFF';
-export const textMuted = USE_EDITORIAL_HERBARIUM ? Brand.sage : 'rgba(255, 255, 255, 0.6)';
-export const borderLight = glassBorder;
+// Standard tokens
+export const bgPrimary = tokens.background;
+export const textWhite = tokens.textPrimary;
+export const textMuted = tokens.textMuted;
+export const borderLight = tokens.glassBorder;
 
 // Legacy exports mapped to new system
-export const primaryGreen = neonGreen;
-export const bgLight = bgPrimary;
-export const bgSoft = glassSurface;
-export const textMain = textWhite;
+export const primaryGreen = tokens.accent;
+export const bgLight = tokens.background;
+export const bgSoft = tokens.glassSurface;
+export const textMain = tokens.textPrimary;
 
-// Accent colors (Glowing versions)
-export const accentYellow = '#fde047'; // Vibrant Yellow
-export const accentCoral = '#fb7185'; // Brighter Rose/Coral
-export const accentSky = '#38bdf8'; // Vibrant Sky Blue
+// Accent colors (shared across themes)
+export const accentYellow = '#fde047';
+export const accentCoral = '#fb7185';
+export const accentSky = '#38bdf8';
 export const accentLavender = '#c084fc';
 
 // Semantic color tokens
 export const semanticColors = {
-  success: neonGreen,
-  successLight: softMint,
-  warning: accentYellow,
-  error: '#ef4444', // Red-500
-  errorLight: '#fca5a5', // Red-300
-  info: accentSky,
-  infoLight: '#7dd3fc', // Sky-300
+  success: tokens.success,
+  successLight: tokens.textMuted,
+  warning: tokens.warning,
+  error: tokens.error,
+  errorLight: '#fca5a5',
+  info: tokens.info,
+  infoLight: '#7dd3fc',
 } as const;
 
 // Glass effect opacity variants
@@ -75,12 +112,11 @@ export const glassOpacity = {
 } as const;
 
 // Helper function to create glass colors with opacity
-export const createGlassColor = (opacity: number = glassOpacity.surface) => 
+export const createGlassColor = (opacity: number = glassOpacity.surface) =>
   `rgba(255, 255, 255, ${opacity})`;
 
 // Helper function to create colored glass effects
 export const createColoredGlass = (color: string, opacity: number = 0.2) => {
-  // Convert hex to rgba
   const hex = color.replace('#', '');
   const r = parseInt(hex.substring(0, 2), 16);
   const g = parseInt(hex.substring(2, 4), 16);
@@ -91,7 +127,7 @@ export const createColoredGlass = (color: string, opacity: number = 0.2) => {
 // Platform-specific font family
 export const getFontFamily = () => {
   if (Platform.OS === 'ios') {
-    return 'System'; // Use system font for cleanest look
+    return 'System';
   } else if (Platform.OS === 'android') {
     return 'sans-serif';
   } else {
@@ -99,24 +135,52 @@ export const getFontFamily = () => {
   }
 };
 
+// ═══════════════════════════════════════════════════════════
+// REACT NAVIGATION THEME OBJECT
+// ═══════════════════════════════════════════════════════════
+
 const glassTheme = {
-  text: textWhite,
-  background: bgPrimary,
-  tint: neonGreen,
-  icon: textMuted,
-  tabIconDefault: textMuted,
-  tabIconSelected: neonGreen,
-  primary: neonGreen,
-  primaryLight: softMint,
-  primaryDark: richGreen,
-  surface: glassSurface,
-  border: glassBorder,
-  bgLight: bgPrimary,
-  bgSoft: glassSurface,
-  surface2: USE_EDITORIAL_HERBARIUM ? Brand.surface2 : glassHighlight,
+  text: tokens.textPrimary,
+  background: tokens.background,
+  tint: tokens.accent,
+  icon: tokens.textMuted,
+  tabIconDefault: tokens.textMuted,
+  tabIconSelected: tokens.accent,
+  primary: tokens.accent,
+  primaryLight: tokens.textMuted,
+  primaryDark: tokens.backgroundAlt,
+  surface: tokens.glassSurface,
+  border: tokens.glassBorder,
+  bgLight: tokens.background,
+  bgSoft: tokens.glassSurface,
+  surface2: tokens.surface2,
 };
 
 export const Colors = {
   light: glassTheme,
   dark: glassTheme,
 };
+
+// ═══════════════════════════════════════════════════════════
+// HELPER: Create theme-aware navigation colors
+// Use this in app/_layout.tsx with ThemeContext
+// ═══════════════════════════════════════════════════════════
+
+export function createNavigationTheme(themeTokens: ThemeTokens) {
+  return {
+    text: themeTokens.textPrimary,
+    background: themeTokens.background,
+    tint: themeTokens.accent,
+    icon: themeTokens.textMuted,
+    tabIconDefault: themeTokens.textMuted,
+    tabIconSelected: themeTokens.accent,
+    primary: themeTokens.accent,
+    primaryLight: themeTokens.textMuted,
+    primaryDark: themeTokens.backgroundAlt,
+    surface: themeTokens.glassSurface,
+    border: themeTokens.glassBorder,
+    bgLight: themeTokens.background,
+    bgSoft: themeTokens.glassSurface,
+    surface2: themeTokens.surface2,
+  };
+}

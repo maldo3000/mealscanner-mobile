@@ -1,22 +1,20 @@
-import React, { useState } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
+import React, { useState } from 'react';
+import { StyleSheet, Text, TouchableOpacity } from 'react-native';
 
+import { ContentContainer } from '@/components/layout/ContentContainer';
 import { PageContainer } from '@/components/layout/PageContainer';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { ContentContainer } from '@/components/layout/ContentContainer';
 import { Section } from '@/components/layout/Section';
 import { Card } from '@/components/ui/Card';
 import { IconSymbol } from '@/components/ui/IconSymbol';
-import { Colors, neonGreen } from '@/constants/Colors';
-import { Spacing, PageSpacing } from '@/constants/Spacing';
+import { PageSpacing, Spacing } from '@/constants/Spacing';
 import { TextStyles } from '@/constants/Typography';
-import { useColorScheme } from '@/hooks/useColorScheme';
+import { useTheme } from '@/context/ThemeContext';
 
 export default function UnitsScreen() {
   const router = useRouter();
-  const colorScheme = useColorScheme();
-  const colors = Colors[colorScheme ?? 'light'];
+  const { tokens } = useTheme();
 
   const [unitSystem, setUnitSystem] = useState<'metric' | 'imperial'>('metric');
 
@@ -28,8 +26,8 @@ export default function UnitsScreen() {
           style={styles.settingItemContent}
           onPress={() => setUnitSystem(value)}
         >
-          <Text style={[TextStyles.body, { color: colors.text }]}>{label}</Text>
-          {isSelected && <IconSymbol name="checkmark" size={20} color={neonGreen} />}
+          <Text style={[TextStyles.body, { color: tokens.textPrimary }]}>{label}</Text>
+          {isSelected && <IconSymbol name="checkmark" size={20} color={tokens.accent} />}
         </TouchableOpacity>
       </Card>
     );
@@ -41,7 +39,7 @@ export default function UnitsScreen() {
         title="Units & Display" 
         leftAction={
           <TouchableOpacity onPress={() => router.back()}>
-            <IconSymbol name="chevron.left" size={24} color={colors.text} />
+            <IconSymbol name="chevron.left" size={24} color={tokens.textPrimary} />
           </TouchableOpacity>
         }
       />
@@ -52,7 +50,7 @@ export default function UnitsScreen() {
           {renderOption("Imperial (lb, ft/in)", 'imperial')}
         </Section>
         
-        <Text style={[TextStyles.bodySmall, { color: colors.icon, textAlign: 'center', marginTop: Spacing.xl, paddingHorizontal: Spacing.xl }]}>
+        <Text style={[TextStyles.bodySmall, { color: tokens.textMuted, textAlign: 'center', marginTop: Spacing.xl, paddingHorizontal: Spacing.xl }]}>
           These settings will be applied across all meal logs and nutrition goals.
         </Text>
       </ContentContainer>
@@ -72,10 +70,3 @@ const styles = StyleSheet.create({
     minHeight: 56,
   },
 });
-
-
-
-
-
-
-

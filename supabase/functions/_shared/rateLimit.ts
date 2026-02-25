@@ -41,6 +41,9 @@ export const RateLimitPresets = {
   
   // Recipe generation: 5 requests per minute
   recipeGeneration: { maxRequests: 5, windowSeconds: 60 },
+
+  // Weekly reports: infrequent expensive generation
+  weeklyReport: { maxRequests: 3, windowSeconds: 3600 },
   
   // File uploads: 20 per minute
   fileUpload: { maxRequests: 20, windowSeconds: 60 },

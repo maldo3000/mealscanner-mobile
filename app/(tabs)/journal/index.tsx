@@ -1,3 +1,5 @@
+import { useQueryClient } from '@tanstack/react-query';
+
 import { PageContainer } from '@/components/layout/PageContainer';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
@@ -8,26 +10,41 @@ import { Colors, glassBorder, glassSurface, neonGreen, primaryGreen } from '@/co
 import { PageSpacing, Spacing } from '@/constants/Spacing';
 import { FontFamilies, TextStyles } from '@/constants/Typography';
 import { useAuth } from '@/context/AuthContext';
-import { useColorScheme } from '@/hooks/useColorScheme';
-import { deleteMeal, getUserMeals } from '@/lib/supabase';
 import { useSubscription } from '@/context/SubscriptionContext';
-import { useRouter, useFocusEffect } from 'expo-router';
-import React, { useCallback, useEffect, useState, useRef } from 'react';
+import { useColorScheme } from '@/hooks/useColorScheme';
+import { useMealsQuery } from '@/hooks/queries/useMealsQuery';
+import { queryKeys } from '@/lib/queryKeys';
+import { deleteMeal } from '@/lib/supabase';
+import * as Haptics from 'expo-haptics';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
     Alert,
     FlatList,
+    Platform,
     RefreshControl,
     StyleSheet,
     Text,
     TextInput,
     TouchableOpacity,
-    View,
-    Platform,
-    Animated as RNAnimated
+    View
 } from 'react-native';
-import { Swipeable } from 'react-native-gesture-handler';
-import * as Haptics from 'expo-haptics';
-import Animated, { Easing, FadeInDown, LinearTransition } from 'react-native-reanimated';
+import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
+import Animated, { FadeInDown, interpolate, SharedValue, useAnimatedStyle } from 'react-native-reanimated';
+
+// Row height for getItemLayout optimization (row height + separator)
+const COMPACT_ROW_HEIGHT = 100;
+const SEPARATOR_HEIGHT = 1;
+const ITEM_HEIGHT = COMPACT_ROW_HEIGHT + SEPARATOR_HEIGHT;
+
+// Stable functions for FlatList optimization
+const keyExtractor = (item: Meal) => item.id;
+const getItemLayout = (_data: ArrayLike<Meal> | null | undefined, index: number) => ({
+  length: ITEM_HEIGHT,
+  offset: ITEM_HEIGHT * index,
+  index,
+});
+const ItemSeparator = () => <View style={styles.compactSeparator} />;
 
 interface Meal {
   id: string;
@@ -60,22 +77,84 @@ interface Meal {
   processing_status?: 'pending' | 'processing' | 'completed' | 'failed';
 }
 
+type SelectedFilter = 'today' | 'week' | 'month';
+
+interface MealTotals {
+  calories: number;
+  protein: number;
+  fat: number;
+  carbs: number;
+}
+
+// Extracted swipe delete action component for better performance
+interface SwipeDeleteActionProps {
+  progress: SharedValue<number>;
+  mealId: string;
+  onDelete: (id: string) => void;
+}
+
+function SwipeDeleteAction({ progress, mealId, onDelete }: SwipeDeleteActionProps) {
+  const animatedStyle = useAnimatedStyle(() => {
+    const scale = interpolate(progress.value, [0, 1], [0.8, 1], 'clamp');
+    const opacity = interpolate(progress.value, [0, 0.5, 1], [0, 0, 1], 'clamp');
+    return {
+      transform: [{ scale }],
+      opacity,
+    };
+  });
+
+  return (
+    <View style={styles.rightActionContainer}>
+      <Animated.View style={[styles.deleteAction, animatedStyle]}>
+        <TouchableOpacity
+          style={styles.deleteActionContent}
+          activeOpacity={0.8}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            onDelete(mealId);
+          }}
+        >
+          <IconSymbol name="trash.fill" size={20} color="white" />
+          <Text style={styles.deleteActionText}>Delete</Text>
+        </TouchableOpacity>
+      </Animated.View>
+    </View>
+  );
+}
+
 export default function MealsScreen() {
   const { user } = useAuth();
-  const { isPro } = useSubscription();
+  const { isPro, showPaywall } = useSubscription();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
   const router = useRouter();
-  
-  const [meals, setMeals] = useState<Meal[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedFilter, setSelectedFilter] = useState<'today' | 'week' | 'all'>('today');
-  // Always use compact list view for the journal
-  const viewMode = 'compact';
+  const queryClient = useQueryClient();
 
-  const isFirstLoad = useRef(true);
+  const daysLimit = isPro ? 30 : 7;
+  const fetchLimit = isPro ? 150 : 50;
+
+  const {
+    meals,
+    isLoading: loading,
+    isRefetching: refreshing,
+    refetch: refetchMeals,
+  } = useMealsQuery({ userId: user?.id, daysLimit, limit: fetchLimit, journalMode: true });
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedFilter, setSelectedFilter] = useState<SelectedFilter>('today');
+
+  // Track if we should animate rows (only on initial data load, not filter changes)
+  const shouldAnimateRows = useRef(true);
+  const lastFilterRef = useRef<SelectedFilter>(selectedFilter);
+
+  const resolveMealTitle = useCallback((meal: Meal): string => {
+    const aiName = typeof meal.ai_analysis?.name === 'string' ? meal.ai_analysis.name.trim() : '';
+    if (aiName.length >= 3 && aiName.length <= 60) {
+      return aiName;
+    }
+    const description = meal.description?.trim();
+    return description?.length ? description : 'Meal';
+  }, []);
 
   // Helper to format macro values to 1 decimal point max, removing trailing .0
   const formatMacro = (val: number | undefined | null) => {
@@ -83,53 +162,18 @@ export default function MealsScreen() {
     return Number(val.toFixed(1)).toString();
   };
 
-  // Refresh data when screen is focused
+  // Refresh data when screen is focused (React Query handles staleness)
   useFocusEffect(
     useCallback(() => {
-      if (user) {
-        // Only show skeleton on very first load of the session
-        // Note: meals.length is read inside but not a dependency - we only want to
-        // re-run on focus or user change, not when meals array changes
-        const shouldShowSkeleton = isFirstLoad.current && meals.length === 0;
-        loadMeals(user.id, shouldShowSkeleton);
-        isFirstLoad.current = false;
-      } else {
-        setMeals([]);
-        setLoading(false);
-      }
-    }, [user])
+      void refetchMeals();
+    }, [refetchMeals])
   );
 
-  const loadMeals = async (userId: string, showSkeleton = false) => {
-    if (showSkeleton) setLoading(true);
-    try {
-      console.log('🔍 Journal: Loading meals for user ID:', userId, 'showSkeleton:', showSkeleton);
-      // Free users are limited to 7 days of history
-      const daysLimit = isPro ? undefined : 7;
-      const { data, error } = await getUserMeals(userId, 50, daysLimit);
-      if (error) {
-        console.error('Error loading meals:', error);
-        if (showSkeleton) Alert.alert('Error', 'Failed to load meals');
-        return;
-      }
-      setMeals(data || []);
-    } catch (error) {
-      console.error('Error loading meals:', error);
-      if (showSkeleton) Alert.alert('Error', 'Failed to load meals');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const onRefresh = useCallback(async () => {
-    if (!user) return;
-    setRefreshing(true);
-    await loadMeals(user.id, false);
-    setRefreshing(false);
-  }, [user]);
+    await refetchMeals();
+  }, [refetchMeals]);
 
-  const handleDeleteMeal = async (mealId: string) => {
-    console.log('🗑️ Journal: Delete button pressed for meal ID:', mealId);
+  const handleDeleteMeal = useCallback((mealId: string) => {
     Alert.alert(
       'Delete Meal',
       'Are you sure you want to delete this meal?',
@@ -139,27 +183,42 @@ export default function MealsScreen() {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            console.log('🗑️ Journal: User confirmed delete for meal ID:', mealId);
             try {
-              console.log('🗑️ Journal: Calling deleteMeal function...');
+              // Optimistic update: remove from cache immediately
+              const userId = user?.id;
+              if (userId) {
+                queryClient.setQueriesData<Meal[]>(
+                  { queryKey: queryKeys.meals.all(userId) },
+                  (old) => old?.filter(meal => meal.id !== mealId),
+                );
+              }
+
               const { error } = await deleteMeal(mealId);
               if (error) {
-                console.error('🗑️ Journal: Delete error:', error);
                 Alert.alert('Error', 'Failed to delete meal');
+                // Revert optimistic update
+                if (userId) {
+                  void queryClient.invalidateQueries({ queryKey: queryKeys.meals.all(userId) });
+                }
                 return;
               }
-              console.log('🗑️ Journal: Delete successful, updating UI...');
-              setMeals(meals.filter(meal => meal.id !== mealId));
-              console.log('🗑️ Journal: UI updated');
+
+              // Invalidate to sync all query variants (home + journal use different keys)
+              if (userId) {
+                void queryClient.invalidateQueries({ queryKey: queryKeys.meals.all(userId) });
+              }
             } catch (error) {
-              console.error('🗑️ Journal: Delete exception:', error);
+              console.error('Delete exception:', error);
               Alert.alert('Error', 'Failed to delete meal');
+              if (user?.id) {
+                void queryClient.invalidateQueries({ queryKey: queryKeys.meals.all(user.id) });
+              }
             }
           }
         }
       ]
     );
-  };
+  }, [user?.id, queryClient]);
 
   const formatDate = (dateString: string): string => {
     const date = new Date(dateString);
@@ -181,152 +240,154 @@ export default function MealsScreen() {
     }
   };
 
-  const filteredMeals = meals.filter(meal => {
-    // Search filter
-    if (searchQuery && !meal.description.toLowerCase().includes(searchQuery.toLowerCase())) {
-      return false;
-    }
-    
-    // Date filter
-    const mealDate = new Date(meal.created_at);
+  const { filteredMeals, totals } = useMemo((): { filteredMeals: Meal[]; totals: MealTotals } => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
     const now = new Date();
-    
-    if (selectedFilter === 'today') {
-      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      return mealDate >= todayStart;
-    } else if (selectedFilter === 'week') {
-      const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      return mealDate >= weekStart;
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+    const monthStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    const nextFilteredMeals = meals.filter((meal) => {
+      if (normalizedQuery) {
+        const haystack = resolveMealTitle(meal).toLowerCase();
+        if (!haystack.includes(normalizedQuery)) return false;
+      }
+
+      const mealDate = new Date(meal.created_at);
+
+      if (selectedFilter === 'today') {
+        return mealDate >= todayStart;
+      }
+
+      if (selectedFilter === 'week') {
+        return mealDate >= weekStart;
+      }
+
+      return mealDate >= monthStart;
+    });
+
+    const nextTotals = nextFilteredMeals.reduce<MealTotals>(
+      (acc, meal) => {
+        acc.calories += meal.calories || 0;
+        acc.protein += meal.macros?.protein || 0;
+        acc.fat += meal.macros?.fat || 0;
+        acc.carbs += meal.macros?.carbs || 0;
+        return acc;
+      },
+      { calories: 0, protein: 0, fat: 0, carbs: 0 }
+    );
+
+    return { filteredMeals: nextFilteredMeals, totals: nextTotals };
+  }, [meals, resolveMealTitle, searchQuery, selectedFilter]);
+
+  const handleSelectFilter = useCallback((nextFilter: SelectedFilter) => {
+    if (nextFilter === lastFilterRef.current) return;
+    // Skip animations when switching filters for instant feedback
+    shouldAnimateRows.current = false;
+    lastFilterRef.current = nextFilter;
+    setSelectedFilter(nextFilter);
+    if (Platform.OS !== 'web') {
+      void Haptics.selectionAsync();
     }
-    
-    return true;
-  });
+  }, []);
 
-  // Calculate totals for summary view
-  const totals = filteredMeals.reduce((acc, meal) => ({
-    calories: acc.calories + (meal.calories || 0),
-    protein: acc.protein + (meal.macros?.protein || 0),
-    fat: acc.fat + (meal.macros?.fat || 0),
-    carbs: acc.carbs + (meal.macros?.carbs || 0),
-    }), { calories: 0, protein: 0, fat: 0, carbs: 0 });
+  // Memoized delete action renderer for swipeable
+  const renderRightActions = useCallback((progress: SharedValue<number>, mealId: string) => {
+    return (
+      <SwipeDeleteAction 
+        progress={progress} 
+        mealId={mealId} 
+        onDelete={handleDeleteMeal} 
+      />
+    );
+  }, [handleDeleteMeal]);
 
-  const renderRightActions = (
-    progress: RNAnimated.AnimatedInterpolation<number>, 
-    dragX: RNAnimated.AnimatedInterpolation<number>,
-    mealId: string
-  ) => {
-    const scale = progress.interpolate({
-      inputRange: [0, 1],
-      outputRange: [0.8, 1],
-      extrapolate: 'clamp',
-    });
-
-    const opacity = progress.interpolate({
-      inputRange: [0, 0.5, 1],
-      outputRange: [0, 0, 1],
-      extrapolate: 'clamp',
-    });
+  const renderCompactMealRow = useCallback(({ item: meal, index }: { item: Meal, index: number }) => {
+    // Only animate on initial load, not on filter changes
+    const entering = shouldAnimateRows.current 
+      ? FadeInDown.delay(Math.min(index, 6) * 15).springify().damping(20).stiffness(90)
+      : undefined;
 
     return (
-      <View style={styles.rightActionContainer}>
-        <RNAnimated.View style={[styles.deleteAction, { transform: [{ scale }], opacity }]}>
-          <TouchableOpacity
-            style={styles.deleteActionContent}
-            activeOpacity={0.8}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              handleDeleteMeal(mealId);
-            }}
-          >
-            <IconSymbol name="trash.fill" size={20} color="white" />
-            <Text style={styles.deleteActionText}>Delete</Text>
-          </TouchableOpacity>
-        </RNAnimated.View>
-      </View>
-    );
-  };
-
-  const renderCompactMealRow = ({ item: meal, index }: { item: Meal, index: number }) => (
-    <Animated.View 
-      entering={FadeInDown.delay(index * 40).springify().damping(20).stiffness(90)}
-      layout={LinearTransition.springify().damping(20).stiffness(90)}
-    >
-      <Swipeable
-        renderRightActions={(progress, dragX) => renderRightActions(progress, dragX, meal.id)}
-        friction={2}
-        rightThreshold={40}
-        containerStyle={styles.swipeableContainer}
-      >
-        <TouchableOpacity
-          style={[styles.compactRow, { backgroundColor: colors.background }]} // Match original background perfectly
-          onPress={() => router.push(`/meal/${meal.id}`)}
-          activeOpacity={0.7}
+      <Animated.View entering={entering}>
+        <ReanimatedSwipeable
+          renderRightActions={(progress) => renderRightActions(progress, meal.id)}
+          friction={2}
+          rightThreshold={40}
+          containerStyle={styles.swipeableContainer}
         >
-          <View style={styles.compactImageContainer}>
-            {meal.image_url ? (
-              <ThumbnailImage 
-                source={{ uri: meal.image_url }} 
-                style={styles.compactImage} 
-              />
-            ) : (
-              <View style={[styles.compactImagePlaceholder, { backgroundColor: colors.border }]}>
-                <IconSymbol name="fork.knife" size={24} color={colors.icon} />
-              </View>
-            )}
-          </View>
+          <TouchableOpacity
+            style={[styles.compactRow, { backgroundColor: 'transparent' }]}
+            onPress={() => router.push(`/meal/${meal.id}`)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.compactImageContainer}>
+              {meal.image_url ? (
+                <ThumbnailImage 
+                  source={{ uri: meal.image_url }} 
+                  style={styles.compactImage} 
+                />
+              ) : (
+                <View style={[styles.compactImagePlaceholder, { backgroundColor: colors.border }]}>
+                  <IconSymbol name="fork.knife" size={24} color={colors.icon} />
+                </View>
+              )}
+            </View>
 
-          <View style={styles.compactContent}>
-            <Text 
-              style={[
-                TextStyles.body, 
-                { 
-                  color: colors.text, 
-                  fontFamily: FontFamilies.headingBold,
-                  fontWeight: Platform.OS === 'web' ? '800' : undefined,
-                  fontSize: 17,
-                  marginBottom: 2 
-                }
-              ]} 
-              numberOfLines={2}
-            >
-              {meal.description}
-            </Text>
-            
-            <Text style={[TextStyles.bodySmall, { color: colors.icon, marginBottom: 8 }]}>
-              {formatDate(meal.created_at)}
-            </Text>
-            
-            <View style={styles.compactMeta}>
-              <View style={styles.macroBadge}>
-                <Text style={[TextStyles.bodySmall, { color: primaryGreen, fontWeight: '700' }]}>
-                  {formatMacro(meal.calories)}
-                </Text>
-                <Text style={[TextStyles.caption, { color: colors.icon, fontSize: 10 }]}>kcal</Text>
-              </View>
-              <View style={styles.macroBadge}>
-                <Text style={[TextStyles.bodySmall, { color: colors.text, fontWeight: '600' }]}>
-                  {formatMacro(meal.macros?.protein)}g
-                </Text>
-                <Text style={[TextStyles.caption, { color: colors.icon, fontSize: 10 }]}>pro</Text>
-              </View>
-              <View style={styles.macroBadge}>
-                <Text style={[TextStyles.bodySmall, { color: colors.text, fontWeight: '600' }]}>
-                  {formatMacro(meal.macros?.carbs)}g
-                </Text>
-                <Text style={[TextStyles.caption, { color: colors.icon, fontSize: 10 }]}>carb</Text>
-              </View>
-              <View style={styles.macroBadge}>
-                <Text style={[TextStyles.bodySmall, { color: colors.text, fontWeight: '600' }]}>
-                  {formatMacro(meal.macros?.fat)}g
-                </Text>
-                <Text style={[TextStyles.caption, { color: colors.icon, fontSize: 10 }]}>fat</Text>
+            <View style={styles.compactContent}>
+              <Text 
+                style={[
+                  TextStyles.body, 
+                  { 
+                    color: colors.text, 
+                    fontFamily: FontFamilies.headingBold,
+                    fontWeight: Platform.OS === 'web' ? '800' : undefined,
+                    fontSize: 17,
+                    marginBottom: 2 
+                  }
+                ]} 
+                numberOfLines={2}
+              >
+                {resolveMealTitle(meal)}
+              </Text>
+              
+              <Text style={[TextStyles.bodySmall, { color: colors.icon, marginBottom: 8 }]}>
+                {formatDate(meal.created_at)}
+              </Text>
+              
+              <View style={styles.compactMeta}>
+                <View style={styles.macroBadge}>
+                  <Text style={[TextStyles.bodySmall, { color: primaryGreen, fontWeight: '700' }]}>
+                    {formatMacro(meal.calories)}
+                  </Text>
+                  <Text style={[TextStyles.caption, { color: colors.icon, fontSize: 10 }]}>kcal</Text>
+                </View>
+                <View style={styles.macroBadge}>
+                  <Text style={[TextStyles.bodySmall, { color: colors.text, fontWeight: '600' }]}>
+                    {formatMacro(meal.macros?.protein)}g
+                  </Text>
+                  <Text style={[TextStyles.caption, { color: colors.icon, fontSize: 10 }]}>pro</Text>
+                </View>
+                <View style={styles.macroBadge}>
+                  <Text style={[TextStyles.bodySmall, { color: colors.text, fontWeight: '600' }]}>
+                    {formatMacro(meal.macros?.carbs)}g
+                  </Text>
+                  <Text style={[TextStyles.caption, { color: colors.icon, fontSize: 10 }]}>carb</Text>
+                </View>
+                <View style={styles.macroBadge}>
+                  <Text style={[TextStyles.bodySmall, { color: colors.text, fontWeight: '600' }]}>
+                    {formatMacro(meal.macros?.fat)}g
+                  </Text>
+                  <Text style={[TextStyles.caption, { color: colors.icon, fontSize: 10 }]}>fat</Text>
+                </View>
               </View>
             </View>
-          </View>
-        </TouchableOpacity>
-      </Swipeable>
-    </Animated.View>
-  );
+          </TouchableOpacity>
+        </ReanimatedSwipeable>
+      </Animated.View>
+    );
+  }, [colors, renderRightActions, resolveMealTitle, router]);
 
   return (
     <PageContainer>
@@ -353,31 +414,71 @@ export default function MealsScreen() {
       <View style={styles.filtersContainer}>
         <View style={styles.filterButtons}>
           <TouchableOpacity 
-            style={[styles.filterButton, selectedFilter === 'today' && styles.filterButtonActive]}
-            onPress={() => setSelectedFilter('today')}
+            style={[
+              styles.filterButton, 
+              { backgroundColor: glassSurface, borderColor: glassBorder, borderWidth: 1 },
+              selectedFilter === 'today' && styles.filterButtonActive
+            ]}
+            activeOpacity={0.85}
+            onPress={() => handleSelectFilter('today')}
           >
-            <Text style={[TextStyles.button, { color: selectedFilter === 'today' ? '#000000' : colors.icon }]}>
+            <Text style={[TextStyles.button, { color: selectedFilter === 'today' ? '#000000' : colors.text }]}>
               Today
             </Text>
           </TouchableOpacity>
           <TouchableOpacity 
-            style={[styles.filterButton, selectedFilter === 'week' && styles.filterButtonActive]}
-            onPress={() => setSelectedFilter('week')}
+            style={[
+              styles.filterButton, 
+              { backgroundColor: glassSurface, borderColor: glassBorder, borderWidth: 1 },
+              selectedFilter === 'week' && styles.filterButtonActive
+            ]}
+            activeOpacity={0.85}
+            onPress={() => handleSelectFilter('week')}
           >
-            <Text style={[TextStyles.button, { color: selectedFilter === 'week' ? '#000000' : colors.icon }]}>
+            <Text style={[TextStyles.button, { color: selectedFilter === 'week' ? '#000000' : colors.text }]}>
               This Week
             </Text>
           </TouchableOpacity>
           <TouchableOpacity 
-            style={[styles.filterButton, selectedFilter === 'all' && styles.filterButtonActive]}
-            onPress={() => setSelectedFilter('all')}
+            style={[
+              styles.filterButton, 
+              { backgroundColor: glassSurface, borderColor: glassBorder, borderWidth: 1 },
+              selectedFilter === 'month' && styles.filterButtonActive
+            ]}
+            activeOpacity={0.85}
+            onPress={() => handleSelectFilter('month')}
           >
-            <Text style={[TextStyles.button, { color: selectedFilter === 'all' ? '#000000' : colors.icon }]}>
-              All
+            <Text style={[TextStyles.button, { color: selectedFilter === 'month' ? '#000000' : colors.text }]}>
+              Month
             </Text>
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Free-tier history nudge */}
+      {!isPro && selectedFilter === 'month' && (
+        <TouchableOpacity
+          style={[styles.proNudgeBanner, { backgroundColor: glassSurface, borderColor: glassBorder }]}
+          activeOpacity={0.7}
+          onPress={() => void showPaywall()}
+          accessibilityLabel="Upgrade to Pro for full month history"
+          accessibilityRole="button"
+        >
+          <IconSymbol name="lock.fill" size={14} color={primaryGreen} />
+          <View style={{ flex: 1 }}>
+            <Text style={[TextStyles.bodySmall, { color: colors.icon, fontWeight: '600' }]}>
+              Showing your last 7 days
+            </Text>
+            <Text style={[TextStyles.caption, { color: colors.icon, marginTop: 1, opacity: 0.8 }]}>
+              To see all data, subscribe to Pro
+            </Text>
+          </View>
+          <Text style={[TextStyles.bodySmall, { color: primaryGreen, fontWeight: '700' }]}>
+            Upgrade to Pro
+          </Text>
+          <IconSymbol name="chevron.right" size={12} color={primaryGreen} />
+        </TouchableOpacity>
+      )}
 
       {/* Summary Card */}
       {(selectedFilter === 'today' || selectedFilter === 'week') && filteredMeals.length > 0 && (
@@ -439,15 +540,15 @@ export default function MealsScreen() {
         <View style={styles.emptyContainer}>
           <IconSymbol name="plus.circle" size={48} color={colors.icon} />
           <Text style={[TextStyles.h4, { color: colors.text, textAlign: 'center' }]}>
-            {searchQuery || selectedFilter !== 'all' ? 'No meals found' : 'No meals logged yet'}
+            {searchQuery || selectedFilter !== 'month' ? 'No meals found' : 'No meals logged yet'}
           </Text>
           <Text style={[TextStyles.body, { color: colors.icon, textAlign: 'center', lineHeight: 24 }]}>
-            {searchQuery || selectedFilter !== 'all' 
+            {searchQuery || selectedFilter !== 'month' 
               ? 'Try adjusting your search or filter' 
               : 'Start by capturing your first meal'
             }
           </Text>
-          {(!searchQuery && selectedFilter === 'all') && (
+          {(!searchQuery && selectedFilter === 'month') && (
             <Button
               variant="primary"
               onPress={() => router.push('/(tabs)/log')}
@@ -464,13 +565,19 @@ export default function MealsScreen() {
         <FlatList
           data={filteredMeals}
           renderItem={renderCompactMealRow}
-          keyExtractor={(item) => item.id}
+          keyExtractor={keyExtractor}
           contentContainerStyle={styles.compactList}
           showsVerticalScrollIndicator={false}
-          ItemSeparatorComponent={() => <View style={styles.compactSeparator} />}
+          ItemSeparatorComponent={ItemSeparator}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
+          // Performance optimizations
+          removeClippedSubviews={Platform.OS !== 'web'}
+          maxToRenderPerBatch={10}
+          windowSize={5}
+          initialNumToRender={8}
+          getItemLayout={getItemLayout}
         />
       )}
     </PageContainer>
@@ -508,11 +615,9 @@ const styles = StyleSheet.create({
   },
   filterButton: {
     flex: 1,
-    paddingVertical: 10,
+    minHeight: 44,
+    paddingVertical: 12,
     borderRadius: 14,
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: glassBorder,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -605,6 +710,17 @@ const styles = StyleSheet.create({
   },
   captureButton: {
     marginTop: 8,
+  },
+  proNudgeBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: Spacing.base,
+    minHeight: 44,
   },
   rightActionContainer: {
     width: 90,

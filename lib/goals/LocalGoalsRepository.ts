@@ -143,6 +143,35 @@ export class LocalGoalsRepository implements GoalsRepository {
       activeGoalId: undefined,
     }, userId);
   }
+
+  // ── Pending onboarding goal ───────────────────────────────────────────────
+  // Saved BEFORE sign-up so the goal survives the auth-navigation race condition.
+
+  private static readonly PENDING_KEY = 'pending_onboarding_goal_v1';
+
+  public async savePendingGoal(goal: NutritionGoal): Promise<void> {
+    if (!this.storage) return;
+    await this.storage.setItem(
+      LocalGoalsRepository.PENDING_KEY,
+      JSON.stringify(goal),
+    );
+  }
+
+  public async getPendingGoal(): Promise<NutritionGoal | null> {
+    if (!this.storage) return null;
+    const raw = await this.storage.getItem(LocalGoalsRepository.PENDING_KEY);
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as NutritionGoal;
+    } catch {
+      return null;
+    }
+  }
+
+  public async clearPendingGoal(): Promise<void> {
+    if (!this.storage) return;
+    await this.storage.removeItem(LocalGoalsRepository.PENDING_KEY);
+  }
 }
 
 export const localGoalsRepository = new LocalGoalsRepository();

@@ -1,7 +1,8 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { neonGreen, glassSurface, glassBorder } from '@/constants/Colors';
+
 import { TextStyles } from '@/constants/Typography';
+import { useTheme } from '@/context/ThemeContext';
 
 export type TagColor = 'default' | 'accent' | 'muted';
 
@@ -11,25 +12,27 @@ interface TagProps {
 }
 
 export function Tag({ color = 'default', children }: TagProps) {
+  const { tokens, accentAlpha } = useTheme();
+
   const getStyles = () => {
     switch (color) {
       case 'accent':
         return { 
-          backgroundColor: 'rgba(74, 222, 128, 0.2)', 
-          borderColor: neonGreen,
-          textColor: neonGreen 
+          backgroundColor: accentAlpha(0.2), 
+          borderColor: tokens.accent,
+          textColor: tokens.accent 
         };
       case 'muted':
         return { 
-          backgroundColor: 'rgba(255, 255, 255, 0.05)', 
-          borderColor: 'rgba(255, 255, 255, 0.1)', 
-          textColor: 'rgba(255, 255, 255, 0.6)' 
+          backgroundColor: tokens.borderSubtle, 
+          borderColor: tokens.glassBorder, 
+          textColor: tokens.textMuted 
         };
       default:
         return { 
-          backgroundColor: glassSurface, 
-          borderColor: glassBorder, 
-          textColor: '#FFFFFF' 
+          backgroundColor: tokens.glassSurface, 
+          borderColor: tokens.glassBorder, 
+          textColor: tokens.textPrimary 
         };
     }
   };

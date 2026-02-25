@@ -1,33 +1,27 @@
-import { GoogleSignin } from '@react-native-google-signin/google-signin'
+import type { WeeklyNutritionReport, WeeklyReportGenerationResult } from '@/types/weeklyReport'
 import { createClient } from '@supabase/supabase-js'
-import * as AppleAuthentication from 'expo-apple-authentication'
-import * as Crypto from 'expo-crypto'
-import * as FileSystemLegacy from 'expo-file-system/legacy'
 import { Platform } from 'react-native'
 
-// Configure Google Sign-In
-if (Platform.OS !== 'web') {
-  const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
-  const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
-
-  if (iosClientId || webClientId) {
-    GoogleSignin.configure({
-      webClientId: webClientId,
-      iosClientId: iosClientId,
-    });
-  } else {
-    console.warn('⚠️ Google Sign-In IDs missing from .env. Google Sign-In will not work.');
-  }
+// Only import AsyncStorage on native platforms
+type AsyncStorageLike = {
+  getItem(key: string): Promise<string | null>
+  setItem(key: string, value: string): Promise<void>
+  removeItem(key: string): Promise<void>
 }
 
-// Only import AsyncStorage on native platforms
-let AsyncStorage: any = null
+let AsyncStorage: AsyncStorageLike | null = null
 if (Platform.OS !== 'web') {
-  AsyncStorage = require('@react-native-async-storage/async-storage').default
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  AsyncStorage = require('@react-native-async-storage/async-storage').default as AsyncStorageLike
 }
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!
+
+async function getGoogleSignin() {
+  const mod = await import('@react-native-google-signin/google-signin')
+  return mod.GoogleSignin
+}
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
@@ -37,7 +31,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       autoRefreshToken: true,
       persistSession: true,
     } : {}),
-    detectSessionInUrl: false,
+    // On web, detect session from OAuth redirect URL; on native, disable
+    detectSessionInUrl: Platform.OS === 'web',
   },
 })
 
@@ -88,6 +83,9 @@ export const signInWithEmail = async (email: string) => {
 // Social Authentication
 export const signInWithApple = async () => {
   try {
+    const Crypto = await import('expo-crypto')
+    const AppleAuthentication = await import('expo-apple-authentication')
+
     const rawNonce = await Crypto.getRandomBytesAsync(32)
     const nonce = Array.from(rawNonce)
       .map((b) => b.toString(16).padStart(2, '0'))
@@ -122,6 +120,28 @@ export const signInWithApple = async () => {
 }
 
 export const signInWithGoogle = async () => {
+  // On web, use Supabase OAuth redirect flow instead of the native SDK
+  if (Platform.OS === 'web') {
+    try {
+      console.log('🔑 Google Sign-In (web): starting OAuth flow...');
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
+        },
+      });
+      if (error) {
+        console.error('❌ Google Sign-In (web) error:', error);
+      }
+      return { data, error };
+    } catch (e: unknown) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      console.error('❌ Google Sign-In (web) error:', err);
+      return { data: null, error: err };
+    }
+  }
+
+  // Native (iOS / Android) flow using @react-native-google-signin/google-signin
   try {
     const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
     const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
@@ -130,30 +150,57 @@ export const signInWithGoogle = async () => {
       throw new Error('Google Sign-In is not configured. Please add client IDs to your .env file.');
     }
 
-    await GoogleSignin.hasPlayServices();
-    
-    // Clear any previous Google session to ensure a fresh token
-    await GoogleSignin.signOut().catch(() => {});
-    
-    GoogleSignin.configure({
-      webClientId,
-      iosClientId,
-    });
+    console.log('🔑 Google Sign-In: starting...');
 
-    const userInfo = await GoogleSignin.signIn();
-    const idToken = (userInfo as any).data?.idToken || userInfo.idToken;
+    const GoogleSignin = await getGoogleSignin()
 
-    if (!idToken) {
-      throw new Error('No ID token present!');
+    if (Platform.OS === 'android') {
+      await GoogleSignin.hasPlayServices()
     }
 
-    // Native Google Sign-In with Supabase
-    // Note: "Skip nonce checks" is enabled in Supabase Dashboard for iOS compatibility
-    // This allows the ID token to be accepted without matching the nonce
+    // Configure with webClientId so the native SDK returns an idToken.
+    // Must be called before every signIn to ensure the serverClientID
+    // (webClientId) is set on the native side.
+    GoogleSignin.configure({
+      webClientId: webClientId,
+      iosClientId: iosClientId,
+    })
+    console.log('🔑 Google Sign-In: configured');
+
+    // signIn() in v16 always presents the account picker on iOS,
+    // so there's no need for a signOut() call beforehand.
+    const userInfo = await GoogleSignin.signIn();
+    console.log('🔑 Google Sign-In: signIn completed, type:', (userInfo as any)?.type);
+
+    const userInfoAny = userInfo as unknown as { data?: { idToken?: string }; idToken?: string };
+    const idToken = userInfoAny.data?.idToken || userInfoAny.idToken;
+
+    if (!idToken) {
+      console.error('🔑 Google Sign-In: idToken missing from response', JSON.stringify(userInfo));
+      throw new Error('Google Sign-In failed. Please try again.');
+    }
+
+    console.log('🔑 Google Sign-In: idToken obtained, calling Supabase...');
+
+    // Short yield so the RN bridge settles after returning from the native
+    // Google Sign-In picker — without this, fetch can hang indefinitely.
+    await new Promise<void>((resolve) => setTimeout(resolve, 500))
+
     const { data, error } = await supabase.auth.signInWithIdToken({
       provider: 'google',
       token: idToken,
     });
+
+    if (error) {
+      console.error('🔑 Google Sign-In: Supabase auth error:', {
+        message: error.message,
+        status: (error as any).status,
+        code: (error as any).code,
+        name: error.name,
+      });
+    } else {
+      console.log('🔑 Google Sign-In: success!', { userId: data?.user?.id });
+    }
 
     return { data, error };
   } catch (e: any) {
@@ -190,16 +237,77 @@ export const updateUserProfile = async (userId: string, updates: {
   avatar_url?: string
   nutrition_goal?: string
   show_metrics?: boolean
-  subscription_tier?: 'free' | 'premium' | 'pro'
 }) => {
   const { data, error } = await supabase
     .from('profiles')
     .update(updates)
     .eq('id', userId)
     .select()
-    .single()
+    .maybeSingle()
   
   return { data, error }
+}
+
+/**
+ * Server-authoritative subscription sync.
+ *
+ * The Edge Function verifies RevenueCat entitlements using a server secret
+ * and then updates `profiles.subscription_tier` on the backend.
+ */
+export const syncSubscriptionTier = async () => {
+  try {
+    const { data, error } = await supabase.functions.invoke('sync-subscription-tier', {
+      method: 'POST',
+    })
+
+    if (error) {
+      throw error
+    }
+
+    return { data, error: null }
+  } catch (error) {
+    return { data: null, error }
+  }
+}
+
+const HOW_IT_WORKS_METADATA_KEY = 'has_seen_how_it_works'
+
+interface HowItWorksSeenResult {
+  data: boolean
+  error: unknown
+}
+
+export const getHowItWorksSeenStatus = async (): Promise<HowItWorksSeenResult> => {
+  const { data, error } = await supabase.auth.getUser()
+  if (error) {
+    return { data: false, error }
+  }
+
+  const metadata = data.user?.user_metadata as Record<string, unknown> | undefined
+  return { data: Boolean(metadata?.[HOW_IT_WORKS_METADATA_KEY]), error: null }
+}
+
+export const markHowItWorksSeen = async (): Promise<HowItWorksSeenResult> => {
+  const { data: currentUserData, error: currentUserError } = await supabase.auth.getUser()
+  if (currentUserError) {
+    return { data: false, error: currentUserError }
+  }
+
+  const currentMetadata = (currentUserData.user?.user_metadata as Record<string, unknown> | undefined) ?? {}
+  const nextMetadata: Record<string, unknown> = {
+    ...currentMetadata,
+    [HOW_IT_WORKS_METADATA_KEY]: true,
+  }
+
+  const { error } = await supabase.auth.updateUser({
+    data: nextMetadata,
+  })
+
+  if (error) {
+    return { data: false, error }
+  }
+
+  return { data: true, error: null }
 }
 
 // Image upload helper functions
@@ -330,6 +438,45 @@ export const getAllUserMeals = async (userId: string, daysLimit?: number) => {
   
   const { data, error } = await query
   
+  return { data, error }
+}
+
+const JOURNAL_LIST_COLUMNS = [
+  'id', 'description', 'image_url', 'calories', 'macros',
+  'created_at', 'meal_type', 'health_score', 'ingredients',
+  'serving_estimate', 'ai_analysis',
+].join(', ')
+
+export const getJournalMeals = async (
+  userId: string,
+  limit: number,
+  daysLimit?: number,
+) => {
+  let query = supabase
+    .from('meals')
+    .select(JOURNAL_LIST_COLUMNS)
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+
+  if (daysLimit) {
+    const date = new Date()
+    date.setDate(date.getDate() - daysLimit)
+    query = query.gte('created_at', date.toISOString())
+  }
+
+  const { data, error } = await query
+
+  return { data, error }
+}
+
+export const getStreakMeals = async (userId: string) => {
+  const { data, error } = await supabase
+    .from('meals')
+    .select('id, created_at, health_score')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+
   return { data, error }
 }
 
@@ -718,6 +865,10 @@ export const saveUserGoals = async (userId: string, goals: {
   target_fiber?: number
   dietary_restrictions?: string[]
   activity_level?: string
+  sex?: string
+  age_years?: number
+  height_cm?: number
+  weight_kg?: number
 }) => {
   const { data, error } = await supabase
     .from('user_goals')
@@ -742,6 +893,96 @@ export const getUserGoals = async (userId: string) => {
     .single()
 
   return { data, error }
+}
+
+export const getWeeklyNutritionReports = async (userId: string, limit = 12) => {
+  const { data, error } = await supabase
+    .from('weekly_nutrition_reports')
+    .select('*')
+    .eq('user_id', userId)
+    .order('generated_at', { ascending: false })
+    .limit(limit)
+
+  return { data: (data as WeeklyNutritionReport[] | null) ?? null, error }
+}
+
+export const getLatestWeeklyNutritionReportStatus = async (userId: string) => {
+  const { data, error } = await supabase
+    .from('weekly_nutrition_reports')
+    .select('*')
+    .eq('user_id', userId)
+    .order('generated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) {
+    return { data: null, error }
+  }
+
+  const report = (data as WeeklyNutritionReport | null) ?? null
+  if (!report) {
+    return {
+      data: {
+        hasReport: false,
+        isLocked: false,
+        nextAvailableAt: null as string | null,
+        daysRemaining: 0,
+        latestReport: null as WeeklyNutritionReport | null,
+      },
+      error: null,
+    }
+  }
+
+  const now = Date.now()
+  const nextAvailableAtMs = new Date(report.next_available_at).getTime()
+  const isLocked = nextAvailableAtMs > now
+  const daysRemaining = isLocked
+    ? Math.max(1, Math.ceil((nextAvailableAtMs - now) / (24 * 60 * 60 * 1000)))
+    : 0
+
+  return {
+    data: {
+      hasReport: true,
+      isLocked,
+      nextAvailableAt: report.next_available_at,
+      daysRemaining,
+      latestReport: report,
+    },
+    error: null,
+  }
+}
+
+export const generateWeeklyNutritionReport = async (params?: {
+  userId?: string
+  timezone?: string
+  includeSummary?: boolean
+  windowEndLocal?: string
+}) => {
+  try {
+    const {
+      userId,
+      timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+      includeSummary = true,
+      windowEndLocal,
+    } = params || {}
+
+    const { data, error } = await supabase.functions.invoke('generate-weekly-nutrition-report', {
+      body: {
+        user_id: userId,
+        timezone,
+        include_summary: includeSummary,
+        window_end_local: windowEndLocal,
+      },
+    })
+
+    if (error) {
+      throw error
+    }
+
+    return { data: data as WeeklyReportGenerationResult, error: null }
+  } catch (error) {
+    return { data: null, error }
+  }
 }
 
 // Recommendations Functions
@@ -858,6 +1099,48 @@ export const getMealsWithAnalysis = async (userId: string, limit = 20) => {
 }
 
 // Recipe Analysis Functions
+const RECIPE_FEATURE_DISABLED_MESSAGE = 'Recipe generation is currently unavailable.'
+
+export const isRecipeFeatureUnavailableError = (error: unknown): boolean => {
+  if (!(error instanceof Error)) return false
+  const message = error.message.toLowerCase()
+  return (
+    message.includes('recipe generation is currently unavailable') ||
+    message.includes('recipe feature disabled') ||
+    message.includes('function not found') ||
+    message.includes('404')
+  )
+}
+
+const normalizeRecipeFunctionError = (error: unknown): Error => {
+  const unknownError = error as {
+    message?: string
+    context?: unknown
+    code?: string
+    status?: number
+    statusCode?: number
+  }
+
+  const rawMessage = unknownError?.message ?? ''
+  const contextString = typeof unknownError?.context === 'string'
+    ? unknownError.context
+    : JSON.stringify(unknownError?.context ?? {})
+  const combined = `${rawMessage} ${contextString}`.toLowerCase()
+  const statusCode = unknownError?.statusCode ?? unknownError?.status
+
+  const isNotFound = statusCode === 404 ||
+    combined.includes('404') ||
+    combined.includes('not found') ||
+    combined.includes('function not found')
+
+  if (isNotFound) {
+    return new Error(RECIPE_FEATURE_DISABLED_MESSAGE)
+  }
+
+  if (error instanceof Error) return error
+  return new Error('Recipe request failed')
+}
+
 export const analyzeRecipeFromImage = async (imageUrl: string, userId: string, isPro: boolean, description?: string, sourceMealId?: string) => {
   try {
     console.log('🔍 Starting recipe image analysis for:', { imageUrl: imageUrl.substring(0, 50) + '...', userId, description, isPro });
@@ -873,8 +1156,7 @@ export const analyzeRecipeFromImage = async (imageUrl: string, userId: string, i
     })
 
     if (error) {
-      console.error('Recipe image analysis error:', error)
-      throw error
+      throw normalizeRecipeFunctionError(error)
     }
     
     console.log('🔍 Recipe image analysis success:', data)
@@ -899,8 +1181,7 @@ export const analyzeRecipeFromText = async (description: string, userId: string,
     })
 
     if (error) {
-      console.error('Recipe text analysis error:', error)
-      throw error
+      throw normalizeRecipeFunctionError(error)
     }
     
     console.log('🔍 Recipe text analysis success:', data)
@@ -1138,6 +1419,7 @@ export const transcribeAudioDirect = async (audioUri: string, userId: string, la
     console.log('🎤 Starting direct speech-to-text for:', { audioUri: audioUri.substring(0, 50) + '...', userId })
     
     // Read audio file as base64 using legacy API (for compatibility)
+    const FileSystemLegacy = await import('expo-file-system/legacy')
     const base64Audio = await FileSystemLegacy.readAsStringAsync(audioUri, {
       encoding: FileSystemLegacy.EncodingType.Base64,
     })
@@ -1276,12 +1558,12 @@ export interface DatabaseFoodMealData {
   name: string;
   brand?: string;
   source: 'usda' | 'off';
-  calories: number;
-  protein: number;
-  carbs: number;
-  fat: number;
-  fiber?: number;
-  sodium?: number;
+  caloriesPer100g: number;
+  proteinPer100g: number;
+  carbsPer100g: number;
+  fatPer100g: number;
+  fiberPer100g?: number;
+  sodiumPer100g?: number;
   ingredients?: string;
   servingSize: number;
   servingUnit: string;
@@ -1292,38 +1574,31 @@ export interface DatabaseFoodMealData {
 
 /**
  * Saves a database food item directly to the meals table without AI analysis.
- * Used for quick logging of foods from USDA or OpenFoodFacts.
+ * @param totalGrams — the resolved total weight in grams the user is logging.
  */
 export const saveDatabaseMeal = async (
   userId: string,
   foodItem: DatabaseFoodMealData,
-  servingMultiplier: number = 1,
-  customServingGrams?: number,
+  totalGrams: number,
   mealType?: string
 ) => {
   try {
-    // Calculate actual nutrition based on serving
-    // If customServingGrams is provided, use that; otherwise use servingSize * multiplier
-    const actualServingGrams = customServingGrams ?? (foodItem.servingSize * servingMultiplier);
-    const ratio = actualServingGrams / foodItem.servingSize;
+    const ratio = totalGrams / 100;
 
-    const totalCalories = Math.round(foodItem.calories * ratio);
-    const totalProtein = Math.round(foodItem.protein * ratio);
-    const totalCarbs = Math.round(foodItem.carbs * ratio);
-    const totalFat = Math.round(foodItem.fat * ratio);
-    const totalFiber = foodItem.fiber ? Math.round(foodItem.fiber * ratio) : undefined;
+    const totalCalories = Math.round(foodItem.caloriesPer100g * ratio);
+    const totalProtein = Math.round(foodItem.proteinPer100g * ratio);
+    const totalCarbs = Math.round(foodItem.carbsPer100g * ratio);
+    const totalFat = Math.round(foodItem.fatPer100g * ratio);
+    const totalFiber = foodItem.fiberPer100g ? Math.round(foodItem.fiberPer100g * ratio) : undefined;
 
-    // Create description from name and brand
-    const description = foodItem.brand 
+    const description = foodItem.brand
       ? `${foodItem.name} (${foodItem.brand})`
       : foodItem.name;
 
-    // Parse ingredients if provided as a string
-    const ingredientsList = foodItem.ingredients 
+    const ingredientsList = foodItem.ingredients
       ? foodItem.ingredients.split(',').map(i => i.trim()).filter(Boolean).slice(0, 20)
       : undefined;
 
-    // Determine meal type if not provided
     const derivedMealType = mealType || (() => {
       const hour = new Date().getHours();
       if (hour < 11) return 'Breakfast';
@@ -1343,19 +1618,17 @@ export const saveDatabaseMeal = async (
         fiber: totalFiber,
       },
       ingredients: ingredientsList,
-      serving_estimate: `${actualServingGrams}${foodItem.servingUnit}`,
+      serving_estimate: `${Math.round(totalGrams)}g`,
       meal_type: derivedMealType,
       processing_status: 'completed' as const,
-      // Store source info in ai_analysis field for reference
       ai_analysis: {
         source_type: 'database',
         database_source: foodItem.source,
         database_id: foodItem.id,
         barcode: foodItem.barcode,
+        total_grams: totalGrams,
         original_serving_size: foodItem.servingSize,
         original_serving_unit: foodItem.servingUnit,
-        serving_multiplier: servingMultiplier,
-        custom_serving_grams: customServingGrams,
       },
       image_url: foodItem.imageUrl,
     };
@@ -1411,8 +1684,7 @@ export const generateRecipeSuggestions = async (
     })
 
     if (error) {
-      console.error('Recipe suggestions generation error:', error)
-      throw error
+      throw normalizeRecipeFunctionError(error)
     }
     
     console.log('🔍 Recipe suggestions generation success:', data)
@@ -1459,8 +1731,7 @@ export const generateRecipeFromSuggestion = async (
     })
 
     if (error) {
-      console.error('Full recipe generation error:', error)
-      throw error
+      throw normalizeRecipeFunctionError(error)
     }
     
     console.log('🔍 Full recipe generation success:', data)
@@ -1505,5 +1776,55 @@ export const deleteAccount = async () => {
   } catch (error) {
     console.error('❌ Delete account error:', error)
     return { data: null, error }
+  }
+}
+
+/**
+ * Sends a support email via the send-support-email Edge Function.
+ * The user's email and ID are extracted from their JWT on the server.
+ */
+export const sendSupportEmail = async (params: {
+  topic: string
+  subject: string
+  message: string
+}): Promise<{ success: boolean; error?: string }> => {
+  try {
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+    if (sessionError) {
+      console.error('❌ Failed to get session for support email:', sessionError)
+      return { success: false, error: 'Unable to verify your session. Please sign in again.' }
+    }
+
+    const accessToken = sessionData.session?.access_token
+    if (!accessToken) {
+      return { success: false, error: 'You must be signed in to contact support.' }
+    }
+
+    const { data, error } = await supabase.functions.invoke('send-support-email', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: {
+        topic: params.topic,
+        subject: params.subject,
+        message: params.message,
+      },
+    })
+
+    if (error) {
+      console.error('❌ Send support email invoke error:', error)
+      return { success: false, error: error.message || 'Failed to send message' }
+    }
+
+    if (data && !data.success) {
+      return { success: false, error: data.error || 'Failed to send message' }
+    }
+
+    return { success: true }
+  } catch (error) {
+    console.error('❌ Send support email error:', error)
+    const message = error instanceof Error ? error.message : 'An unexpected error occurred'
+    return { success: false, error: message }
   }
 }

@@ -5,22 +5,99 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Base font configuration for web */
+/* 
+ * MealScanner Theme System - CSS Variables
+ * Default: Editorial Herbarium theme
+ * 
+ * To switch themes on web, add data-theme="classicGreen" to the html element
+ */
+
 @layer base {
+  /* ═══════════════════════════════════════════════════════════
+   * EDITORIAL HERBARIUM THEME (default)
+   * Warm, organic, refined
+   * ═══════════════════════════════════════════════════════════ */
+  :root {
+    /* Backgrounds */
+    --background: #06251C;
+    --background-alt: #082D22;
+    
+    /* Surfaces */
+    --surface-1: #0C3327;
+    --surface-2: #103629;
+    
+    /* Glass effects */
+    --glass-surface: #0C3327;
+    --glass-border: #174539;
+    --glass-highlight: #103629;
+    
+    /* Borders */
+    --border: #174539;
+    --border-subtle: rgba(23, 69, 57, 0.5);
+    
+    /* Text */
+    --text-primary: #F6F2E9;
+    --text-muted: #A6B8AE;
+    --text-on-accent: #06251C;
+    
+    /* Accent */
+    --accent: #7FE27A;
+    --accent-rgb: 127, 226, 122;
+    
+    /* Semantic */
+    --success: #7FE27A;
+    --warning: #fde047;
+    --error: #ef4444;
+    --info: #38bdf8;
+    
+    /* Chart colors */
+    --chart-protein: #38bdf8;
+    --chart-carbs: #fde047;
+    --chart-fat: #fb7185;
+  }
+  
+  /* ═══════════════════════════════════════════════════════════
+   * CLASSIC GREEN THEME
+   * Vibrant, energetic, bold
+   * ═══════════════════════════════════════════════════════════ */
+  [data-theme="classicGreen"] {
+    /* Backgrounds */
+    --background: #022c22;
+    --background-alt: #064e3b;
+    
+    /* Surfaces */
+    --surface-1: #065f46;
+    --surface-2: #047857;
+    
+    /* Glass effects */
+    --glass-surface: rgba(255, 255, 255, 0.05);
+    --glass-border: rgba(255, 255, 255, 0.1);
+    --glass-highlight: rgba(255, 255, 255, 0.15);
+    
+    /* Borders */
+    --border: rgba(255, 255, 255, 0.1);
+    --border-subtle: rgba(255, 255, 255, 0.05);
+    
+    /* Text */
+    --text-primary: #FFFFFF;
+    --text-muted: rgba(255, 255, 255, 0.6);
+    --text-on-accent: #000000;
+    
+    /* Accent */
+    --accent: #4ade80;
+    --accent-rgb: 74, 222, 128;
+    
+    /* Semantic */
+    --success: #4ade80;
+    --warning: #fde047;
+    --error: #ef4444;
+    --info: #38bdf8;
+  }
+
   html {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    background-color: #022c22; /* Deep Green */
-  }
-  
-  /* Glassmorphic color tokens */
-  :root {
-    --bg-primary: #022c22;
-    --glass-surface: rgba(255, 255, 255, 0.05);
-    --glass-border: rgba(255, 255, 255, 0.1);
-    --neon-green: #4ade80;
-    --text-white: #FFFFFF;
-    --text-muted: rgba(255, 255, 255, 0.6);
+    background-color: var(--background);
   }
   
   /* Typography - Telegraf for headings, Source Sans 3 for body */
@@ -28,7 +105,7 @@
     font-family: 'Telegraf', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     font-weight: 600;
     letter-spacing: -0.02em;
-    color: var(--text-white);
+    color: var(--text-primary);
   }
   
   h1 {
@@ -38,13 +115,13 @@
   
   body, p, span, div {
     font-family: 'Source Sans 3', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    color: var(--text-white);
+    color: var(--text-primary);
     line-height: 1.5;
   }
   
   /* Background gradient effect */
   body {
-    background: linear-gradient(135deg, #022c22 0%, #064e3b 100%);
+    background: linear-gradient(135deg, var(--background) 0%, var(--background-alt) 100%);
     min-height: 100vh;
   }
 }
@@ -52,14 +129,14 @@
 /* Glassmorphism Utilities */
 @layer utilities {
   .glass-panel {
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--glass-surface);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--glass-border);
   }
   
   .text-glow {
-    text-shadow: 0 0 10px rgba(74, 222, 128, 0.5);
+    text-shadow: 0 0 10px rgba(var(--accent-rgb), 0.5);
   }
   
   .spacing-xs { gap: 4px; }

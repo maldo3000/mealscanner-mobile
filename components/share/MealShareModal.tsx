@@ -1,10 +1,8 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
     Alert,
     Dimensions,
     Modal,
-    PixelRatio,
     ScrollView,
     StyleSheet,
     Switch,
@@ -17,6 +15,7 @@ import { captureRef } from 'react-native-view-shot';
 
 import { Button } from '@/components/ui/Button';
 import { IconSymbol } from '@/components/ui/IconSymbol';
+import { SwirlingSpinner } from '@/components/ui/SwirlingSpinner';
 import { bgPrimary, glassBorder, glassSurface, neonGreen, textMuted } from '@/constants/Colors';
 import { Spacing } from '@/constants/Spacing';
 import { TextStyles } from '@/constants/Typography';
@@ -44,54 +43,82 @@ interface MealShareModalProps {
 
 /**
  * Modal for sharing a meal as an image to social media.
- * 
- * Renders a preview of the share card and provides buttons to:
- * - Share via the system share sheet (universal)
- * - Share to Instagram Stories (uses share sheet in v1)
+ *
+ * Uses the visible preview card itself for capture — its inner View is
+ * laid out at 1080x1920 (the full Stories resolution) and only scaled
+ * down visually via CSS transform for the preview. captureRef captures
+ * at the layout dimensions, producing a full-resolution image.
+ *
+ * This avoids all hidden-view / ref issues with Fabric (New Architecture),
+ * where off-screen or zero-opacity Views don't receive native backing.
  */
 export function MealShareModal({ visible, onClose, mealData }: MealShareModalProps) {
   const insets = useSafeAreaInsets();
   const shareCardRef = useRef<View>(null);
+  const shareCardTargetRef = useRef<number | null>(null);
+  const [isShareCardReady, setIsShareCardReady] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [showMacros, setShowMacros] = useState(mealData.showStats ?? true);
 
-  /**
-   * Capture the share card to a PNG file in cache.
-   */
-  const captureShareCard = useCallback(async (): Promise<string> => {
-    if (!shareCardRef.current) {
-      throw new Error('Share card ref not available');
+  useEffect(() => {
+    if (!visible) {
+      shareCardTargetRef.current = null;
+      setIsShareCardReady(false);
+    }
+  }, [visible]);
+
+  const waitForShareCardTarget = useCallback(async (): Promise<number> => {
+    const timeoutMs = 2000;
+    const startMs = Date.now();
+
+    while (!shareCardTargetRef.current && Date.now() - startMs < timeoutMs) {
+      await new Promise(resolve => setTimeout(resolve, 50));
     }
 
+    const target = shareCardTargetRef.current;
+    if (!target) {
+      throw new Error('Share card not ready');
+    }
+
+    return target;
+  }, []);
+
+  /**
+   * Capture the share card to a PNG file in cache.
+   * Uses the visible preview card — it's already laid out at 1080x1920
+   * and just scaled down for display, so captureRef produces full-res output.
+   */
+  const captureShareCard = useCallback(async (): Promise<string> => {
     setIsCapturing(true);
 
     try {
-      // Calculate dimensions accounting for pixel ratio
-      const pixelRatio = PixelRatio.get();
-      const targetWidth = SHARE_CARD_WIDTH / pixelRatio;
-      const targetHeight = SHARE_CARD_HEIGHT / pixelRatio;
+      // Wait for layout so we have a native target handle.
+      // This avoids a race where the user taps Share before the view mounts.
+      const target = await waitForShareCardTarget();
 
-      // Capture the full-size card (rendered offscreen)
-      // The tmpfile result already creates a usable temp file
-      const uri = await captureRef(shareCardRef, {
+      // Brief delay to let any pending re-renders settle
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      const uri = await captureRef(target, {
         format: 'png',
         quality: 1,
         result: 'tmpfile',
-        width: targetWidth,
-        height: targetHeight,
+        width: SHARE_CARD_WIDTH,
+        height: SHARE_CARD_HEIGHT,
       });
 
       return uri;
     } finally {
       setIsCapturing(false);
     }
-  }, []);
+  }, [waitForShareCardTarget]);
 
   /**
    * Handle universal share action.
    */
   const handleShare = useCallback(async () => {
+    if (isSharing || isCapturing) return;
     setIsSharing(true);
     try {
       const imageUri = await captureShareCard();
@@ -102,12 +129,13 @@ export function MealShareModal({ visible, onClose, mealData }: MealShareModalPro
     } finally {
       setIsSharing(false);
     }
-  }, [captureShareCard]);
+  }, [captureShareCard, isSharing, isCapturing]);
 
   /**
    * Handle Instagram Stories share action.
    */
   const handleInstagramShare = useCallback(async () => {
+    if (isSharing || isCapturing) return;
     setIsSharing(true);
     try {
       const imageUri = await captureShareCard();
@@ -118,7 +146,7 @@ export function MealShareModal({ visible, onClose, mealData }: MealShareModalPro
     } finally {
       setIsSharing(false);
     }
-  }, [captureShareCard]);
+  }, [captureShareCard, isSharing, isCapturing]);
 
   const showInstagramButton = isInstagramPotentiallyAvailable();
   const isLoading = isCapturing || isSharing;
@@ -153,18 +181,32 @@ export function MealShareModal({ visible, onClose, mealData }: MealShareModalPro
           >
             <View style={styles.previewContainer}>
               <View style={styles.previewWrapper}>
-                {/* Scaled preview of the share card */}
+                {/* Scaled preview — this is also the capture source.
+                    The inner View is 1080x1920 in layout; the scale
+                    transform only affects visual presentation. */}
                 <View
                   style={[
                     styles.previewCard,
                     {
                       width: PREVIEW_WIDTH,
                       height: PREVIEW_HEIGHT,
-                      transform: [{ scale: 1 }],
                     },
                   ]}
                 >
                   <View
+                    ref={shareCardRef}
+                    collapsable={false}
+                    onLayout={(e) => {
+                      // Store the native tag so captureRef can target it directly.
+                      // Using the numeric target avoids ref flakiness under Fabric.
+                      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+                      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+                      const target = (e.nativeEvent as any)?.target as number | undefined;
+                      if (typeof target === 'number') {
+                        shareCardTargetRef.current = target;
+                        setIsShareCardReady(true);
+                      }
+                    }}
                     style={{
                       width: SHARE_CARD_WIDTH,
                       height: SHARE_CARD_HEIGHT,
@@ -209,10 +251,12 @@ export function MealShareModal({ visible, onClose, mealData }: MealShareModalPro
                 variant="primary"
                 fullWidth
                 onPress={handleShare}
-                disabled={isLoading}
+                disabled={isLoading || !isShareCardReady}
+                style={isLoading ? styles.loadingButton : undefined}
+                textStyle={isLoading ? styles.loadingButtonText : undefined}
                 icon={
                   isLoading ? (
-                    <ActivityIndicator size="small" color="#000" />
+                    <SwirlingSpinner size="small" color="#000" />
                   ) : (
                     <IconSymbol name="square.and.arrow.up" size={20} color="#000" />
                   )
@@ -226,7 +270,7 @@ export function MealShareModal({ visible, onClose, mealData }: MealShareModalPro
                   variant="glass"
                   fullWidth
                   onPress={handleInstagramShare}
-                  disabled={isLoading}
+                  disabled={isLoading || !isShareCardReady}
                   style={styles.instagramButton}
                 >
                   Share to Instagram Stories
@@ -238,22 +282,6 @@ export function MealShareModal({ visible, onClose, mealData }: MealShareModalPro
               </Text>
             </View>
           </ScrollView>
-        </View>
-
-        {/* Hidden full-size card for capture */}
-        <View style={styles.offscreenContainer} pointerEvents="none">
-          <View ref={shareCardRef} collapsable={false}>
-            <MealShareCard
-              mealName={mealData.mealName}
-              imageUrl={mealData.imageUrl}
-              description={mealData.description}
-              nutrition={mealData.nutrition}
-              tagOverride={mealData.tagOverride}
-              showStats={showMacros}
-              mealType={mealData.mealType}
-              createdAt={mealData.createdAt}
-            />
-          </View>
         </View>
       </View>
     </Modal>
@@ -330,6 +358,12 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
     marginTop: Spacing.lg,
   },
+  loadingButton: {
+    opacity: 1,
+  },
+  loadingButtonText: {
+    color: '#0A2012',
+  },
   instagramButton: {
     borderWidth: 1,
     borderColor: glassBorder,
@@ -339,10 +373,5 @@ const styles = StyleSheet.create({
     color: textMuted,
     textAlign: 'center',
     marginTop: Spacing.sm,
-  },
-  offscreenContainer: {
-    position: 'absolute',
-    left: -10000,
-    top: 0,
   },
 });

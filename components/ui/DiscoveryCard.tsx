@@ -1,13 +1,37 @@
-import React from 'react';
-import { StyleSheet, Text, View, Image, TouchableOpacity, Platform } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
+import React, { useMemo } from 'react';
+import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
-import { Colors, neonGreen, glassBorder, glassSurface } from '@/constants/Colors';
-import { FontFamilies, TextStyles } from '@/constants/Typography';
+import { Colors, neonGreen } from '@/constants/Colors';
 import { Spacing } from '@/constants/Spacing';
-import { IconSymbol } from './IconSymbol';
+import { FontFamilies, TextStyles } from '@/constants/Typography';
 import { GlassCard } from './GlassCard';
+import { IconSymbol } from './IconSymbol';
 import { ThumbnailImage } from './OptimizedImage';
+
+// ── Curated gradient palettes for imageless meals ──────────────
+// Dark, food-inspired gradients that harmonize with the app theme.
+const MEAL_GRADIENTS: readonly [string, string][] = [
+  ['#0a3d2e', '#164e3b'], // deep emerald → forest
+  ['#1a2e1a', '#2d4a1e'], // dark olive → mossy green
+  ['#2a1f35', '#3d2045'], // deep plum → aubergine
+  ['#1a2b3d', '#1e3a50'], // midnight blue → ocean
+  ['#2d1e1a', '#4a2c20'], // dark chocolate → warm cocoa
+  ['#0d3b3b', '#16504a'], // deep teal → jade
+  ['#351a1e', '#4a252a'], // dark burgundy → merlot
+  ['#1e2d1a', '#2e4428'], // dark sage → herb garden
+] as const;
+
+/** Deterministic hash → gradient index from a string */
+function getGradientForTitle(title: string): [string, string] {
+  let hash = 0;
+  for (let i = 0; i < title.length; i++) {
+    hash = ((hash << 5) - hash + title.charCodeAt(i)) | 0;
+  }
+  const index = Math.abs(hash) % MEAL_GRADIENTS.length;
+  return [...MEAL_GRADIENTS[index]] as [string, string];
+}
 
 interface DiscoveryCardProps {
   type: 'recipe' | 'tip' | 'meal';
@@ -24,6 +48,9 @@ interface DiscoveryCardProps {
 export function DiscoveryCard({ type, title, subtitle, imageUrl, recipeId, mealId, style, titleStyle, subtitleStyle }: DiscoveryCardProps) {
   const router = useRouter();
 
+  // Memoize gradient so it stays stable across re-renders
+  const gradientColors = useMemo(() => getGradientForTitle(title), [title]);
+
   const handlePress = () => {
     if (recipeId) {
       router.push(`/recipe/${recipeId}`);
@@ -33,6 +60,9 @@ export function DiscoveryCard({ type, title, subtitle, imageUrl, recipeId, mealI
       // Maybe navigate to a tips screen or just do nothing
     }
   };
+
+  const badgeIcon = type === 'recipe' ? 'fork.knife' as const : type === 'meal' ? 'fork.knife' as const : 'info.circle' as const;
+  const badgeLabel = type === 'recipe' ? 'Suggested for Lunch' : type === 'meal' ? 'Latest Entry' : 'Daily Tip';
 
   return (
     <GlassCard variant="glass" style={[styles.container, style]} padding="none">
@@ -50,20 +80,40 @@ export function DiscoveryCard({ type, title, subtitle, imageUrl, recipeId, mealI
             <View style={styles.imageOverlay} />
             <View style={styles.badgeContainer}>
               <View style={styles.badge}>
-                <IconSymbol 
-                  name={type === 'recipe' ? 'fork.knife' : type === 'meal' ? 'clock.fill' : 'info.circle'} 
-                  size={12} 
-                  color={neonGreen} 
-                />
-                <Text style={[TextStyles.caption, { color: neonGreen, marginLeft: 4, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: '700' }]}>
-                  {type === 'recipe' ? 'Suggested for Lunch' : type === 'meal' ? 'Latest Entry' : 'Daily Tip'}
+                <IconSymbol name={badgeIcon} size={12} color={neonGreen} />
+                <Text style={[TextStyles.caption, styles.badgeText]}>
+                  {badgeLabel}
                 </Text>
               </View>
             </View>
           </View>
         ) : (
-          <View style={[styles.imageWrapper, styles.placeholderImage, style && { backgroundColor: style.backgroundColor }]}>
-            <IconSymbol name={type === 'recipe' ? 'fork.knife' : type === 'meal' ? 'clock.fill' : 'info.circle'} size={32} color={glassBorder} />
+          <View style={styles.imageWrapper}>
+            <LinearGradient
+              colors={gradientColors}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
+            {/* Subtle radial glow behind the icon */}
+            <View style={styles.placeholderGlow} />
+            {/* Centered food icon */}
+            <View style={styles.placeholderIconContainer}>
+              <IconSymbol
+                name="fork.knife"
+                size={44}
+                color={`${neonGreen}30`}
+              />
+            </View>
+            {/* Badge overlay — same as the image variant */}
+            <View style={styles.badgeContainer}>
+              <View style={styles.badge}>
+                <IconSymbol name={badgeIcon} size={12} color={neonGreen} />
+                <Text style={[TextStyles.caption, styles.badgeText]}>
+                  {badgeLabel}
+                </Text>
+              </View>
+            </View>
           </View>
         )}
 
@@ -150,10 +200,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
   },
-  placeholderImage: {
+  placeholderIconContainer: {
+    ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: glassSurface,
+  },
+  placeholderGlow: {
+    position: 'absolute',
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: `${neonGreen}08`,
+    alignSelf: 'center',
+    top: '50%',
+    marginTop: -50,
+  },
+  badgeText: {
+    color: neonGreen,
+    marginLeft: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    fontWeight: '700',
   },
 });
 

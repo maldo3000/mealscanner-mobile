@@ -4,6 +4,12 @@
  * Central router for LLM provider selection and request handling.
  * Provides a unified interface for chat completions and transcription
  * across multiple providers (OpenAI, OpenRouter).
+ * 
+ * Supports safe model rollout via canary routing:
+ *   - LLM_CANARY_PERCENT (0-100): percentage of requests routed to the primary (new) model
+ *   - Remaining traffic goes to the fallback (known-good) model
+ *   - If the primary model fails, the router automatically retries with the fallback
+ *   - All requests are logged with model quality metrics for comparison
  */
 
 import { OpenAIProvider } from './openai.ts';
@@ -13,9 +19,20 @@ import type {
     ChatCompletionResponse,
     LLMConfig,
     LLMProvider,
+    LLMProviderClient,
+    ModelQualityMetrics,
+    ModelRoutingConfig,
     TranscriptionOptions,
     TranscriptionResponse,
 } from './types.ts';
+
+// ==========================================
+// Model Routing Defaults
+// ==========================================
+// Primary = the production model (Gemini 2.5 Flash stable — GA, vision, JSON schema)
+// Fallback = kept as a safety net if the primary errors out
+const DEFAULT_PRIMARY_MODEL = 'google/gemini-2.5-flash';
+const DEFAULT_FALLBACK_MODEL = 'google/gemini-2.5-flash';
 
 export class LLMRouter {
   private openaiProvider?: OpenAIProvider;
@@ -23,6 +40,7 @@ export class LLMRouter {
   private defaultProvider: LLMProvider;
   private defaultTextModel: string;
   private defaultVisionModel: string;
+  private routingConfig: ModelRoutingConfig;
 
   constructor() {
     // Initialize providers from environment variables
@@ -40,8 +58,25 @@ export class LLMRouter {
 
     // Set defaults from environment or use current defaults
     this.defaultProvider = (Deno.env.get('LLM_DEFAULT_PROVIDER') as LLMProvider) || 'openrouter';
-    this.defaultTextModel = Deno.env.get('LLM_DEFAULT_TEXT_MODEL') || 'google/gemini-3-flash-preview';
-    this.defaultVisionModel = Deno.env.get('LLM_DEFAULT_VISION_MODEL') || 'google/gemini-3-flash-preview';
+    this.defaultTextModel = Deno.env.get('LLM_DEFAULT_TEXT_MODEL') || DEFAULT_PRIMARY_MODEL;
+    this.defaultVisionModel = Deno.env.get('LLM_DEFAULT_VISION_MODEL') || DEFAULT_PRIMARY_MODEL;
+
+    // Canary routing configuration (defaults to 100% primary = stable model)
+    const canaryPercent = parseInt(Deno.env.get('LLM_CANARY_PERCENT') || '100', 10);
+    this.routingConfig = {
+      primary: Deno.env.get('LLM_PRIMARY_MODEL') || DEFAULT_PRIMARY_MODEL,
+      fallback: Deno.env.get('LLM_FALLBACK_MODEL') || DEFAULT_FALLBACK_MODEL,
+      canaryPercent: Number.isFinite(canaryPercent) ? Math.max(0, Math.min(100, canaryPercent)) : 0,
+    };
+
+    console.log('🔧 LLM Router initialized:', {
+      provider: this.defaultProvider,
+      routing: {
+        primary: this.routingConfig.primary,
+        fallback: this.routingConfig.fallback,
+        canaryPercent: this.routingConfig.canaryPercent,
+      },
+    });
   }
 
   /**
@@ -69,23 +104,32 @@ export class LLMRouter {
   }
 
   /**
-   * Get the model name based on config and whether it's a vision request
+   * Select a model via canary routing.
+   * If the caller already specified a model in LLMConfig, that takes priority (no canary).
+   * Otherwise, rolls a random number against canaryPercent to choose primary vs fallback.
    */
-  private getModel(config: LLMConfig | undefined, isVision: boolean): string {
+  private selectModelWithCanary(config: LLMConfig | undefined, isVision: boolean): { model: string; isCanary: boolean } {
+    // Explicit per-request override — bypass canary routing entirely
     if (config?.model) {
-      return config.model;
+      return { model: config.model, isCanary: false };
     }
 
-    // For OpenRouter, use appropriate defaults
-    const providerName = config?.provider || this.defaultProvider;
-    if (providerName === 'openrouter') {
-      // OpenRouter model format: provider/model-name
-      // Use Gemini models as default
-      return isVision ? this.defaultVisionModel : this.defaultTextModel;
+    const { primary, fallback, canaryPercent } = this.routingConfig;
+
+    // canaryPercent = 0 means all traffic goes to fallback (current known-good model)
+    // canaryPercent = 100 means all traffic goes to primary (new stable model)
+    if (canaryPercent <= 0) {
+      return { model: fallback, isCanary: false };
+    }
+    if (canaryPercent >= 100) {
+      return { model: primary, isCanary: true };
     }
 
-    // Default OpenAI models
-    return isVision ? this.defaultVisionModel : this.defaultTextModel;
+    const roll = Math.random() * 100;
+    if (roll < canaryPercent) {
+      return { model: primary, isCanary: true };
+    }
+    return { model: fallback, isCanary: false };
   }
 
   /**
@@ -101,19 +145,102 @@ export class LLMRouter {
   }
 
   /**
-   * Perform chat completion with automatic provider/model selection
+   * Log model quality metrics for observability and model comparison.
+   * These logs can be parsed by Supabase log drain / external monitoring.
+   */
+  logQualityMetrics(metrics: ModelQualityMetrics): void {
+    const tag = metrics.usedFallback ? '⚠️ FALLBACK' : (metrics.jsonParseSuccess ? '✅' : '❌');
+    console.log(`${tag} [MODEL_QUALITY] ${JSON.stringify(metrics)}`);
+  }
+
+  /**
+   * Perform chat completion with canary routing and automatic fallback.
+   *
+   * Flow:
+   * 1. Select model via canary routing (primary vs fallback)
+   * 2. Send request to selected model
+   * 3. If the selected model was the primary (canary) and it fails,
+   *    automatically retry with the fallback model
+   * 4. Return response + metadata about which model was used
    */
   async chatComplete(
     options: ChatCompletionOptions,
     config?: LLMConfig
-  ): Promise<ChatCompletionResponse> {
+  ): Promise<ChatCompletionResponse & { _routing: { model: string; isCanary: boolean; usedFallback: boolean; fallbackReason?: string; latencyMs: number } }> {
     const isVision = this.hasImageContent(options.messages);
-    const model = this.getModel(config, isVision);
+    const { model: selectedModel, isCanary } = this.selectModelWithCanary(config, isVision);
     const { provider } = this.getProvider(config);
+    const providerName = config?.provider || this.defaultProvider;
 
-    console.log(`Using LLM provider: ${config?.provider || this.defaultProvider}, model: ${model}`);
+    console.log(`🎯 LLM request: provider=${providerName}, model=${selectedModel}, isCanary=${isCanary}, canaryPercent=${this.routingConfig.canaryPercent}%`);
 
-    return await provider.chatComplete(options, model);
+    const startTime = Date.now();
+
+    try {
+      const response = await provider.chatComplete(options, selectedModel);
+      const latencyMs = Date.now() - startTime;
+
+      console.log(`✅ LLM response: model=${response.model}, latency=${latencyMs}ms, tokens=${response.usage?.total_tokens ?? 'n/a'}`);
+
+      return {
+        ...response,
+        _routing: {
+          model: response.model || selectedModel,
+          isCanary,
+          usedFallback: false,
+          latencyMs,
+        },
+      };
+    } catch (primaryError) {
+      const primaryLatency = Date.now() - startTime;
+      const errorMsg = primaryError instanceof Error ? primaryError.message : String(primaryError);
+
+      // If this was a canary request, automatically retry with the fallback model
+      if (isCanary && selectedModel !== this.routingConfig.fallback) {
+        console.warn(`⚠️ Canary model "${selectedModel}" failed after ${primaryLatency}ms: ${errorMsg}`);
+        console.warn(`⚠️ Retrying with fallback model "${this.routingConfig.fallback}"...`);
+
+        const fallbackStartTime = Date.now();
+        try {
+          const fallbackResponse = await provider.chatComplete(options, this.routingConfig.fallback);
+          const fallbackLatency = Date.now() - fallbackStartTime;
+
+          console.log(`✅ Fallback response: model=${fallbackResponse.model}, latency=${fallbackLatency}ms`);
+
+          // Log the fallback event for monitoring
+          this.logQualityMetrics({
+            model: selectedModel,
+            jsonParseSuccess: false,
+            usedFallback: true,
+            latencyMs: primaryLatency,
+            fallbackReason: errorMsg,
+          });
+
+          return {
+            ...fallbackResponse,
+            _routing: {
+              model: fallbackResponse.model || this.routingConfig.fallback,
+              isCanary: true,
+              usedFallback: true,
+              fallbackReason: errorMsg,
+              latencyMs: primaryLatency + fallbackLatency,
+            },
+          };
+        } catch (fallbackError) {
+          // Both models failed — surface the fallback error
+          console.error(`❌ Fallback model also failed: ${fallbackError instanceof Error ? fallbackError.message : fallbackError}`);
+          throw fallbackError;
+        }
+      }
+
+      // Not a canary request or fallback model same as selected — propagate error
+      throw primaryError;
+    }
+  }
+
+  /** Expose routing config for external inspection (e.g., health checks) */
+  getRoutingConfig(): Readonly<ModelRoutingConfig> {
+    return { ...this.routingConfig };
   }
 
   /**

@@ -9,6 +9,10 @@ interface SpriteAnimationProps {
   style?: ViewStyle;
   width?: number;
   height?: number;
+  /** Callback when all frames are prefetched and animation is ready to play */
+  onReady?: () => void;
+  /** If true, starts prefetching immediately on mount even if not visible */
+  prefetchOnMount?: boolean;
 }
 
 /**
@@ -34,29 +38,57 @@ export function SpriteAnimation({
   style,
   width = 200,
   height = 200,
+  onReady,
+  prefetchOnMount = false,
 }: SpriteAnimationProps) {
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
   const [isReady, setIsReady] = useState(false);
   const totalFrames = frames.length;
   const hasPreloaded = useRef(false);
+  const onReadyRef = useRef(onReady);
+  
+  // Keep callback ref updated
+  useEffect(() => {
+    onReadyRef.current = onReady;
+  }, [onReady]);
 
-  // Prefetch all frames before starting animation
+  // Mark as ready - skip prefetching for local assets (require() results)
+  // Image.prefetch only works with URL strings, not asset IDs from require()
   useEffect(() => {
     if (totalFrames === 0 || hasPreloaded.current) return;
     
     hasPreloaded.current = true;
     
+    // For local assets (numbers from require()), skip prefetch and mark ready immediately
+    // The Image component will load them on demand with cachePolicy="memory"
+    const isLocalAsset = typeof frames[0] === 'number';
+    
+    if (isLocalAsset) {
+      // Small delay to let the first frame render
+      setTimeout(() => {
+        setIsReady(true);
+        onReadyRef.current?.();
+      }, 100);
+      return;
+    }
+    
+    // For remote URLs, prefetch them
     const prefetchFrames = async () => {
       try {
-        // Prefetch all frames in parallel
         await Promise.all(
-          frames.map(frame => Image.prefetch(frame))
+          frames.map(frame => {
+            if (typeof frame === 'string') {
+              return Image.prefetch(frame);
+            }
+            return Promise.resolve();
+          })
         );
       } catch (error) {
         // Continue even if prefetch fails - images will load on demand
         console.warn('SpriteAnimation: Some frames failed to prefetch', error);
       }
       setIsReady(true);
+      onReadyRef.current?.();
     };
 
     prefetchFrames();

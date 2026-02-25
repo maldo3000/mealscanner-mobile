@@ -2,7 +2,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import React from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 
-import { bgPrimary, glassBorder, glassSurface, neonGreen, textMuted } from '@/constants/Colors';
+import { accentCoral, accentSky, accentYellow, bgPrimary, glassBorder, glassSurface, neonGreen, textMuted } from '@/constants/Colors';
 import { Spacing } from '@/constants/Spacing';
 import { TextStyles } from '@/constants/Typography';
 import { getMealTag, type NutritionData, type TagConfig } from '@/lib/nutritionTags';
@@ -135,22 +135,22 @@ export function MealShareCard({
           {showStats && nutrition && (
             <View style={styles.statsContainer}>
               <View style={styles.statItem}>
-                <Text style={styles.statValue}>{formatMacro(nutrition.calories)}</Text>
+                <Text style={[styles.statValue, { color: neonGreen }]}>{formatMacro(nutrition.calories)}</Text>
                 <Text style={styles.statLabel}>calories</Text>
               </View>
               <View style={styles.statDivider} />
               <View style={styles.statItem}>
-                <Text style={styles.statValue}>{formatMacro(nutrition.protein)}g</Text>
+                <Text style={[styles.statValue, { color: accentSky }]}>{formatMacro(nutrition.protein)}g</Text>
                 <Text style={styles.statLabel}>protein</Text>
               </View>
               <View style={styles.statDivider} />
               <View style={styles.statItem}>
-                <Text style={styles.statValue}>{formatMacro(nutrition.carbs)}g</Text>
+                <Text style={[styles.statValue, { color: accentYellow }]}>{formatMacro(nutrition.carbs)}g</Text>
                 <Text style={styles.statLabel}>carbs</Text>
               </View>
               <View style={styles.statDivider} />
               <View style={styles.statItem}>
-                <Text style={styles.statValue}>{formatMacro(nutrition.fat)}g</Text>
+                <Text style={[styles.statValue, { color: accentCoral }]}>{formatMacro(nutrition.fat)}g</Text>
                 <Text style={styles.statLabel}>fat</Text>
               </View>
             </View>
@@ -165,12 +165,12 @@ export function MealShareCard({
             </Text>
           </View>
         )}
-      </View>
 
-      {/* Bottom CTA */}
-      <View style={styles.bottomSection}>
-        <Text style={styles.ctaText}>Download at</Text>
-        <Text style={styles.urlText}>mealscanner.app</Text>
+        {/* CTA - keep close to description */}
+        <View style={styles.bottomSection}>
+          <Text style={styles.ctaText}>Download at</Text>
+          <Text style={styles.urlText}>mealscanner.app</Text>
+        </View>
       </View>
     </View>
   );
@@ -320,7 +320,6 @@ const styles = StyleSheet.create({
   },
   statValue: {
     ...TextStyles.h2,
-    color: neonGreen,
     fontSize: 46,
     lineHeight: 54,
     fontWeight: '800',
@@ -349,11 +348,8 @@ const styles = StyleSheet.create({
     lineHeight: 48,
   },
   bottomSection: {
-    position: 'absolute',
-    bottom: Spacing.xl * 2.5,
-    left: 0,
-    right: 0,
     alignItems: 'center',
+    marginTop: Spacing.md, // ~“pinky width” under description
   },
   ctaText: {
     ...TextStyles.body,

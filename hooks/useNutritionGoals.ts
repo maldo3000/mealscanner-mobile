@@ -47,6 +47,10 @@ const convertSupabaseGoalToLocal = (supabaseGoal: {
   target_fiber?: number;
   activity_level?: string;
   dietary_restrictions?: string[];
+  sex?: string;
+  age_years?: number;
+  height_cm?: number;
+  weight_kg?: number;
   created_at?: string;
   updated_at?: string;
 }): NutritionGoal => {
@@ -74,6 +78,14 @@ const convertSupabaseGoalToLocal = (supabaseGoal: {
   };
   
   const activityLevel: ActivityLevel = activityLevelMap[supabaseGoal.activity_level || ''] || 'light';
+
+  // Map sex from Supabase (use real data if available)
+  const sexMap: Record<string, 'male' | 'female' | 'other'> = {
+    'male': 'male',
+    'female': 'female',
+    'other': 'other',
+  };
+  const sex = sexMap[supabaseGoal.sex || ''] || 'other';
   
   // Generate a goal name based on type
   const goalNameMap: Record<NutritionGoalType, string> = {
@@ -92,9 +104,10 @@ const convertSupabaseGoalToLocal = (supabaseGoal: {
     type: goalType,
     name: goalNameMap[goalType],
     profileSnapshot: {
-      sex: 'other', // Default since onboarding doesn't store this in user_goals
-      heightCm: 170, // Default values - will be updated when user edits goals
-      weightKg: 70,
+      sex,
+      ageYears: supabaseGoal.age_years ?? undefined,
+      heightCm: supabaseGoal.height_cm ?? 170,
+      weightKg: supabaseGoal.weight_kg ?? 70,
       activityLevel,
     },
     dailyTargets: {
@@ -129,24 +142,38 @@ export const useNutritionGoals = (): UseNutritionGoalsValue => {
         localGoalsRepository.getAllGoals(user?.id),
       ]);
       
-      // If no local goals exist and user is logged in, try to sync from Supabase
-      // This handles the case where goals were set during onboarding but not saved locally
+      // If no local goals exist and user is logged in, try to adopt them from
+      // other sources: first the pending onboarding key (written before sign-up
+      // to avoid the auth-navigation race), then Supabase as a last resort.
       if (!active && all.length === 0 && user?.id) {
         try {
-          const { data: supabaseGoal, error: supabaseError } = await getUserGoals(user.id);
-          
-          if (!supabaseError && supabaseGoal) {
-            // Convert Supabase goal to local format and save
-            const localGoal = convertSupabaseGoalToLocal(supabaseGoal);
-            await localGoalsRepository.saveGoal(localGoal, user.id);
-            
-            // Reload from local storage to get the synced goal
+          // 1. Check the pending onboarding goal (most reliable source)
+          const pendingGoal = await localGoalsRepository.getPendingGoal();
+          if (pendingGoal) {
+            await localGoalsRepository.saveGoal(pendingGoal, user.id);
+            await localGoalsRepository.clearPendingGoal();
             active = await localGoalsRepository.getActiveGoal(user.id);
             all = await localGoalsRepository.getAllGoals(user.id);
           }
-        } catch (syncErr) {
-          // Silently fail sync - user can still set goals manually
-          console.warn('Failed to sync goals from Supabase:', syncErr);
+        } catch (pendingErr) {
+          console.warn('Failed to adopt pending onboarding goal:', pendingErr);
+        }
+
+        // 2. Still nothing? Try Supabase as a last resort
+        if (!active && all.length === 0) {
+          try {
+            const { data: supabaseGoal, error: supabaseError } = await getUserGoals(user.id);
+
+            if (!supabaseError && supabaseGoal) {
+              const localGoal = convertSupabaseGoalToLocal(supabaseGoal);
+              await localGoalsRepository.saveGoal(localGoal, user.id);
+
+              active = await localGoalsRepository.getActiveGoal(user.id);
+              all = await localGoalsRepository.getAllGoals(user.id);
+            }
+          } catch (syncErr) {
+            console.warn('Failed to sync goals from Supabase:', syncErr);
+          }
         }
       }
       
@@ -175,6 +202,7 @@ export const useNutritionGoals = (): UseNutritionGoalsValue => {
           profile: input.profile,
           goalType: input.goalType,
           pace: input.pace,
+          focusAreas: input.focusAreas,
           customCalories: input.customCalories,
           customProteinGrams: input.customProteinGrams,
           customCarbGrams: input.customCarbGrams,
@@ -209,6 +237,10 @@ export const useNutritionGoals = (): UseNutritionGoalsValue => {
             target_fat: dailyTargets.fatGrams,
             target_fiber: dailyTargets.fibreGrams,
             activity_level: input.profile.activityLevel,
+            sex: input.profile.sex,
+            age_years: input.profile.ageYears,
+            height_cm: input.profile.heightCm,
+            weight_kg: input.profile.weightKg,
           });
         }
 
@@ -245,6 +277,10 @@ export const useNutritionGoals = (): UseNutritionGoalsValue => {
             target_fat: updated.dailyTargets.fatGrams,
             target_fiber: updated.dailyTargets.fibreGrams,
             activity_level: updated.profileSnapshot.activityLevel,
+            sex: updated.profileSnapshot.sex,
+            age_years: updated.profileSnapshot.ageYears,
+            height_cm: updated.profileSnapshot.heightCm,
+            weight_kg: updated.profileSnapshot.weightKg,
           });
         }
 

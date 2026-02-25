@@ -1,13 +1,14 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Card } from '@/components/ui/Card';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { ThumbnailImage } from '@/components/ui/OptimizedImage';
-import { SourceBadge } from './SourceBadge';
-import { Colors, glassSurface, accentSky, herbarium } from '@/constants/Colors';
-import { TextStyles, FontFamilies } from '@/constants/Typography';
+import { accentSky, Colors, glassSurface, herbarium } from '@/constants/Colors';
 import { Spacing } from '@/constants/Spacing';
+import { FontFamilies, TextStyles } from '@/constants/Typography';
+import { getRecipeImageSource } from '@/data/recipeImages';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import React from 'react';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SourceBadge } from './SourceBadge';
 import type { Recipe } from './types';
 
 interface RecipeCardDiscoverProps {
@@ -36,9 +37,9 @@ export function RecipeCardDiscover({ recipe, onPress, isLocked = false, size = '
     >
       <Card variant="glass" padding="none" style={styles.card}>
         <View style={styles.imageContainer}>
-          {recipe.image_url ? (
+          {(recipe.image_url || recipe.id) ? (
             <ThumbnailImage 
-              source={recipe.image_url} 
+              source={getRecipeImageSource(recipe.id, recipe.image_url) || recipe.image_url} 
               style={styles.image} 
             />
           ) : (

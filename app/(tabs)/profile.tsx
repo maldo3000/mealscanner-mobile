@@ -1,25 +1,29 @@
 import { ContentContainer } from '@/components/layout/ContentContainer';
 import { PageContainer } from '@/components/layout/PageContainer';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { WeeklyReportSheet } from '@/components/reports/WeeklyReportSheet';
+import { Paywall } from '@/components/subscription/Paywall';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { ProBadge } from '@/components/ui/ProBadge';
-import { Colors, neonGreen, glassBorder, semanticColors } from '@/constants/Colors';
+import { SwirlingSpinner } from '@/components/ui/SwirlingSpinner';
+import { semanticColors } from '@/constants/Colors';
 import { PageSpacing, Spacing } from '@/constants/Spacing';
 import { TextStyles } from '@/constants/Typography';
-import { useColorScheme } from '@/hooks/useColorScheme';
-import { useNutritionGoals } from '@/hooks/useNutritionGoals';
 import { useAuth } from '@/context/AuthContext';
 import { useSubscription } from '@/context/SubscriptionContext';
-import { Paywall } from '@/components/subscription/Paywall';
+import { useTheme } from '@/context/ThemeContext';
+import { useNutritionGoals } from '@/hooks/useNutritionGoals';
+import BottomSheet from '@gorhom/bottom-sheet';
+import { useFocusEffect } from '@react-navigation/native';
+import { File, Paths } from 'expo-file-system/next';
 import { useRouter } from 'expo-router';
 import * as Sharing from 'expo-sharing';
-import * as FileSystem from 'expo-file-system';
-import React, { useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View, Alert, ActivityIndicator, Linking } from 'react-native';
-import Animated, { FadeInDown, Easing } from 'react-native-reanimated';
+import React, { useCallback, useRef, useState } from 'react';
+import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import Animated, { Easing, FadeInDown } from 'react-native-reanimated';
 
-import { getAllUserMeals, deleteMeal, deleteAccount } from '@/lib/supabase';
+import { deleteAccount, deleteMeal, getAllUserMeals } from '@/lib/supabase';
 
 interface MenuRowProps {
   icon: any;
@@ -42,11 +46,10 @@ const MenuRow = ({
   isLast = false, 
   color,
   isLoading = false,
-  rightAction
+  rightAction,
 }: MenuRowProps) => {
-  const colorScheme = useColorScheme();
-  const colors = Colors[colorScheme ?? 'dark'];
-  const iconColor = color || neonGreen;
+  const { tokens } = useTheme();
+  const iconColor = color || tokens.accent;
 
   return (
     <View>
@@ -57,14 +60,14 @@ const MenuRow = ({
       >
         <View style={styles.menuRowLeft}>
           {isLoading ? (
-            <ActivityIndicator size="small" color={iconColor} style={{ width: 22 }} />
+            <SwirlingSpinner size={22} color={iconColor} />
           ) : (
             <IconSymbol name={icon} size={22} color={iconColor} />
           )}
           <View style={styles.menuRowText}>
-            <Text style={[TextStyles.body, { color: color || colors.text }]}>{title}</Text>
+            <Text style={[TextStyles.body, { color: color || tokens.textPrimary }]}>{title}</Text>
             {subtitle && (
-              <Text style={[TextStyles.bodySmall, { color: colors.icon, marginTop: 2 }]} numberOfLines={1}>
+              <Text style={[TextStyles.bodySmall, { color: tokens.textMuted, marginTop: 2 }]} numberOfLines={1}>
                 {subtitle}
               </Text>
             )}
@@ -73,11 +76,11 @@ const MenuRow = ({
         <View style={styles.menuRowRight}>
           {rightAction}
           {showChevron && (
-            <IconSymbol name="chevron.right" size={16} color={colors.icon} />
+            <IconSymbol name="chevron.right" size={16} color={tokens.textMuted} />
           )}
         </View>
       </TouchableOpacity>
-      {!isLast && <View style={styles.separator} />}
+      {!isLast && <View style={[styles.separator, { backgroundColor: tokens.borderSubtle }]} />}
     </View>
   );
 };
@@ -89,11 +92,18 @@ export default function ProfileTabScreen() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [paywallVisible, setPaywallVisible] = useState(false);
   const router = useRouter();
-  const colorScheme = useColorScheme();
-  const colors = Colors[colorScheme ?? 'dark'];
-  const { activeGoal, resetGoals } = useNutritionGoals();
+  const { tokens, accentAlpha } = useTheme();
+  const { activeGoal, resetGoals, refresh: refreshGoals } = useNutritionGoals();
+
+  // Re-fetch goal data when the screen regains focus (e.g. after editing in settings)
+  useFocusEffect(
+    useCallback(() => {
+      void refreshGoals();
+    }, [refreshGoals]),
+  );
   const { signOut, user } = useAuth();
   const { isPro, isBetaTester, restorePurchases, showCustomerCenter, isLoading: isSubscriptionLoading } = useSubscription();
+  const weeklyReportSheetRef = useRef<BottomSheet>(null);
 
   const formatMacro = (val: number | undefined | null) => {
     if (val === undefined || val === null) return '0';
@@ -124,34 +134,70 @@ export default function ProfileTabScreen() {
   };
 
   const handleExportData = async () => {
-    if (!user) return;
+    if (!user) {
+      Alert.alert('Not Signed In', 'Please sign in to export your data.');
+      return;
+    }
     setIsExporting(true);
     try {
       const { data: meals, error } = await getAllUserMeals(user.id);
       if (error) throw error;
 
-      const exportData = {
-        profile: {
-          email: user.email,
-          id: user.id,
-          activeGoal: activeGoal,
-        },
-        meals: meals || [],
-        exportDate: new Date().toISOString(),
-        app: 'MealScanner Mobile',
-        version: '1.0.0',
+      if (!meals || meals.length === 0) {
+        Alert.alert('No Data', 'You don\'t have any meals to export yet.');
+        return;
+      }
+
+      // Build CSV
+      const csvHeaders = [
+        'Date', 'Time', 'Meal Type', 'Description', 'Calories',
+        'Protein (g)', 'Carbs (g)', 'Fat (g)', 'Fiber (g)',
+        'Sugar (g)', 'Sodium (mg)', 'Cholesterol (mg)',
+        'Health Score', 'Ingredients', 'Serving Estimate',
+      ];
+
+      const escapeCSV = (value: string | undefined | null): string => {
+        if (value === undefined || value === null) return '';
+        const str = String(value);
+        if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+          return `"${str.replace(/"/g, '""')}"`;
+        }
+        return str;
       };
+
+      const csvRows = (meals || []).map((meal: any) => {
+        const date = new Date(meal.created_at);
+        return [
+          date.toLocaleDateString(),
+          date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          meal.meal_type || '',
+          escapeCSV(meal.description),
+          meal.calories ?? '',
+          meal.macros?.protein ?? '',
+          meal.macros?.carbs ?? '',
+          meal.macros?.fat ?? '',
+          meal.macros?.fiber ?? '',
+          meal.macros?.sugar ?? '',
+          meal.macros?.sodium ?? '',
+          meal.macros?.cholesterol ?? '',
+          meal.health_score ?? '',
+          escapeCSV(meal.ingredients?.join('; ')),
+          escapeCSV(meal.serving_estimate),
+        ].join(',');
+      });
+
+      const csvContent = [csvHeaders.join(','), ...csvRows].join('\n');
       
-      const fileName = `mealscanner_export_${new Date().toISOString().split('T')[0]}.json`;
-      const fileUri = FileSystem.cacheDirectory + fileName;
-      
-      await FileSystem.writeAsStringAsync(fileUri, JSON.stringify(exportData, null, 2));
+      const fileName = `mealscanner_export_${new Date().toISOString().split('T')[0]}.csv`;
+      const file = new File(Paths.cache, fileName);
+      file.create({ overwrite: true });
+      file.write(csvContent);
       
       if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(fileUri, {
-          mimeType: 'application/json',
+        await Sharing.shareAsync(file.uri, {
+          mimeType: 'text/csv',
           dialogTitle: 'Export My MealScanner Data',
-          UTI: 'public.json',
+          UTI: 'public.comma-separated-values-text',
         });
       } else {
         Alert.alert('Sharing Unavailable', 'Sharing is not available on this device.');
@@ -284,20 +330,20 @@ export default function ProfileTabScreen() {
             <View style={styles.userCardContent}>
               <View style={styles.avatarContainer}>
                 {/* Avatar Placeholder */}
-                <View style={styles.avatar}>
-                  <IconSymbol name="person.fill" size={32} color={neonGreen} />
+                <View style={[styles.avatar, { backgroundColor: accentAlpha(0.15), borderColor: accentAlpha(0.3) }]}>
+                  <IconSymbol name="person.fill" size={32} color={tokens.accent} />
                 </View>
                 {isPro && (
-                  <View style={styles.proBadgeMini}>
-                    <IconSymbol name="checkmark.seal" size={14} color={neonGreen} />
+                  <View style={[styles.proBadgeMini, { backgroundColor: tokens.accent }]}>
+                    <IconSymbol name="checkmark.seal" size={14} color={tokens.textOnAccent} />
                   </View>
                 )}
               </View>
               <View style={styles.userInfo}>
-                <Text style={[TextStyles.h3, { color: colors.text }]}>
+                <Text style={[TextStyles.h3, { color: tokens.textPrimary }]}>
                   {user?.email?.split('@')[0] || 'User'}
                 </Text>
-                <Text style={[TextStyles.bodySmall, { color: colors.icon }]}>
+                <Text style={[TextStyles.bodySmall, { color: tokens.textMuted }]}>
                   {user?.email || 'No email set'}
                 </Text>
               </View>
@@ -307,7 +353,7 @@ export default function ProfileTabScreen() {
 
         {/* Account Section */}
         <Animated.View entering={FadeInDown.duration(600).delay(200).easing(Easing.out(Easing.quad))}>
-          <Text style={[TextStyles.bodySmall, styles.sectionTitle, { color: colors.icon }]}>ACCOUNT</Text>
+          <Text style={[TextStyles.bodySmall, styles.sectionTitle, { color: tokens.textMuted }]}>ACCOUNT</Text>
           <GlassCard padding={0} noBorder={false}>
             <MenuRow 
               icon="person" 
@@ -326,6 +372,11 @@ export default function ProfileTabScreen() {
               onPress={() => router.push('/settings/notifications')} 
             />
             <MenuRow 
+              icon="paintbrush.fill" 
+              title="Appearance" 
+              onPress={() => router.push('/settings/appearance')} 
+            />
+            <MenuRow 
               icon="iphone" 
               title="Units & Display" 
               onPress={() => router.push('/settings/units')}
@@ -336,7 +387,7 @@ export default function ProfileTabScreen() {
 
         {/* Subscription Section */}
         <Animated.View entering={FadeInDown.duration(600).delay(300).easing(Easing.out(Easing.quad))}>
-          <Text style={[TextStyles.bodySmall, styles.sectionTitle, { color: colors.icon }]}>SUBSCRIPTION</Text>
+          <Text style={[TextStyles.bodySmall, styles.sectionTitle, { color: tokens.textMuted }]}>SUBSCRIPTION</Text>
           <GlassCard padding={0}>
             <MenuRow 
               icon="star.fill" 
@@ -367,7 +418,7 @@ export default function ProfileTabScreen() {
 
         {/* Others Section */}
         <Animated.View entering={FadeInDown.duration(600).delay(400).easing(Easing.out(Easing.quad))}>
-          <Text style={[TextStyles.bodySmall, styles.sectionTitle, { color: colors.icon }]}>OTHER</Text>
+          <Text style={[TextStyles.bodySmall, styles.sectionTitle, { color: tokens.textMuted }]}>OTHER</Text>
           <GlassCard padding={0}>
             <MenuRow 
               icon="square.and.arrow.up" 
@@ -380,13 +431,27 @@ export default function ProfileTabScreen() {
               title="Clear History" 
               onPress={handleClearHistory}
             />
+            <MenuRow
+              icon="questionmark.circle"
+              title="How it works"
+              onPress={() => router.push('/settings/how-it-works' as any)}
+            />
+            <MenuRow
+              icon="chart.bar.doc.horizontal"
+              title="Weekly Report"
+              subtitle="Your personal nutritionist recap"
+              onPress={() => {
+                if (isPro || isBetaTester) {
+                  weeklyReportSheetRef.current?.expand();
+                } else {
+                  setPaywallVisible(true);
+                }
+              }}
+            />
             <MenuRow 
-              icon="person.crop.circle.badge.minus" 
-              title="Delete Account" 
-              onPress={handleDeleteAccount}
-              color={semanticColors.error}
-              showChevron={false}
-              isLoading={isDeleting}
+              icon="envelope" 
+              title="Contact Support" 
+              onPress={() => router.push('/settings/contact-support' as any)} 
             />
             <MenuRow 
               icon="info.circle" 
@@ -396,12 +461,12 @@ export default function ProfileTabScreen() {
             <MenuRow 
               icon="lock.doc" 
               title="Privacy Policy" 
-              onPress={() => Linking.openURL(process.env.EXPO_PUBLIC_PRIVACY_POLICY_URL || 'https://gist.github.com/maldo3000/01cb8245058b25733d89fb3c16cca7b5')} 
+              onPress={() => router.push('/settings/privacy-policy')} 
             />
             <MenuRow 
               icon="lock.doc" 
               title="Terms of Service" 
-              onPress={() => Linking.openURL(process.env.EXPO_PUBLIC_TERMS_URL || 'https://gist.github.com/maldo3000/d239c3302e64e053b31ea79611f86265')} 
+              onPress={() => router.push('/settings/terms-of-service')} 
             />
             <MenuRow 
               icon="rectangle.portrait.and.arrow.right" 
@@ -415,6 +480,22 @@ export default function ProfileTabScreen() {
           </GlassCard>
         </Animated.View>
 
+        {/* Danger Zone Section */}
+        <Animated.View entering={FadeInDown.duration(600).delay(500).easing(Easing.out(Easing.quad))}>
+          <Text style={[TextStyles.bodySmall, styles.sectionTitle, { color: tokens.textMuted }]}>DANGER ZONE</Text>
+          <GlassCard padding={0}>
+            <MenuRow 
+              icon="person.crop.circle.badge.minus" 
+              title="Delete Account" 
+              onPress={handleDeleteAccount}
+              color={semanticColors.error}
+              showChevron={false}
+              isLast={true}
+              isLoading={isDeleting}
+            />
+          </GlassCard>
+        </Animated.View>
+
         {/* Extra bottom padding to clear tab bar */}
         <View style={{ height: 100 }} />
       </ContentContainer>
@@ -423,6 +504,16 @@ export default function ProfileTabScreen() {
         visible={paywallVisible}
         onClose={() => setPaywallVisible(false)}
       />
+
+      {user?.id ? (
+        <WeeklyReportSheet
+          ref={weeklyReportSheetRef}
+          userId={user.id}
+          isPro={isPro || isBetaTester}
+          onRequirePro={() => setPaywallVisible(true)}
+          onClose={() => {}}
+        />
+      ) : null}
     </PageContainer>
   );
 }
@@ -443,24 +534,19 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   proBadgeMini: {
     position: 'absolute',
     bottom: -2,
     right: -2,
-    backgroundColor: '#022c22',
     borderRadius: 10,
     width: 20,
     height: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: neonGreen,
   },
   userInfo: {
     flex: 1,
@@ -496,7 +582,6 @@ const styles = StyleSheet.create({
   },
   separator: {
     height: 1,
-    backgroundColor: glassBorder,
     marginLeft: 22 + Spacing.base + Spacing.base, // icon width + gap + padding
   },
 });

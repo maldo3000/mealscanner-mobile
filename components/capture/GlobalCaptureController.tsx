@@ -1,46 +1,48 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 
-import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system/legacy';
-import * as ImageManipulator from 'expo-image-manipulator';
+import { SwirlingSpinner } from '@/components/ui/SwirlingSpinner';
+
 import { useCameraPermissions } from 'expo-camera';
+import * as ImageManipulator from 'expo-image-manipulator';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 
-import { PageContainer } from '@/components/layout/PageContainer';
-import { ContentContainer } from '@/components/layout/ContentContainer';
-import { IconSymbol } from '@/components/ui/IconSymbol';
-import { Button } from '@/components/ui/Button';
+import { AppBackground } from '@/components/AppBackground';
+import { AnalysisStatus } from '@/components/capture/AnalysisLoadingOverlay';
 import { CaptureCameraOverlay } from '@/components/capture/CaptureCameraOverlay';
 import { CaptureImagePreview } from '@/components/capture/CaptureImagePreview';
 import { DescribeInputSheet } from '@/components/capture/DescribeInputSheet';
-import { MealStagingScreen } from '@/components/capture/MealStagingScreen';
 import { FoodSearchModal } from '@/components/capture/FoodSearchModal';
-import { AnalysisStatus } from '@/components/capture/AnalysisLoadingOverlay';
-import { Paywall } from '@/components/subscription/Paywall';
-import { useMealCaptureDraft } from '@/hooks/useMealCaptureDraft';
-import { useFeatureAccess } from '@/hooks/useFeatureAccess';
-import { Colors, primaryGreen, neonGreen } from '@/constants/Colors';
-import { Spacing, PageSpacing } from '@/constants/Spacing';
-import { TextStyles } from '@/constants/Typography';
-import { useColorScheme } from '@/hooks/useColorScheme';
-import {
-  analyzeMealMulti,
-  analyzeRecipeFromImage,
-  getCurrentUser,
-  saveDatabaseMeal,
-  supabase,
-  uploadMealImage,
-} from '@/lib/supabase';
-import type { AnalyzeMealMultiItemInput, AnalyzeMealMultiRequest, DatabaseFoodMealData } from '@/lib/supabase';
-import type { User } from '@supabase/supabase-js';
+import { MealStagingScreen } from '@/components/capture/MealStagingScreen';
 import type { CaptureIntent, DatabaseFoodItem } from '@/components/capture/types';
+import { PageContainer } from '@/components/layout/PageContainer';
+import { Paywall } from '@/components/subscription/Paywall';
+import { Button } from '@/components/ui/Button';
+import { Colors } from '@/constants/Colors';
+import { PageSpacing, Spacing } from '@/constants/Spacing';
+import { TextStyles } from '@/constants/Typography';
+import { useAuth } from '@/context/AuthContext';
+import { useTheme } from '@/context/ThemeContext';
+import { useColorScheme } from '@/hooks/useColorScheme';
+import { useFeatureAccess } from '@/hooks/useFeatureAccess';
+import { useMealCaptureDraft } from '@/hooks/useMealCaptureDraft';
+import type { AnalyzeMealMultiItemInput, DatabaseFoodMealData } from '@/lib/supabase';
+import {
+    analyzeMealMulti,
+    analyzeRecipeFromImage,
+    isRecipeFeatureUnavailableError,
+    saveDatabaseMeal,
+    uploadMealImage,
+} from '@/lib/supabase';
 
 export interface GlobalCaptureControllerProps {
   /** The action to trigger (snap, describe, etc.) */
   activeAction: 'snap' | 'describe' | 'log' | 'recipe' | null;
-  /** Callback to clear the active action */
+  /** Callback to fully close the capture controller */
   onClose: () => void;
+  /** Callback to acknowledge the action was processed (clears activeAction only) */
+  onActionProcessed: () => void;
   /** Whether the overlay should be visible */
   isVisible: boolean;
 }
@@ -58,13 +60,18 @@ type ScreenState =
   | { type: 'recipe_processing'; photoUri: string }
   | { type: 'image_preview'; uri: string; mode: 'meal' | 'recipe' };
 
-export function GlobalCaptureController({ activeAction, onClose, isVisible }: GlobalCaptureControllerProps) {
+interface EditingTextItemState {
+  localId: string;
+  text: string;
+}
+
+export function GlobalCaptureController({ activeAction, onClose, onActionProcessed, isVisible }: GlobalCaptureControllerProps) {
+  const { tokens } = useTheme();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
   const router = useRouter();
 
-  const [user, setUser] = useState<User | null>(null);
-  const [authLoading, setAuthLoading] = useState<boolean>(true);
+  const { user, isLoading: isAuthLoading } = useAuth();
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>('idle');
   const [isProcessingRecipe, setIsProcessingRecipe] = useState<boolean>(false);
   const [paywallVisible, setPaywallVisible] = useState<boolean>(false);
@@ -76,8 +83,10 @@ export function GlobalCaptureController({ activeAction, onClose, isVisible }: Gl
   const [cameraMode, setCameraMode] = useState<'meal' | 'recipe' | null>(null);
   const [describeOpen, setDescribeOpen] = useState<boolean>(false);
   const [searchOpen, setSearchOpen] = useState<boolean>(false);
+  const [editingTextItem, setEditingTextItem] = useState<EditingTextItemState | null>(null);
   const [recipePhotoUri, setRecipePhotoUri] = useState<string | null>(null);
   const [previewUri, setPreviewUri] = useState<{ uri: string; mode: 'meal' | 'recipe' } | null>(null);
+  const isAnalyzeInFlightRef = useRef<boolean>(false);
 
   // Determine which screen to show
   const screenState = useMemo<ScreenState>(() => {
@@ -85,7 +94,7 @@ export function GlobalCaptureController({ activeAction, onClose, isVisible }: Gl
     if (!isVisible && draft.isReady && draft.items.length === 0) return { type: 'idle' };
     
     // Once we have items or an active action, we show something
-    if (authLoading) return { type: 'loading_auth' };
+    if (isAuthLoading) return { type: 'loading_auth' };
     if (!user) return { type: 'signed_out' };
     if (!draft.isReady) return { type: 'loading_draft' };
     if (previewUri) return { type: 'image_preview', uri: previewUri.uri, mode: previewUri.mode };
@@ -95,31 +104,16 @@ export function GlobalCaptureController({ activeAction, onClose, isVisible }: Gl
     if (describeOpen) return { type: 'describe_meal' };
     if (searchOpen) return { type: 'search_entry' };
     if (draft.items.length > 0) return { type: 'staging' };
+
+    // If an action is pending but local state hasn't been set by useEffect yet,
+    // show a loading overlay instead of returning idle to prevent a brief flash
+    // of the underlying screen during the transition.
+    // activeAction is cleared by onActionProcessed() after the intent is handled,
+    // so this only shows during the brief window between trigger and processing.
+    if (activeAction) return { type: 'loading_draft' };
     
     return { type: 'idle' };
-  }, [isVisible, authLoading, cameraMode, describeOpen, draft.isReady, draft.items.length, isProcessingRecipe, previewUri, recipePhotoUri, searchOpen, user]);
-
-  // Auth check
-  useEffect(() => {
-    void checkUser();
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      setAuthLoading(false);
-    });
-    return () => {
-      authListener.subscription.unsubscribe();
-    };
-  }, []);
-
-  const checkUser = async (): Promise<void> => {
-    setAuthLoading(true);
-    try {
-      const { user: currentUser } = await getCurrentUser();
-      setUser(currentUser ?? null);
-    } finally {
-      setAuthLoading(false);
-    }
-  };
+  }, [isVisible, isAuthLoading, activeAction, cameraMode, describeOpen, draft.isReady, draft.items.length, isProcessingRecipe, previewUri, recipePhotoUri, searchOpen, user]);
 
   // Handle intent from external trigger
   const handleIntent = useCallback(
@@ -135,6 +129,7 @@ export function GlobalCaptureController({ activeAction, onClose, isVisible }: Gl
         }
         setCameraMode('meal');
       } else if (intent === 'describe') {
+        setEditingTextItem(null);
         setDescribeOpen(true);
       } else if (intent === 'search') {
         setSearchOpen(true);
@@ -153,7 +148,11 @@ export function GlobalCaptureController({ activeAction, onClose, isVisible }: Gl
     [permission, requestPermission, onClose]
   );
 
-  // Watch for activeAction changes
+  // Process the incoming action and immediately clear it via onActionProcessed().
+  // Clearing activeAction after processing ensures that:
+  // 1. The same action can be triggered again (e.g. describe → cancel → describe)
+  // 2. The screenState loading_draft fallback doesn't persist after processing
+  // 3. handleIntent won't re-fire on dependency changes (activeAction is null)
   useEffect(() => {
     if (!activeAction || !user || !draft.isReady) return;
 
@@ -166,7 +165,11 @@ export function GlobalCaptureController({ activeAction, onClose, isVisible }: Gl
     } else if (activeAction === 'recipe') {
       void handleIntent('extract_recipe');
     }
-  }, [activeAction, user, draft.isReady, handleIntent]);
+
+    // Acknowledge the action so it resets to null. The controller stays
+    // mounted via isCaptureVisible, but activeAction is now free for reuse.
+    onActionProcessed();
+  }, [activeAction, user, draft.isReady, handleIntent, onActionProcessed]);
 
   // Camera handlers
   const handleMealPhotoCaptured = useCallback(
@@ -213,16 +216,30 @@ export function GlobalCaptureController({ activeAction, onClose, isVisible }: Gl
   // Describe handlers
   const handleDescribeSubmit = useCallback(
     async (text: string): Promise<void> => {
-      await draft.addTextItem(text);
+      if (editingTextItem) {
+        await draft.updateTextItem(editingTextItem.localId, text);
+      } else {
+        await draft.addTextItem(text);
+      }
+      setEditingTextItem(null);
       setDescribeOpen(false);
     },
-    [draft]
+    [draft, editingTextItem]
   );
 
   const handleDescribeCancel = useCallback((): void => {
+    setEditingTextItem(null);
     setDescribeOpen(false);
     if (draft.items.length === 0) onClose();
   }, [draft.items.length, onClose]);
+
+  const handleEditTextItem = useCallback(
+    (localId: string, currentText: string): void => {
+      setEditingTextItem({ localId, text: currentText });
+      setDescribeOpen(true);
+    },
+    []
+  );
 
   // Search handlers
   const handleFoodItemSelected = useCallback(
@@ -239,7 +256,7 @@ export function GlobalCaptureController({ activeAction, onClose, isVisible }: Gl
   }, [draft.items.length, onClose]);
 
   const handleQuickLog = useCallback(
-    async (item: DatabaseFoodItem, servingMultiplier: number, customServingGrams?: number): Promise<void> => {
+    async (item: DatabaseFoodItem, totalGrams: number): Promise<void> => {
       if (!user) return;
       try {
         const foodData: DatabaseFoodMealData = {
@@ -247,12 +264,12 @@ export function GlobalCaptureController({ activeAction, onClose, isVisible }: Gl
           name: item.name,
           brand: item.brand,
           source: item.source,
-          calories: item.calories,
-          protein: item.protein,
-          carbs: item.carbs,
-          fat: item.fat,
-          fiber: item.fiber,
-          sodium: item.sodium,
+          caloriesPer100g: item.caloriesPer100g,
+          proteinPer100g: item.proteinPer100g,
+          carbsPer100g: item.carbsPer100g,
+          fatPer100g: item.fatPer100g,
+          fiberPer100g: item.fiberPer100g,
+          sodiumPer100g: item.sodiumPer100g,
           ingredients: item.ingredients,
           servingSize: item.servingSize,
           servingUnit: item.servingUnit,
@@ -260,7 +277,7 @@ export function GlobalCaptureController({ activeAction, onClose, isVisible }: Gl
           barcode: item.barcode,
           imageUrl: item.imageUrl,
         };
-        const { data } = await saveDatabaseMeal(user.id, foodData, servingMultiplier, customServingGrams);
+        const { data } = await saveDatabaseMeal(user.id, foodData, totalGrams);
         setSearchOpen(false);
         onClose();
         if (data?.id) router.push(`/meal/${data.id}`);
@@ -280,6 +297,9 @@ export function GlobalCaptureController({ activeAction, onClose, isVisible }: Gl
         text: 'Discard',
         style: 'destructive',
         onPress: async () => {
+          // Await discardSession so AsyncStorage is cleared before we close.
+          // discardSession clears storage explicitly (not via persistence effect)
+          // so the CaptureContext restore effect won't re-mount the controller.
           await draft.discardSession();
           onClose();
         },
@@ -289,19 +309,29 @@ export function GlobalCaptureController({ activeAction, onClose, isVisible }: Gl
 
   const handleAnalyze = useCallback(async (): Promise<void> => {
     if (!user || draft.items.length === 0) return;
+    if (isAnalyzeInFlightRef.current || analysisStatus !== 'idle') return;
+    isAnalyzeInFlightRef.current = true;
 
-    const hasAIItems = draft.items.some(item => item.itemType === 'photo' || item.itemType === 'text');
-    if (hasAIItems && !canScan().allowed) {
-      setPaywallVisible(true);
-      return;
-    }
-
-    setAnalysisStatus('analyzing');
     try {
+      const hasAIItems = draft.items.some(item => item.itemType === 'photo' || item.itemType === 'text');
+      if (hasAIItems && !canScan().allowed) {
+        setPaywallVisible(true);
+        return;
+      }
+
+      setAnalysisStatus('analyzing');
+
       // CRITICAL: Ensure subscription tier is synced to database BEFORE analysis.
       // This fixes a race condition where the user upgrades to Pro but the backend
       // reads stale 'free' status, resulting in missing fiber/sugar/sodium/cholesterol.
-      await ensureSubscriptionSynced();
+      const isSubscriptionSynced = await ensureSubscriptionSynced();
+      if (isPro && !isSubscriptionSynced) {
+        Alert.alert(
+          'Unable to verify Pro access',
+          'We could not sync your subscription status. Please try again in a moment.'
+        );
+        return;
+      }
 
       const inputs: AnalyzeMealMultiItemInput[] = [];
       let orderIndex = 0;
@@ -336,8 +366,9 @@ export function GlobalCaptureController({ activeAction, onClose, isVisible }: Gl
       Alert.alert('Error', 'Analysis failed');
     } finally {
       setAnalysisStatus('idle');
+      isAnalyzeInFlightRef.current = false;
     }
-  }, [draft, router, user, canScan, incrementScan, isPro, onClose, ensureSubscriptionSynced]);
+  }, [analysisStatus, draft, router, user, canScan, incrementScan, isPro, onClose, ensureSubscriptionSynced]);
 
   // Recipe handlers
   const handleRecipePhotoCaptured = useCallback(
@@ -365,7 +396,11 @@ export function GlobalCaptureController({ activeAction, onClose, isVisible }: Gl
         if (recipeId) router.push(`/recipe/${recipeId}`);
         else router.push('/(tabs)/recipes');
       } catch (error) {
-        Alert.alert('Error', 'Recipe analysis failed');
+        if (isRecipeFeatureUnavailableError(error)) {
+          Alert.alert('Unavailable', 'Recipe generation is currently unavailable.');
+        } else {
+          Alert.alert('Error', 'Recipe analysis failed');
+        }
         setRecipePhotoUri(null);
       } finally {
         setIsProcessingRecipe(false);
@@ -381,7 +416,7 @@ export function GlobalCaptureController({ activeAction, onClose, isVisible }: Gl
     <View style={[StyleSheet.absoluteFill, { zIndex: 99999 }]} pointerEvents="box-none">
       {screenState.type === 'loading_auth' || screenState.type === 'loading_draft' ? (
         <View style={styles.centeredOverlay}>
-          <ActivityIndicator size="large" color={primaryGreen} />
+          <SwirlingSpinner size="large" />
         </View>
       ) : screenState.type === 'signed_out' ? (
         <View style={styles.centeredOverlay}>
@@ -394,7 +429,7 @@ export function GlobalCaptureController({ activeAction, onClose, isVisible }: Gl
         <CaptureCameraOverlay onCancel={handleCameraCancel} onCaptured={handleRecipePhotoCaptured} onPickImage={handlePickImage} />
       ) : screenState.type === 'recipe_processing' ? (
         <View style={styles.centeredOverlay}>
-          <ActivityIndicator size="large" color={neonGreen} />
+          <SwirlingSpinner size="large" />
           <Text style={[TextStyles.h3, { marginTop: Spacing.lg }]}>Extracting recipe…</Text>
         </View>
       ) : screenState.type === 'describe_meal' ? (
@@ -402,8 +437,9 @@ export function GlobalCaptureController({ activeAction, onClose, isVisible }: Gl
           userId={user?.id ?? ''} 
           onCancel={handleDescribeCancel} 
           onSubmit={handleDescribeSubmit} 
-          title="Describe Meal"
-          subtitle="Type or speak what you ate"
+          initialText={editingTextItem?.text ?? ''}
+          title={editingTextItem ? 'Edit Description' : 'Describe Meal'}
+          subtitle={editingTextItem ? 'Update your meal description before analyzing' : 'Type or speak what you ate'}
           placeholder="E.g., two scrambled eggs with toast"
         />
       ) : screenState.type === 'search_entry' ? (
@@ -420,8 +456,9 @@ export function GlobalCaptureController({ activeAction, onClose, isVisible }: Gl
           }}
         />
       ) : screenState.type === 'staging' ? (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: Colors[colorScheme ?? 'light'].background }]}>
-          <PageContainer>
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'transparent' }]}>
+          <AppBackground />
+          <PageContainer backgroundColor="transparent">
             <MealStagingScreen
               userId={user?.id ?? ''}
               items={draft.items}
@@ -432,10 +469,14 @@ export function GlobalCaptureController({ activeAction, onClose, isVisible }: Gl
               onDiscardSession={handleDiscardSession}
               onQuickSnap={() => setCameraMode('meal')}
               onQuickUpload={handlePickImage}
-              onQuickDescribe={() => setDescribeOpen(true)}
+              onQuickDescribe={() => {
+                setEditingTextItem(null);
+                setDescribeOpen(true);
+              }}
               onRemoveItem={draft.removeItem}
               onSetHero={draft.setHero}
               onUpdateQuantity={draft.updateQuantity}
+              onEditTextItem={handleEditTextItem}
               onSaveContext={draft.setContextText}
               onAnalyze={handleAnalyze}
             />

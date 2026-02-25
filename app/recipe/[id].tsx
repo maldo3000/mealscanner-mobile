@@ -3,17 +3,18 @@ import { PageContainer } from '@/components/layout/PageContainer';
 import { AnimatedCard } from '@/components/ui/AnimatedCard';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { ParallaxImage } from '@/components/ui/ParallaxImage';
-import { Colors, neonGreen, glassSurface, glassBorder } from '@/constants/Colors';
+import { SwirlingSpinner } from '@/components/ui/SwirlingSpinner';
+import { Colors, glassBorder, glassSurface, neonGreen } from '@/constants/Colors';
 import { PageSpacing, Spacing } from '@/constants/Spacing';
 import { TextStyles } from '@/constants/Typography';
+import { useAuth } from '@/context/AuthContext';
+import { getRecipeImageSource } from '@/data/recipeImages';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { useRecipes, type PrebakedRecipe } from '@/hooks/useRecipes';
-import { useAuth } from '@/context/AuthContext';
 import { deleteRecipe, getRecipeWithDetails, saveRecipeAsMeal } from '@/lib/supabase';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
     Alert,
     Platform,
     StyleSheet,
@@ -573,8 +574,11 @@ export default function RecipeDetailScreen() {
 
       <ContentContainer>
         {/* Hero Image with Parallax */}
-        {recipe.image_url && (
-          <ParallaxImage source={{ uri: recipe.image_url }} height={380} />
+        {(recipe.image_url || recipe.id) && (
+          <ParallaxImage 
+            source={getRecipeImageSource(recipe.id, recipe.image_url) || { uri: recipe.image_url }} 
+            height={380} 
+          />
         )}
 
         {/* Title Card - Elevated */}
@@ -759,7 +763,7 @@ export default function RecipeDetailScreen() {
           activeOpacity={0.8}
         >
           {logging ? (
-            <ActivityIndicator size="small" color="#000000" />
+            <SwirlingSpinner size="small" color="#000000" />
           ) : (
             <IconSymbol name="plus.circle.fill" size={24} color="#000000" />
           )}

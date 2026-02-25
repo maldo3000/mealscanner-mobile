@@ -21,6 +21,93 @@ interface DeleteAccountResponse {
   error?: string;
 }
 
+type SupabaseAdminClient = ReturnType<typeof createClient>;
+
+interface StorageObject {
+  name: string;
+  id?: string | null;
+}
+
+async function listFilesRecursively(
+  supabaseAdmin: SupabaseAdminClient,
+  bucket: string,
+  rootPrefix: string,
+): Promise<string[]> {
+  const files: string[] = [];
+  const pendingPrefixes: string[] = [rootPrefix];
+  const pageSize = 100;
+  const maxPrefixes = 10000; // Safety guard against runaway recursion
+  let visitedPrefixes = 0;
+
+  while (pendingPrefixes.length > 0) {
+    const currentPrefix = pendingPrefixes.shift();
+    if (!currentPrefix) break;
+
+    visitedPrefixes += 1;
+    if (visitedPrefixes > maxPrefixes) {
+      throw new Error(`Storage traversal exceeded ${maxPrefixes} prefixes in bucket "${bucket}"`);
+    }
+
+    let offset = 0;
+    while (true) {
+      const { data, error } = await supabaseAdmin.storage
+        .from(bucket)
+        .list(currentPrefix, { limit: pageSize, offset });
+
+      if (error) {
+        throw new Error(`Failed to list storage path "${bucket}/${currentPrefix}": ${error.message}`);
+      }
+
+      const entries = (data ?? []) as StorageObject[];
+      if (entries.length === 0) break;
+
+      for (const entry of entries) {
+        if (!entry?.name) continue;
+        const childPath = `${currentPrefix}/${entry.name}`;
+        const isFolder = entry.id === null;
+
+        if (isFolder) {
+          pendingPrefixes.push(childPath);
+        } else {
+          files.push(childPath);
+        }
+      }
+
+      if (entries.length < pageSize) break;
+      offset += pageSize;
+    }
+  }
+
+  return files;
+}
+
+async function removeFilesInChunks(
+  supabaseAdmin: SupabaseAdminClient,
+  bucket: string,
+  paths: string[],
+): Promise<void> {
+  const chunkSize = 100;
+  for (let i = 0; i < paths.length; i += chunkSize) {
+    const chunk = paths.slice(i, i + chunkSize);
+    const { error } = await supabaseAdmin.storage.from(bucket).remove(chunk);
+    if (error) {
+      throw new Error(`Failed removing files from "${bucket}": ${error.message}`);
+    }
+  }
+}
+
+async function deleteUserStoragePrefix(
+  supabaseAdmin: SupabaseAdminClient,
+  bucket: string,
+  userId: string,
+): Promise<number> {
+  const files = await listFilesRecursively(supabaseAdmin, bucket, userId);
+  if (files.length === 0) return 0;
+
+  await removeFilesInChunks(supabaseAdmin, bucket, files);
+  return files.length;
+}
+
 Deno.serve(async (req: Request) => {
   // Get request-aware CORS headers
   const corsHeaders = getSmartCorsHeaders(req);
@@ -54,52 +141,14 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Step 1: Delete user's storage files first
-    // Storage ownership can prevent user deletion, so we clean up files first
+    // Step 1: Delete user's storage files first.
+    // If cleanup fails, abort account deletion to avoid orphaned user data.
     console.log(`🗑️ Cleaning up storage for user: ${userId}`);
-    
-    // Delete meal images
-    try {
-      const { data: mealImages } = await supabaseAdmin.storage
-        .from('meal-images')
-        .list(userId);
-      
-      if (mealImages && mealImages.length > 0) {
-        const filePaths = mealImages.map(file => `${userId}/${file.name}`);
-        await supabaseAdmin.storage.from('meal-images').remove(filePaths);
-        console.log(`🗑️ Deleted ${filePaths.length} meal images`);
-      }
 
-      // Also delete recipe images subfolder
-      const { data: recipeImages } = await supabaseAdmin.storage
-        .from('meal-images')
-        .list(`${userId}/recipes`);
-      
-      if (recipeImages && recipeImages.length > 0) {
-        const recipePaths = recipeImages.map(file => `${userId}/recipes/${file.name}`);
-        await supabaseAdmin.storage.from('meal-images').remove(recipePaths);
-        console.log(`🗑️ Deleted ${recipePaths.length} recipe images`);
-      }
-    } catch (storageError) {
-      console.warn('⚠️ Error cleaning meal-images storage (continuing):', storageError);
-      // Continue with deletion even if storage cleanup fails
-    }
-
-    // Delete audio recordings
-    try {
-      const { data: audioFiles } = await supabaseAdmin.storage
-        .from('audio-recordings')
-        .list(userId);
-      
-      if (audioFiles && audioFiles.length > 0) {
-        const audioPaths = audioFiles.map(file => `${userId}/${file.name}`);
-        await supabaseAdmin.storage.from('audio-recordings').remove(audioPaths);
-        console.log(`🗑️ Deleted ${audioPaths.length} audio recordings`);
-      }
-    } catch (storageError) {
-      console.warn('⚠️ Error cleaning audio-recordings storage (continuing):', storageError);
-      // Continue with deletion even if storage cleanup fails
-    }
+    const deletedMealImageCount = await deleteUserStoragePrefix(supabaseAdmin, 'meal-images', userId);
+    const deletedAudioCount = await deleteUserStoragePrefix(supabaseAdmin, 'audio-recordings', userId);
+    console.log(`🗑️ Deleted ${deletedMealImageCount} files from meal-images`);
+    console.log(`🗑️ Deleted ${deletedAudioCount} files from audio-recordings`);
 
     // Step 2: Delete the user from auth.users
     // This will cascade to all related tables:

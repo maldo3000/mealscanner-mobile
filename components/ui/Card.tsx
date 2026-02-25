@@ -1,10 +1,9 @@
+import { CardPadding } from '@/constants/Layout';
+import { PageSpacing } from '@/constants/Spacing';
+import { useTheme } from '@/context/ThemeContext';
 import React from 'react';
 import { StyleSheet, View, ViewProps } from 'react-native';
 import { GlassCard } from './GlassCard';
-import { Colors, glassSurface, glassBorder } from '@/constants/Colors';
-import { CardPadding } from '@/constants/Layout';
-import { PageSpacing } from '@/constants/Spacing';
-import { useColorScheme } from '@/hooks/useColorScheme';
 
 export type CardVariant = 'default' | 'glass' | 'elevated';
 export type CardPaddingVariant = 'none' | 'sm' | 'md' | 'lg';
@@ -28,9 +27,7 @@ export function Card({
   gap,
   ...props
 }: CardProps) {
-  const colorScheme = useColorScheme();
-  const colors = Colors[colorScheme ?? 'dark'];
-
+  const { tokens } = useTheme();
   const paddingValue = CardPadding[padding];
 
   // Use GlassCard for glassmorphic effect
@@ -54,8 +51,8 @@ export function Card({
       style={[
         styles.card,
         {
-          backgroundColor: accentColor || glassSurface,
-          borderColor: glassBorder,
+          backgroundColor: accentColor || tokens.glassSurface,
+          borderColor: tokens.glassBorder,
           padding: paddingValue,
           gap: gap || PageSpacing.elementGap,
         },
@@ -74,4 +71,3 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
 });
-

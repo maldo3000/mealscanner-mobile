@@ -7,18 +7,23 @@ import { SpriteAnimation } from '@/components/ui/SpriteAnimation';
 import { bgPrimary, glassBorder, glassSurface, neonGreen, textMuted } from '@/constants/Colors';
 import { TextStyles } from '@/constants/Typography';
 import { localGoalsRepository } from '@/lib/goals/LocalGoalsRepository';
+import { calculateGoalTargets } from '@/lib/goals/goalEngine';
 import type { ActivityLevel, BiologicalSex, NutritionGoal, NutritionGoalType } from '@/lib/goals/types';
+import {
+    DEFAULT_NOTIFICATION_SETTINGS,
+    requestNotificationPermissions,
+    saveNotificationSettings,
+    syncScheduledNotifications,
+} from '@/lib/notifications';
 import { signInWithApple, signInWithGoogle, supabase } from '@/lib/supabase';
-import { AppleHealthService } from '@/lib/health/AppleHealthService';
-import { BiologicalSex as HKBiologicalSex } from '@kingstinct/react-native-healthkit';
 import { FontAwesome } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-    Animated,
     Dimensions,
+    KeyboardAvoidingView,
     Platform,
     ScrollView,
     StyleSheet,
@@ -28,43 +33,44 @@ import {
     View
 } from 'react-native';
 import Reanimated, {
+    runOnJS,
     useAnimatedStyle,
     useSharedValue,
     withDelay,
     withSpring,
     withTiming
 } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-// Import dancing veggies sprite frames
+// Import optimized dancing veggies sprite frames (WebP, 340x340, ~12KB each)
 const spriteFrames = [
-  require('../../assets/images/loading-animation/ezgif-frame-001.png'),
-  require('../../assets/images/loading-animation/ezgif-frame-002.png'),
-  require('../../assets/images/loading-animation/ezgif-frame-003.png'),
-  require('../../assets/images/loading-animation/ezgif-frame-004.png'),
-  require('../../assets/images/loading-animation/ezgif-frame-005.png'),
-  require('../../assets/images/loading-animation/ezgif-frame-006.png'),
-  require('../../assets/images/loading-animation/ezgif-frame-007.png'),
-  require('../../assets/images/loading-animation/ezgif-frame-008.png'),
-  require('../../assets/images/loading-animation/ezgif-frame-009.png'),
-  require('../../assets/images/loading-animation/ezgif-frame-010.png'),
-  require('../../assets/images/loading-animation/ezgif-frame-011.png'),
-  require('../../assets/images/loading-animation/ezgif-frame-012.png'),
-  require('../../assets/images/loading-animation/ezgif-frame-013.png'),
-  require('../../assets/images/loading-animation/ezgif-frame-014.png'),
-  require('../../assets/images/loading-animation/ezgif-frame-015.png'),
-  require('../../assets/images/loading-animation/ezgif-frame-016.png'),
-  require('../../assets/images/loading-animation/ezgif-frame-017.png'),
-  require('../../assets/images/loading-animation/ezgif-frame-018.png'),
-  require('../../assets/images/loading-animation/ezgif-frame-019.png'),
-  require('../../assets/images/loading-animation/ezgif-frame-020.png'),
-  require('../../assets/images/loading-animation/ezgif-frame-021.png'),
-  require('../../assets/images/loading-animation/ezgif-frame-022.png'),
-  require('../../assets/images/loading-animation/ezgif-frame-023.png'),
-  require('../../assets/images/loading-animation/ezgif-frame-024.png'),
-  require('../../assets/images/loading-animation/ezgif-frame-025.png'),
-  require('../../assets/images/loading-animation/ezgif-frame-026.png'),
-  require('../../assets/images/loading-animation/ezgif-frame-027.png'),
+  require('../../assets/images/loading-animation-optimized/ezgif-frame-001.webp'),
+  require('../../assets/images/loading-animation-optimized/ezgif-frame-002.webp'),
+  require('../../assets/images/loading-animation-optimized/ezgif-frame-003.webp'),
+  require('../../assets/images/loading-animation-optimized/ezgif-frame-004.webp'),
+  require('../../assets/images/loading-animation-optimized/ezgif-frame-005.webp'),
+  require('../../assets/images/loading-animation-optimized/ezgif-frame-006.webp'),
+  require('../../assets/images/loading-animation-optimized/ezgif-frame-007.webp'),
+  require('../../assets/images/loading-animation-optimized/ezgif-frame-008.webp'),
+  require('../../assets/images/loading-animation-optimized/ezgif-frame-009.webp'),
+  require('../../assets/images/loading-animation-optimized/ezgif-frame-010.webp'),
+  require('../../assets/images/loading-animation-optimized/ezgif-frame-011.webp'),
+  require('../../assets/images/loading-animation-optimized/ezgif-frame-012.webp'),
+  require('../../assets/images/loading-animation-optimized/ezgif-frame-013.webp'),
+  require('../../assets/images/loading-animation-optimized/ezgif-frame-014.webp'),
+  require('../../assets/images/loading-animation-optimized/ezgif-frame-015.webp'),
+  require('../../assets/images/loading-animation-optimized/ezgif-frame-016.webp'),
+  require('../../assets/images/loading-animation-optimized/ezgif-frame-017.webp'),
+  require('../../assets/images/loading-animation-optimized/ezgif-frame-018.webp'),
+  require('../../assets/images/loading-animation-optimized/ezgif-frame-019.webp'),
+  require('../../assets/images/loading-animation-optimized/ezgif-frame-020.webp'),
+  require('../../assets/images/loading-animation-optimized/ezgif-frame-021.webp'),
+  require('../../assets/images/loading-animation-optimized/ezgif-frame-022.webp'),
+  require('../../assets/images/loading-animation-optimized/ezgif-frame-023.webp'),
+  require('../../assets/images/loading-animation-optimized/ezgif-frame-024.webp'),
+  require('../../assets/images/loading-animation-optimized/ezgif-frame-025.webp'),
+  require('../../assets/images/loading-animation-optimized/ezgif-frame-026.webp'),
+  require('../../assets/images/loading-animation-optimized/ezgif-frame-027.webp'),
 ];
 
 const { width } = Dimensions.get('window');
@@ -135,6 +141,22 @@ const DIETARY_PREFERENCES = [
   'Vegan', 'Vegetarian', 'Pescatarian', 'Keto', 'Paleo', 'Low-Carb', 'No Pork', 'Halal', 'Kosher', 'Gluten-Free', 'Dairy-Free', 'None'
 ];
 
+// Define onboarding steps – Apple Health is iOS-only
+const ONBOARDING_STEPS = [
+  'goal',
+  'physicals',
+  'source',
+  'activity',
+  'dietary',
+  'magic',
+  'pro',
+  ...(Platform.OS === 'ios' ? ['health'] as const : []),
+  'notifications',
+  'account',
+] as const;
+
+type OnboardingStep = (typeof ONBOARDING_STEPS)[number];
+
 // Unit conversion helpers
 const cmToFeetInches = (cm: number) => {
   const totalInches = cm / 2.54;
@@ -151,9 +173,11 @@ const kgToLbs = (kg: number) => Math.round(kg * 2.205);
 const lbsToKg = (lbs: number) => Math.round(lbs / 2.205);
 
 export default function OnboardingScreen() {
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState(0);
-  const [useMetric, setUseMetric] = useState(true);
+  const [useMetricHeight, setUseMetricHeight] = useState(true);
+  const [useMetricWeight, setUseMetricWeight] = useState(true);
   const [quizData, setQuizData] = useState<QuizData>({
     fullName: '',
     gender: 'female',
@@ -173,14 +197,120 @@ export default function OnboardingScreen() {
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [showPaywall, setShowPaywall] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
 
-  // Display values based on unit system
-  const displayHeight = useMetric ? quizData.height : Math.round(quizData.height / 2.54); // inches for imperial
-  const displayWeight = useMetric ? quizData.weight : kgToLbs(quizData.weight);
+  // Display values — always integers for the ruler slider.
+  // Math.round on metric mode handles the case where the value was last set via imperial
+  // (stored as a float like 72.56 kg) and needs to display as a clean integer (73 kg).
+  const displayHeight = useMetricHeight ? Math.round(quizData.height) : Math.round(quizData.height / 2.54);
+  const displayWeight = useMetricWeight ? Math.round(quizData.weight) : Math.round(quizData.weight * 2.205);
 
-  const fadeAnim = useRef(new Animated.Value(1)).current;
-  const slideAnim = useRef(new Animated.Value(0)).current;
+  // Use Reanimated for reliable transitions (avoids JS/native thread race conditions)
+  const contentOpacity = useSharedValue(1);
+  const isTransitioning = useRef(false);
+  const prevStepRef = useRef(currentStep);
+
+  // Trigger fade-in AFTER React has rendered the new step content.
+  // This prevents the "pop" where the old content briefly shows at increasing
+  // opacity before React swaps in the new content (goal → physicals was most visible).
+  useEffect(() => {
+    if (isTransitioning.current && prevStepRef.current !== currentStep) {
+      isTransitioning.current = false;
+      prevStepRef.current = currentStep;
+      // Wait one frame so the new layout is fully measured before fading in
+      requestAnimationFrame(() => {
+        contentOpacity.value = withTiming(1, { duration: 200 });
+      });
+    }
+  }, [currentStep]);
+
+  const buildOnboardingGoal = (): NutritionGoal => {
+    const goalMap: Record<string, NutritionGoalType> = {
+      'lose_weight': 'weight_loss',
+      'build_muscle': 'weight_gain',
+      'plant_based': 'maintenance',
+      'track_habits': 'maintenance',
+    };
+
+    const activityLevelMap: Record<string, ActivityLevel> = {
+      'sedentary': 'sedentary',
+      'light': 'light',
+      'active': 'active',
+      'very_active': 'very_active',
+    };
+
+    const goalType = goalMap[quizData.goal] || 'maintenance';
+    const activityLevel = activityLevelMap[quizData.activityLevel] || 'light';
+    const nowIso = new Date().toISOString();
+
+    return {
+      id: `goal_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+      version: 1,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      isActive: true,
+      type: goalType,
+      name: goalType === 'weight_loss' ? 'Weight Loss' : goalType === 'weight_gain' ? 'Build Muscle' : 'Maintain Health',
+      profileSnapshot: {
+        sex: quizData.gender as BiologicalSex,
+        ageYears: quizData.age,
+        heightCm: quizData.height,
+        weightKg: quizData.weight,
+        activityLevel,
+      },
+      dailyTargets: {
+        calories: quizData.targetCalories || 2000,
+        proteinGrams: quizData.targetProtein || 100,
+        carbGrams: quizData.targetCarbs || 200,
+        fatGrams: quizData.targetFat || 65,
+        fibreGrams: 25,
+      },
+      meta: {
+        source: 'wizard',
+        focusAreas: [...quizData.dietaryPreferences, ...quizData.allergies],
+      },
+    };
+  };
+
+  const savePendingOnboardingGoal = async () => {
+    const goal = buildOnboardingGoal();
+    await localGoalsRepository.savePendingGoal(goal);
+  };
+
+  const saveOnboardingGoalsForUser = async (userId: string) => {
+    const goal = buildOnboardingGoal();
+    await localGoalsRepository.saveGoal(goal, userId);
+
+    try {
+      const goalMap: Record<string, NutritionGoalType> = {
+        'lose_weight': 'weight_loss',
+        'build_muscle': 'weight_gain',
+        'plant_based': 'maintenance',
+        'track_habits': 'maintenance',
+      };
+      const goalType = goalMap[quizData.goal] || 'maintenance';
+      const nowIso = new Date().toISOString();
+
+      await supabase.from('user_goals').upsert({
+        user_id: userId,
+        goal_type: goalType,
+        activity_level: quizData.activityLevel,
+        dietary_restrictions: [...quizData.dietaryPreferences, ...quizData.allergies],
+        target_calories: quizData.targetCalories,
+        target_protein: quizData.targetProtein,
+        target_carbs: quizData.targetCarbs,
+        target_fat: quizData.targetFat,
+        sex: quizData.gender,
+        age_years: quizData.age,
+        height_cm: quizData.height,
+        weight_kg: quizData.weight,
+        updated_at: nowIso,
+      });
+    } catch {
+      // Silently ignore — useNutritionGoals will retry from the pending key
+    }
+  };
 
   const handleEmailSignUp = async () => {
     if (!email || !password) {
@@ -191,6 +321,10 @@ export default function OnboardingScreen() {
     setAuthError(null);
     
     try {
+      // Persist onboarding goal BEFORE the auth call — the auth state change can
+      // trigger navigation at any await boundary, so this must complete first.
+      await savePendingOnboardingGoal();
+
       const { data, error } = await supabase.auth.signUp({ 
         email, 
         password,
@@ -203,12 +337,18 @@ export default function OnboardingScreen() {
       });
       
       if (error) throw error;
+
+      if (data.user) {
+        await saveOnboardingGoalsForUser(data.user.id);
+
+        await supabase.from('profiles').update({
+          full_name: quizData.fullName || data.user.email?.split('@')[0],
+        }).eq('id', data.user.id);
+      }
       
       if (data.user && !data.session) {
-        // Email verification required
         router.push({ pathname: '/(auth)/verify', params: { email } });
       }
-      // If data.session exists, RootLayoutNav will handle redirect
     } catch (e: any) {
       setAuthError(e.message);
     } finally {
@@ -220,81 +360,21 @@ export default function OnboardingScreen() {
     setAuthLoading(true);
     setAuthError(null);
     try {
+      // Persist onboarding goal BEFORE the auth call — signInWithIdToken triggers
+      // onAuthStateChange which can navigate away before post-auth saves complete.
+      await savePendingOnboardingGoal();
+
       const { data, error } = provider === 'apple' 
         ? await signInWithApple() 
         : await signInWithGoogle();
         
       if (error) throw error;
       
-      // If data is null and no error, it means user canceled
       if (!data) return;
 
-      // Update profile and goals with onboarding data if it's a new user
       if (data.user) {
-        // Map onboarding goal to database goal_type
-        const goalMap: Record<string, NutritionGoalType> = {
-          'lose_weight': 'weight_loss',
-          'build_muscle': 'weight_gain',
-          'plant_based': 'maintenance',
-          'track_habits': 'maintenance'
-        };
+        await saveOnboardingGoalsForUser(data.user.id);
 
-        // Map activity level to typed ActivityLevel
-        const activityLevelMap: Record<string, ActivityLevel> = {
-          'sedentary': 'sedentary',
-          'light': 'light',
-          'active': 'active',
-          'very_active': 'very_active',
-        };
-
-        const goalType = goalMap[quizData.goal] || 'maintenance';
-        const activityLevel = activityLevelMap[quizData.activityLevel] || 'light';
-        const nowIso = new Date().toISOString();
-
-        // Save user goals to Supabase
-        await supabase.from('user_goals').upsert({
-          user_id: data.user.id,
-          goal_type: goalType,
-          activity_level: quizData.activityLevel,
-          dietary_restrictions: [...quizData.dietaryPreferences, ...quizData.allergies],
-          target_calories: quizData.targetCalories,
-          target_protein: quizData.targetProtein,
-          target_carbs: quizData.targetCarbs,
-          target_fat: quizData.targetFat,
-          updated_at: nowIso
-        });
-
-        // Also save to local storage for immediate availability in settings
-        const localGoal: NutritionGoal = {
-          id: `goal_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
-          version: 1,
-          createdAt: nowIso,
-          updatedAt: nowIso,
-          isActive: true,
-          type: goalType,
-          name: goalType === 'weight_loss' ? 'Weight Loss' : goalType === 'weight_gain' ? 'Build Muscle' : 'Maintain Health',
-          profileSnapshot: {
-            sex: quizData.gender as BiologicalSex,
-            ageYears: quizData.age,
-            heightCm: quizData.height,
-            weightKg: quizData.weight,
-            activityLevel,
-          },
-          dailyTargets: {
-            calories: quizData.targetCalories || 2000,
-            proteinGrams: quizData.targetProtein || 100,
-            carbGrams: quizData.targetCarbs || 200,
-            fatGrams: quizData.targetFat || 65,
-            fibreGrams: 25,
-          },
-          meta: {
-            source: 'wizard',
-            focusAreas: [...quizData.dietaryPreferences, ...quizData.allergies],
-          },
-        };
-        await localGoalsRepository.saveGoal(localGoal, data.user.id);
-
-        // Update profile
         await supabase.from('profiles').update({
           full_name: quizData.fullName || data.user.user_metadata?.full_name || data.user.email?.split('@')[0],
         }).eq('id', data.user.id);
@@ -306,7 +386,7 @@ export default function OnboardingScreen() {
     }
   };
 
-  const totalSteps = 10; // Physicals, Goal, Source, Activity, Dietary, Magic, Pro, Health, Notifications, Account
+  const totalSteps = ONBOARDING_STEPS.length;
 
   const handleNext = () => {
     if (currentStep < totalSteps - 1) {
@@ -333,38 +413,20 @@ export default function OnboardingScreen() {
   };
 
   const animateTransition = (callback: () => void) => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: -20,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      callback();
-      
-      // Small delay to allow React to render the new step before starting fade-in
-      setTimeout(() => {
-        slideAnim.setValue(20);
-        Animated.parallel([
-          Animated.timing(fadeAnim, {
-            toValue: 1,
-            duration: 300,
-            useNativeDriver: true,
-          }),
-          Animated.timing(slideAnim, {
-            toValue: 0,
-            duration: 300,
-            useNativeDriver: true,
-          }),
-        ]).start();
-      }, 50);
+    isTransitioning.current = true;
+    // Fade out — the fade-in is handled by the useEffect on currentStep
+    // so that it only starts AFTER React has rendered the new content.
+    contentOpacity.value = withTiming(0, { duration: 150 }, (finished) => {
+      if (finished) {
+        runOnJS(callback)();
+      }
     });
   };
+
+  // Animated style for content transitions
+  const contentAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: contentOpacity.value,
+  }));
 
   const updateData = useCallback((updates: Partial<QuizData>) => {
     setQuizData(prev => ({ ...prev, ...updates }));
@@ -405,9 +467,11 @@ export default function OnboardingScreen() {
     </View>
   );
 
+  const currentStepName = ONBOARDING_STEPS[currentStep];
+
   const renderStep = () => {
-    switch (currentStep) {
-      case 0: // Goal (First screen now)
+    switch (currentStepName) {
+      case 'goal':
         return (
           <View style={styles.stepContent}>
             <Text style={styles.stepTitle}>What are you here for?</Text>
@@ -425,7 +489,7 @@ export default function OnboardingScreen() {
           </View>
         );
 
-      case 1: // Physicals (with Name added)
+      case 'physicals':
         return (
           <View style={styles.stepContent}>
             <Text style={styles.stepTitle}>Tell us about yourself</Text>
@@ -449,6 +513,7 @@ export default function OnboardingScreen() {
                   key={g}
                   style={[styles.genderButton, quizData.gender === g && styles.activeButton]}
                   onPress={() => updateData({ gender: g as any })}
+                  activeOpacity={0.85}
                 >
                   <Text style={[styles.genderText, quizData.gender === g && styles.activeText]}>
                     {g.charAt(0).toUpperCase() + g.slice(1)}
@@ -476,25 +541,29 @@ export default function OnboardingScreen() {
               <View style={styles.labelRow}>
                 <Text style={styles.inputLabel}>Height</Text>
                 <View style={styles.unitToggle}>
-                  <TouchableOpacity onPress={() => setUseMetric(true)}>
-                    <Text style={[styles.unitOption, useMetric && styles.unitOptionActive]}>cm</Text>
+                  <TouchableOpacity onPress={() => setUseMetricHeight(true)}>
+                    <Text style={[styles.unitOption, useMetricHeight && styles.unitOptionActive]}>cm</Text>
                   </TouchableOpacity>
                   <Text style={styles.unitDivider}>/</Text>
-                  <TouchableOpacity onPress={() => setUseMetric(false)}>
-                    <Text style={[styles.unitOption, !useMetric && styles.unitOptionActive]}>ft</Text>
+                  <TouchableOpacity onPress={() => setUseMetricHeight(false)}>
+                    <Text style={[styles.unitOption, !useMetricHeight && styles.unitOptionActive]}>ft</Text>
                   </TouchableOpacity>
                 </View>
               </View>
-              <RulerSlider 
-                min={useMetric ? 100 : 48}
-                max={useMetric ? 250 : 96}
+              <RulerSlider
+                key={useMetricHeight ? 'height-cm' : 'height-in'}
+                min={useMetricHeight ? 100 : 48}
+                max={useMetricHeight ? 250 : 96}
                 value={displayHeight} 
                 onValueChange={(v) => {
-                  const heightInCm = useMetric ? v : Math.round(v * 2.54);
+                  // In metric: store the integer directly.
+                  // In imperial: store full-precision float to avoid lossy round-trips
+                  // (e.g. 67in → 170.18cm stored, not 170 — so 170.18/2.54 = 67 on display).
+                  const heightInCm = useMetricHeight ? v : v * 2.54;
                   updateData({ height: heightInCm });
                 }} 
-                unit={useMetric ? 'cm' : 'ft'}
-                formatValue={useMetric ? undefined : (inches) => {
+                unit={useMetricHeight ? 'cm' : 'ft'}
+                formatValue={useMetricHeight ? undefined : (inches) => {
                   const feet = Math.floor(inches / 12);
                   const remainingInches = inches % 12;
                   return `${feet}'${remainingInches}"`;
@@ -506,30 +575,34 @@ export default function OnboardingScreen() {
               <View style={styles.labelRow}>
                 <Text style={styles.inputLabel}>Weight</Text>
                 <View style={styles.unitToggle}>
-                  <TouchableOpacity onPress={() => setUseMetric(true)}>
-                    <Text style={[styles.unitOption, useMetric && styles.unitOptionActive]}>kg</Text>
+                  <TouchableOpacity onPress={() => setUseMetricWeight(true)}>
+                    <Text style={[styles.unitOption, useMetricWeight && styles.unitOptionActive]}>kg</Text>
                   </TouchableOpacity>
                   <Text style={styles.unitDivider}>/</Text>
-                  <TouchableOpacity onPress={() => setUseMetric(false)}>
-                    <Text style={[styles.unitOption, !useMetric && styles.unitOptionActive]}>lbs</Text>
+                  <TouchableOpacity onPress={() => setUseMetricWeight(false)}>
+                    <Text style={[styles.unitOption, !useMetricWeight && styles.unitOptionActive]}>lbs</Text>
                   </TouchableOpacity>
                 </View>
               </View>
-              <RulerSlider 
-                min={useMetric ? 30 : 66}
-                max={useMetric ? 200 : 440}
+              <RulerSlider
+                key={useMetricWeight ? 'weight-kg' : 'weight-lbs'}
+                min={useMetricWeight ? 30 : 66}
+                max={useMetricWeight ? 200 : 440}
                 value={displayWeight} 
                 onValueChange={(v) => {
-                  const weightInKg = useMetric ? v : lbsToKg(v);
+                  // In metric: store the integer directly.
+                  // In imperial: store full-precision float to avoid lossy round-trips
+                  // (e.g. 160lbs → 72.56kg stored, not 73 — so 72.56*2.205 = 160 on display).
+                  const weightInKg = useMetricWeight ? v : v / 2.205;
                   updateData({ weight: weightInKg });
                 }} 
-                unit={useMetric ? 'kg' : 'lbs'}
+                unit={useMetricWeight ? 'kg' : 'lbs'}
               />
             </View>
           </View>
         );
 
-      case 2: // Source
+      case 'source':
         return (
           <View style={styles.stepContent}>
             <Text style={styles.stepTitle}>How did you hear about us?</Text>
@@ -552,7 +625,7 @@ export default function OnboardingScreen() {
           </View>
         );
 
-      case 3: // Activity
+      case 'activity':
         return (
           <View style={styles.stepContent}>
             <Text style={styles.stepTitle}>How active is your lifestyle?</Text>
@@ -570,7 +643,7 @@ export default function OnboardingScreen() {
           </View>
         );
 
-      case 4: // Dietary & Allergies
+      case 'dietary':
         return (
           <View style={styles.stepContent}>
             <Text style={styles.stepTitle}>Any dietary preferences or allergies?</Text>
@@ -647,10 +720,10 @@ export default function OnboardingScreen() {
           </View>
         );
 
-      case 5: // Magic Moment
+      case 'magic':
         return <MagicMoment onComplete={handleNext} data={quizData} onUpdateData={updateData} />;
 
-      case 6: // Pro Prompt
+      case 'pro':
         return (
           <View style={styles.stepContent}>
             <View style={styles.proBadge}>
@@ -665,7 +738,7 @@ export default function OnboardingScreen() {
             <View style={styles.proFeaturesContainer}>
               {[
                 'Unlimited AI meal scans (vs 3/day)',
-                'Custom AI recipe generation',
+                'Unlock the entire recipe database',
                 'Detailed micronutrient tracking',
                 'Priority AI analysis'
               ].map((feature, i) => (
@@ -693,7 +766,10 @@ export default function OnboardingScreen() {
           </View>
         );
 
-      case 7: // Apple Health (Was 6)
+      case 'health': {
+        // Lazy-load Apple Health modules (iOS only – this case is never reached on Android)
+        const { AppleHealthService } = require('@/lib/health/AppleHealthService');
+        const { BiologicalSex: HKBiologicalSex } = require('@kingstinct/react-native-healthkit');
         return (
           <View style={styles.stepContent}>
             <FontAwesome name="heartbeat" size={80} color={neonGreen} style={styles.stepIcon} />
@@ -728,13 +804,11 @@ export default function OnboardingScreen() {
             >
               Connect Apple Health
             </Button>
-            <Button variant="ghost" fullWidth onPress={handleNext}>
-              Skip for now
-            </Button>
           </View>
         );
+      }
 
-      case 8: // Notifications (Was 7)
+      case 'notifications':
         return (
           <View style={styles.stepContent}>
             <FontAwesome name="bell" size={80} color={neonGreen} style={styles.stepIcon} />
@@ -742,16 +816,41 @@ export default function OnboardingScreen() {
             <Text style={styles.stepDesc}>
               Get personalized reminders to log your meals and tips to reach your goals.
             </Text>
-            <Button variant="primary" fullWidth onPress={handleNext}>
+            <Button
+              variant="primary"
+              fullWidth
+              onPress={async () => {
+                const granted = await requestNotificationPermissions();
+                const nextSettings = {
+                  ...DEFAULT_NOTIFICATION_SETTINGS,
+                  masterEnabled: granted,
+                };
+                await saveNotificationSettings(nextSettings);
+                await syncScheduledNotifications(nextSettings);
+                handleNext();
+              }}
+            >
               Allow Notifications
             </Button>
-            <Button variant="ghost" fullWidth onPress={handleNext}>
+            <Button
+              variant="ghost"
+              fullWidth
+              onPress={async () => {
+                const disabledSettings = {
+                  ...DEFAULT_NOTIFICATION_SETTINGS,
+                  masterEnabled: false,
+                };
+                await saveNotificationSettings(disabledSettings);
+                await syncScheduledNotifications(disabledSettings);
+                handleNext();
+              }}
+            >
               Not now
             </Button>
           </View>
         );
 
-      case 9: // Account Creation (Was 8)
+      case 'account':
         return (
           <View style={styles.stepContent}>
             <Text style={styles.stepTitle}>Save your progress</Text>
@@ -795,7 +894,19 @@ export default function OnboardingScreen() {
                 placeholder="••••••••"
                 value={password}
                 onChangeText={setPassword}
-                secureTextEntry
+                secureTextEntry={!showPassword}
+                rightIcon={
+                  <TouchableOpacity 
+                    onPress={() => setShowPassword(!showPassword)} 
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <FontAwesome 
+                      name={showPassword ? 'eye' : 'eye-slash'} 
+                      size={18} 
+                      color={textMuted} 
+                    />
+                  </TouchableOpacity>
+                }
               />
               {authError && <Text style={styles.errorText}>{authError}</Text>}
               <Button 
@@ -806,6 +917,22 @@ export default function OnboardingScreen() {
               >
                 {authLoading ? 'Creating Account...' : 'Create Account'}
               </Button>
+              <Text style={styles.tosDisclaimer}>
+                By signing up, you agree to our{' '}
+                <Text 
+                  style={styles.tosLink} 
+                  onPress={() => router.push('/settings/terms-of-service')}
+                >
+                  Terms of Service
+                </Text>
+                {' '}and{' '}
+                <Text 
+                  style={styles.tosLink} 
+                  onPress={() => router.push('/settings/privacy-policy')}
+                >
+                  Privacy Policy
+                </Text>
+              </Text>
               <TouchableOpacity onPress={() => router.push('/(auth)/login')}>
                 <Text style={styles.signInLink}>Already have an account? <Text style={{ color: neonGreen }}>Sign In</Text></Text>
               </TouchableOpacity>
@@ -824,30 +951,39 @@ export default function OnboardingScreen() {
       <View style={styles.container}>
         {renderHeader()}
 
-        <Animated.View style={[
-          styles.content, 
-          { 
-            opacity: fadeAnim,
-            transform: [{ translateY: slideAnim }] 
-          }
-        ]}>
-          <ScrollView 
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={[
-              styles.scrollContent,
-            ]}
+        <Reanimated.View style={[styles.content, contentAnimatedStyle]}>
+          <KeyboardAvoidingView 
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={{ flex: 1 }}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
           >
-            {renderStep()}
-          </ScrollView>
-        </Animated.View>
+            <ScrollView 
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={[
+                styles.scrollContent,
+                { paddingBottom: 20 + insets.bottom }
+              ]}
+              keyboardShouldPersistTaps="handled"
+            >
+              {renderStep()}
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </Reanimated.View>
 
-        {currentStep < 5 && currentStep !== 0 && currentStep !== 2 && currentStep !== 3 && (
-          <SafeAreaView edges={['bottom']} style={styles.footer}>
-            <Button variant="primary" fullWidth onPress={handleNext}>
-              Next
-            </Button>
-          </SafeAreaView>
-        )}
+        {/* Always render footer to avoid layout shift; hide via opacity + pointerEvents */}
+        <SafeAreaView
+          edges={['bottom']}
+          style={[
+            styles.footer,
+            !(['physicals', 'dietary'] as OnboardingStep[]).includes(currentStepName) && {
+              display: 'none',
+            },
+          ]}
+        >
+          <Button variant="primary" fullWidth onPress={handleNext}>
+            Next
+          </Button>
+        </SafeAreaView>
 
         <Paywall 
           visible={showPaywall} 
@@ -910,7 +1046,6 @@ function ConfettiPiece({ index }: { index: number }) {
 function AnimatedGoalOption({ 
   goal, 
   isSelected, 
-  index, 
   onPress 
 }: { 
   goal: any, 
@@ -918,43 +1053,25 @@ function AnimatedGoalOption({
   index: number, 
   onPress: () => void 
 }) {
-  const scale = useSharedValue(0.8);
-  const textOpacity = useSharedValue(0);
-  const delay = index * 100;
-
-  useEffect(() => {
-    scale.value = withDelay(delay, withSpring(1, { damping: 12, stiffness: 100 }));
-    textOpacity.value = withDelay(delay + 200, withTiming(1, { duration: 400 }));
-  }, []);
-
-  const iconStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  const textStyle = useAnimatedStyle(() => ({
-    opacity: textOpacity.value,
-  }));
-
+  // Simplified - no individual entrance animations to avoid conflicts with page transitions
   return (
     <TouchableOpacity 
       style={[styles.optionCard, isSelected && styles.activeOptionCard]}
       onPress={onPress}
       activeOpacity={0.7}
     >
-      <Reanimated.View style={iconStyle}>
-        <Image 
-          source={goal.image} 
-          style={styles.goalIcon} 
-          contentFit="contain"
-          transition={200}
-          cachePolicy="memory"
-        />
-      </Reanimated.View>
-      <Reanimated.View style={[textStyle, { flex: 1 }]}>
+      <Image 
+        source={goal.image} 
+        style={styles.goalIcon} 
+        contentFit="contain"
+        transition={200}
+        cachePolicy="memory"
+      />
+      <View style={{ flex: 1 }}>
         <Text style={[styles.optionLabel, isSelected && styles.activeText]}>
           {goal.label}
         </Text>
-      </Reanimated.View>
+      </View>
     </TouchableOpacity>
   );
 }
@@ -962,7 +1079,6 @@ function AnimatedGoalOption({
 function AnimatedActivityOption({ 
   level, 
   isSelected, 
-  index, 
   onPress 
 }: { 
   level: any, 
@@ -970,44 +1086,26 @@ function AnimatedActivityOption({
   index: number, 
   onPress: () => void 
 }) {
-  const scale = useSharedValue(0.8);
-  const textOpacity = useSharedValue(0);
-  const delay = index * 100;
-
-  useEffect(() => {
-    scale.value = withDelay(delay, withSpring(1, { damping: 12, stiffness: 100 }));
-    textOpacity.value = withDelay(delay + 200, withTiming(1, { duration: 400 }));
-  }, []);
-
-  const iconStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  const textStyle = useAnimatedStyle(() => ({
-    opacity: textOpacity.value,
-  }));
-
+  // Simplified - no individual entrance animations to avoid conflicts with page transitions
   return (
     <TouchableOpacity 
       style={[styles.optionCard, isSelected && styles.activeOptionCard]}
       onPress={onPress}
       activeOpacity={0.7}
     >
-      <Reanimated.View style={iconStyle}>
-        <Image 
-          source={level.image} 
-          style={styles.goalIcon} 
-          contentFit="contain"
-          transition={200}
-          cachePolicy="memory"
-        />
-      </Reanimated.View>
-      <Reanimated.View style={[textStyle, { flex: 1 }]}>
+      <Image 
+        source={level.image} 
+        style={styles.goalIcon} 
+        contentFit="contain"
+        transition={200}
+        cachePolicy="memory"
+      />
+      <View style={{ flex: 1 }}>
         <Text style={[styles.optionLabel, isSelected && styles.activeText]}>
           {level.label}
         </Text>
         <Text style={styles.optionDesc}>{level.desc}</Text>
-      </Reanimated.View>
+      </View>
     </TouchableOpacity>
   );
 }
@@ -1084,54 +1182,52 @@ function MagicMoment({ onComplete, data, onUpdateData }: MagicMomentProps) {
     }
   }, [loading]);
 
-  // Calculate macros based on data and pace
-  const calculateMacros = (pace: 'gentle' | 'standard' | 'aggressive') => {
-    const isMale = data.gender === 'male';
-    const bmr = (10 * data.weight) + (6.25 * data.height) - (5 * data.age) + (isMale ? 5 : -161);
-    
-    const multipliers: Record<string, number> = {
-      'sedentary': 1.2,
-      'light': 1.375,
-      'active': 1.55,
-      'very_active': 1.725
-    };
-    
-    let tdee = bmr * (multipliers[data.activityLevel] || 1.375);
-    
-    // Goal adjustments
-    if (data.goal === 'lose_weight') {
-      // Pace modifiers for weight loss
-      const paceDeficits: Record<string, number> = {
-        'gentle': 250,
-        'standard': 500,
-        'aggressive': 750
-      };
-      tdee -= paceDeficits[pace];
-    } else if (data.goal === 'build_muscle') {
-      // Pace modifiers for muscle gain
-      const paceSurplus: Record<string, number> = {
-        'gentle': 150,
-        'standard': 300,
-        'aggressive': 500
-      };
-      tdee += paceSurplus[pace];
-    }
-    
-    // Protein calculation
-    const proteinMult = data.goal === 'build_muscle' ? 2.2 : 1.8;
-    const protein = data.weight * proteinMult;
-    
-    // Fat is ~25% of calories
-    const fat = (tdee * 0.25) / 9;
-    
-    // Carbs fill the rest
-    const carbs = (tdee - (protein * 4) - (fat * 9)) / 4;
+  // Map onboarding goal id → NutritionGoalType
+  const goalMap: Record<string, NutritionGoalType> = {
+    'lose_weight': 'weight_loss',
+    'build_muscle': 'weight_gain',
+    'plant_based': 'maintenance',
+    'track_habits': 'maintenance',
+  };
 
-    return { 
-      calories: Math.round(tdee), 
-      protein: Math.round(protein),
-      carbs: Math.round(Math.max(0, carbs)),
-      fat: Math.round(fat)
+  // Map pace label → GoalPace used by the engine
+  const paceMap: Record<string, 'slow' | 'moderate' | 'aggressive'> = {
+    'gentle': 'slow',
+    'standard': 'moderate',
+    'aggressive': 'aggressive',
+  };
+
+  // Map onboarding activity level id → typed ActivityLevel
+  const activityLevelMap: Record<string, ActivityLevel> = {
+    'sedentary': 'sedentary',
+    'light': 'light',
+    'active': 'active',
+    'very_active': 'very_active',
+  };
+
+  // Calculate macros using the shared goalEngine
+  const calculateMacros = (pace: 'gentle' | 'standard' | 'aggressive') => {
+    const goalType = goalMap[data.goal] || 'maintenance';
+    const activityLevel = activityLevelMap[data.activityLevel] || 'light';
+
+    const result = calculateGoalTargets({
+      profile: {
+        sex: data.gender as BiologicalSex,
+        ageYears: data.age,
+        heightCm: data.height,
+        weightKg: data.weight,
+        activityLevel,
+      },
+      goalType,
+      pace: goalType === 'maintenance' ? undefined : paceMap[pace],
+    });
+
+    const t = result.dailyTargets;
+    return {
+      calories: Math.round(t.calories),
+      protein: Math.round(t.proteinGrams),
+      carbs: Math.round(t.carbGrams),
+      fat: Math.round(t.fatGrams),
     };
   };
 
@@ -1793,6 +1889,19 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 16,
     fontSize: 14,
+  },
+  tosDisclaimer: {
+    ...TextStyles.caption,
+    color: textMuted,
+    textAlign: 'center',
+    marginTop: 12,
+    fontSize: 12,
+    lineHeight: 18,
+    paddingHorizontal: 16,
+  },
+  tosLink: {
+    color: neonGreen,
+    textDecorationLine: 'underline',
   },
   proBadge: {
     flexDirection: 'row',

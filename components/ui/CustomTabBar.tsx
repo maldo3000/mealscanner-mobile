@@ -1,4 +1,4 @@
-import { neonGreen } from '@/constants/Colors';
+import { useTheme } from '@/context/ThemeContext';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
@@ -22,7 +22,6 @@ const ROUTE_ICON_MAP: Record<string, string> = {
   profile: 'person',
 };
 
-const INACTIVE_COLOR = 'rgba(255, 255, 255, 0.5)';
 const TAB_BAR_HEIGHT = 72;
 const HORIZONTAL_PADDING = 20;
 
@@ -36,6 +35,7 @@ interface CustomTabBarProps extends BottomTabBarProps {
  * Features a sliding fluid indicator, squishy interactions, and clean glassmorphic styling
  */
 export function CustomTabBar({ state, descriptors, navigation, onCapturePress }: CustomTabBarProps) {
+  const { tokens, accentAlpha } = useTheme();
   const { width: windowWidth } = useWindowDimensions();
   const tabCount = state.routes.filter(r => ROUTE_ICON_MAP[r.name]).length;
   const containerWidth = windowWidth - (HORIZONTAL_PADDING * 2);
@@ -101,7 +101,7 @@ export function CustomTabBar({ state, descriptors, navigation, onCapturePress }:
     const stretch = interpolate(diff, [0, 0.5, 1], [1, 1.4, 1]); 
     
     // Get active tint color from the current screen's options
-    const activeTintColor = descriptors[state.routes[state.index].key]?.options?.tabBarActiveTintColor || neonGreen;
+    const activeTintColor = descriptors[state.routes[state.index].key]?.options?.tabBarActiveTintColor || tokens.accent;
     
     return {
       width: tabWidth * 0.75, 
@@ -123,7 +123,7 @@ export function CustomTabBar({ state, descriptors, navigation, onCapturePress }:
     borderColor: interpolateColor(
       pressProgress.value,
       [0, 1],
-      ['rgba(255, 255, 255, 0.12)', neonGreen]
+      ['rgba(255, 255, 255, 0.12)', tokens.accent]
     ),
   }));
 
@@ -162,7 +162,7 @@ export function CustomTabBar({ state, descriptors, navigation, onCapturePress }:
           >
             <AnimatedTabIcon
               focused={isFocused}
-              color={isFocused ? (options.tabBarActiveTintColor || '#000000') : INACTIVE_COLOR}
+              color={isFocused ? (options.tabBarActiveTintColor || tokens.textOnAccent) : tokens.textMuted}
               name={iconName}
               size={24}
             />
@@ -182,7 +182,7 @@ export function CustomTabBar({ state, descriptors, navigation, onCapturePress }:
           pointerEvents="none"
         />
       ) : (
-        <View style={[StyleSheet.absoluteFill, styles.androidBackground]} pointerEvents="none" />
+        <View style={[StyleSheet.absoluteFill, styles.androidBackground, { backgroundColor: tokens.background + 'F2' }]} pointerEvents="none" />
       )}
       {renderTabButtons()}
     </Animated.View>
@@ -211,7 +211,6 @@ const styles = StyleSheet.create({
   },
   androidBackground: {
     borderRadius: TAB_BAR_HEIGHT / 2,
-    backgroundColor: 'rgba(2, 44, 34, 0.95)',
   },
   tabBar: {
     flex: 1,

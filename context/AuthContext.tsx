@@ -1,7 +1,7 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { Session, User } from '@supabase/supabase-js';
-import { supabase } from '@/lib/supabase';
 import { resetUser } from '@/lib/revenueCat';
+import { supabase } from '@/lib/supabase';
+import { Session, User } from '@supabase/supabase-js';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 
 interface AuthContextType {
   session: Session | null;
@@ -18,12 +18,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    // Safety timeout: if auth check hasn't resolved within 10 seconds, stop blocking the app.
+    // This prevents the loading screen from getting stuck indefinitely if Supabase is
+    // unreachable, the stored session is corrupted, or getSession() rejects silently.
+    const safetyTimeout = setTimeout(() => {
+      setIsLoading((current) => {
+        if (current) {
+          console.warn('⚠️ Auth session check timed out after 10s — unblocking app');
+        }
+        return false;
+      });
+    }, 10_000);
+
     // Initial session check
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setIsLoading(false);
-    });
+    supabase.auth.getSession()
+      .then(({ data: { session } }) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        setIsLoading(false);
+      })
+      .catch((error) => {
+        console.error('❌ Failed to get auth session:', error);
+        // Ensure we never stay stuck on the loading screen
+        setIsLoading(false);
+      });
 
     // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -33,6 +51,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     return () => {
+      clearTimeout(safetyTimeout);
       subscription.unsubscribe();
     };
   }, []);

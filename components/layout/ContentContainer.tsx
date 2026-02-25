@@ -12,6 +12,12 @@ interface ContentContainerProps extends ViewProps {
   keyboardVerticalOffset?: number;
   contentPadding?: boolean;
   refreshControl?: React.ReactElement<typeof RefreshControl>;
+  /**
+   * When true, the ScrollView automatically adjusts its insets to keep the
+   * focused input visible above the keyboard. Preferred over keyboardAvoiding
+   * for scrollable content (RN 0.73+).
+   */
+  automaticallyAdjustKeyboardInsets?: boolean;
 }
 
 /**
@@ -26,6 +32,7 @@ export function ContentContainer({
   keyboardVerticalOffset = Platform.OS === 'ios' ? 0 : 20,
   contentPadding = true,
   refreshControl,
+  automaticallyAdjustKeyboardInsets = false,
   style,
   ...props
 }: ContentContainerProps) {
@@ -58,6 +65,7 @@ export function ContentContainer({
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             refreshControl={refreshControl}
+            automaticallyAdjustKeyboardInsets={automaticallyAdjustKeyboardInsets}
           >
             {content}
           </ScrollView>
@@ -74,7 +82,9 @@ export function ContentContainer({
         style={[styles.container, styles.scrollView, style]}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
         refreshControl={refreshControl}
+        automaticallyAdjustKeyboardInsets={automaticallyAdjustKeyboardInsets}
         {...props}
       >
         {content}

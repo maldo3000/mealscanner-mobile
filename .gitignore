@@ -32,7 +32,12 @@ yarn-error.*
 
 # local env files
 .env
+.env.*
 .env*.local
+
+# release keystore (never commit signing keys)
+*.keystore
+!android/app/debug.keystore
 
 # typescript
 *.tsbuildinfo

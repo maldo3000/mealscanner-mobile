@@ -1,14 +1,27 @@
-import React from 'react';
-import { View, Text, StyleSheet, Image, SafeAreaView, Linking, TouchableOpacity } from 'react-native';
+import React, { useRef, useState, useCallback } from 'react';
+import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
+import BottomSheet from '@gorhom/bottom-sheet';
 import { Button } from '@/components/ui/Button';
 import { Colors, neonGreen, textMuted, bgPrimary } from '@/constants/Colors';
 import { TextStyles } from '@/constants/Typography';
 import { AnimatedLogo } from '@/components/ui/AnimatedLogo';
 import { PageContainer } from '@/components/layout/PageContainer';
+import { LegalSheet, LegalContentType } from '@/components/ui/LegalSheet';
 
 export default function LandingScreen() {
   const router = useRouter();
+  const legalSheetRef = useRef<BottomSheet>(null);
+  const [legalContentType, setLegalContentType] = useState<LegalContentType>('privacy');
+
+  const openLegalSheet = useCallback((type: LegalContentType) => {
+    setLegalContentType(type);
+    legalSheetRef.current?.expand();
+  }, []);
+
+  const closeLegalSheet = useCallback(() => {
+    legalSheetRef.current?.close();
+  }, []);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -52,22 +65,30 @@ export default function LandingScreen() {
           <View style={styles.legalFooter}>
             <Text style={styles.legalText}>
               By continuing, you agree to our{' '}
-              <Text 
-                style={styles.legalLink} 
-                onPress={() => Linking.openURL(process.env.EXPO_PUBLIC_TERMS_URL || 'https://gist.github.com/maldo3000/d239c3302e64e053b31ea79611f86265')}
-              >
-                Terms of Service
-              </Text>
-              {' '}and{' '}
-              <Text 
-                style={styles.legalLink} 
-                onPress={() => Linking.openURL(process.env.EXPO_PUBLIC_PRIVACY_POLICY_URL || 'https://gist.github.com/maldo3000/01cb8245058b25733d89fb3c16cca7b5')}
-              >
-                Privacy Policy
-              </Text>
             </Text>
+            <View style={styles.legalLinksRow}>
+              <TouchableOpacity 
+                onPress={() => openLegalSheet('terms')}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.legalLink}>Terms of Service</Text>
+              </TouchableOpacity>
+              <Text style={styles.legalText}> and </Text>
+              <TouchableOpacity 
+                onPress={() => openLegalSheet('privacy')}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.legalLink}>Privacy Policy</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
+
+        <LegalSheet
+          ref={legalSheetRef}
+          contentType={legalContentType}
+          onClose={closeLegalSheet}
+        />
       </PageContainer>
     </SafeAreaView>
   );
@@ -130,6 +151,13 @@ const styles = StyleSheet.create({
   legalFooter: {
     marginTop: 20,
     paddingHorizontal: 10,
+    alignItems: 'center',
+  },
+  legalLinksRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
   },
   legalText: {
     ...TextStyles.caption,
@@ -138,8 +166,10 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   legalLink: {
+    ...TextStyles.caption,
     color: neonGreen,
     textDecorationLine: 'underline',
+    lineHeight: 18,
   },
 });
 

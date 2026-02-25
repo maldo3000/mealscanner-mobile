@@ -5,7 +5,7 @@ import { ImageStyle, StyleSheet, View, ViewStyle } from 'react-native';
 import { IconSymbol } from './IconSymbol';
 
 interface OptimizedImageProps {
-  source: { uri: string } | string;
+  source: { uri: string } | string | number; // number for require() local images
   style?: ImageStyle;
   containerStyle?: ViewStyle;
   placeholder?: React.ReactNode;
@@ -31,7 +31,12 @@ export function OptimizedImage({
   blurRadius,
   placeholderContentFit = 'cover',
 }: OptimizedImageProps) {
-  const imageSource = typeof source === 'string' ? { uri: source } : source;
+  // Handle different source types: number (require), string (URL), or {uri: string}
+  const imageSource = typeof source === 'number' 
+    ? source // Local require() image
+    : typeof source === 'string' 
+      ? { uri: source } 
+      : source;
 
   // Default placeholder for food/meal images
   const defaultPlaceholder = (
@@ -52,10 +57,10 @@ export function OptimizedImage({
         cachePolicy={cachePolicy}
         transition={transition}
         blurRadius={blurRadius}
-        recyclingKey={imageSource.uri} // Helps with recycling in lists
+        recyclingKey={typeof imageSource === 'number' ? String(imageSource) : imageSource?.uri} // Helps with recycling in lists
       />
       {/* Fallback placeholder that shows while loading */}
-      {!imageSource.uri && (placeholder || defaultPlaceholder)}
+      {!imageSource && (placeholder || defaultPlaceholder)}
     </View>
   );
 }
@@ -67,9 +72,14 @@ export function ThumbnailImage({
   containerStyle,
   placeholder,
 }: Omit<OptimizedImageProps, 'priority' | 'transition' | 'contentFit'>) {
-  const imageSource = typeof source === 'string' 
-    ? { uri: getThumbnailUrl(source) }
-    : { uri: getThumbnailUrl(source.uri) };
+  // Handle local require() images directly, only process URLs
+  const imageSource = typeof source === 'number'
+    ? source // Local require() image - pass through directly
+    : typeof source === 'string' 
+      ? { uri: getThumbnailUrl(source) }
+      : typeof source === 'object' && source?.uri
+        ? { uri: getThumbnailUrl(source.uri) }
+        : source; // Pass through as-is
 
   return (
     <OptimizedImage
@@ -92,9 +102,14 @@ export function HeroImage({
   containerStyle,
   placeholder,
 }: Omit<OptimizedImageProps, 'priority' | 'transition' | 'contentFit'>) {
-  const imageSource = typeof source === 'string' 
-    ? { uri: getHeroUrl(source) }
-    : { uri: getHeroUrl(source.uri) };
+  // Handle local require() images directly, only process URLs
+  const imageSource = typeof source === 'number'
+    ? source // Local require() image - pass through directly
+    : typeof source === 'string' 
+      ? { uri: getHeroUrl(source) }
+      : typeof source === 'object' && source?.uri
+        ? { uri: getHeroUrl(source.uri) }
+        : source; // Pass through as-is
 
   return (
     <OptimizedImage

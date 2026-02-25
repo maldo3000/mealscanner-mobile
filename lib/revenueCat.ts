@@ -7,8 +7,10 @@ import Purchases, {
 } from 'react-native-purchases';
 
 // RevenueCat API Keys
-const REVENUECAT_API_KEY_IOS = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY_IOS;
-const REVENUECAT_API_KEY_ANDROID = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY_ANDROID;
+// Hardcoded because Gradle/Metro doesn't reliably inject EXPO_PUBLIC_ env vars
+// into Hermes bytecode during release builds. These are publishable keys (safe to embed).
+const REVENUECAT_API_KEY_IOS = 'appl_VejRDtHavkTwmNPkfQdLwfQQXar';
+const REVENUECAT_API_KEY_ANDROID = 'goog_CtJHBFBfVANtHaVvKwpjeqrifxz';
 
 // Entitlement IDs (configured in RevenueCat dashboard)
 export const ENTITLEMENTS = {
@@ -24,7 +26,7 @@ export const PRODUCT_IDS = {
 
 // Feature limits for free tier
 export const FREE_TIER_LIMITS = {
-  DAILY_SCANS: 25,
+  DAILY_SCANS: 3,
 } as const;
 
 let isConfigured = false;

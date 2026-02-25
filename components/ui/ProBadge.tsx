@@ -1,7 +1,13 @@
-import React from 'react';
-import { StyleSheet, Text, View, ViewStyle, TextStyle } from 'react-native';
 import { neonGreen } from '@/constants/Colors';
 import { TextStyles } from '@/constants/Typography';
+import React, { useEffect } from 'react';
+import { StyleSheet, Text, TextStyle, ViewStyle } from 'react-native';
+import Animated, {
+    Easing,
+    useAnimatedStyle,
+    useSharedValue,
+    withTiming,
+} from 'react-native-reanimated';
 
 interface ProBadgeProps {
   style?: ViewStyle;
@@ -9,20 +15,30 @@ interface ProBadgeProps {
 }
 
 export function ProBadge({ style, textStyle }: ProBadgeProps) {
+  const badgeOpacity = useSharedValue(0);
+
+  useEffect(() => {
+    badgeOpacity.value = withTiming(1, { duration: 200, easing: Easing.out(Easing.cubic) });
+  }, []);
+
+  const badgeAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: badgeOpacity.value,
+  }));
+
   return (
-    <View style={[styles.badge, style]}>
-      <Text style={[styles.text, textStyle]}>PRO</Text>
-    </View>
+    <Animated.View style={[styles.badge, badgeAnimatedStyle, style]}>
+        <Text style={[styles.text, textStyle]}>PRO</Text>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   badge: {
+    alignSelf: 'flex-start',
     backgroundColor: neonGreen,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
-    alignSelf: 'flex-start',
   },
   text: {
     ...TextStyles.caption,

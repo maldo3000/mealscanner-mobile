@@ -1,14 +1,14 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
-import { useRouter } from 'expo-router';
+import { PageContainer } from '@/components/layout/PageContainer';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Colors, neonGreen, textMuted, bgPrimary, glassBorder, glassSurface } from '@/constants/Colors';
+import { bgPrimary, glassBorder, neonGreen, textMuted } from '@/constants/Colors';
 import { TextStyles } from '@/constants/Typography';
+import { signInWithApple, signInWithGoogle, supabase } from '@/lib/supabase';
+import { EmailSchema, loginValidator, PasswordSchemaSimple, validateField } from '@/lib/validation';
 import { FontAwesome } from '@expo/vector-icons';
-import { supabase, signInWithApple, signInWithGoogle } from '@/lib/supabase';
-import { PageContainer } from '@/components/layout/PageContainer';
-import { loginValidator, validateField, EmailSchema, PasswordSchemaSimple } from '@/lib/validation';
+import { useRouter } from 'expo-router';
+import React, { useState } from 'react';
+import { KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -17,6 +17,7 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [showPassword, setShowPassword] = useState(false);
 
   const validateEmailField = (value: string) => {
     const result = validateField(EmailSchema, value);
@@ -64,17 +65,29 @@ export default function LoginScreen() {
   const handleAppleSignIn = async () => {
     setLoading(true);
     setError(null);
-    const { error } = await signInWithApple();
-    if (error) setError(error.message);
-    setLoading(false);
+    try {
+      const { error } = await signInWithApple();
+      if (error) setError(error.message);
+    } catch (e: any) {
+      console.error('❌ handleAppleSignIn unexpected error:', e);
+      setError(e?.message || 'Something went wrong with Apple Sign-In');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleGoogleSignIn = async () => {
     setLoading(true);
     setError(null);
-    const { error } = await signInWithGoogle();
-    if (error) setError(error.message);
-    setLoading(false);
+    try {
+      const { error } = await signInWithGoogle();
+      if (error) setError(error.message);
+    } catch (e: any) {
+      console.error('❌ handleGoogleSignIn unexpected error:', e);
+      setError(e?.message || 'Something went wrong with Google Sign-In');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -151,7 +164,19 @@ export default function LoginScreen() {
                     if (fieldErrors.password) validatePasswordField(text);
                   }}
                   onBlur={() => validatePasswordField(password)}
-                  secureTextEntry
+                  secureTextEntry={!showPassword}
+                  rightIcon={
+                    <TouchableOpacity 
+                      onPress={() => setShowPassword(!showPassword)}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <FontAwesome 
+                        name={showPassword ? 'eye' : 'eye-slash'} 
+                        size={18} 
+                        color={textMuted} 
+                      />
+                    </TouchableOpacity>
+                  }
                 />
                 {fieldErrors.password && <Text style={styles.fieldError}>{fieldErrors.password}</Text>}
               </View>

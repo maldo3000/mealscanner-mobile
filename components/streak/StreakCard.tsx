@@ -3,22 +3,31 @@
  * Main streak display card with progress ring, stats, and CTAs
  */
 
+import { useIsFocused } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
-import React, { useCallback, useEffect, useRef } from 'react';
-import { Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Image, Platform, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Animated, {
+    Easing,
     useAnimatedStyle,
+    useDerivedValue,
     useSharedValue,
+    withRepeat,
     withSequence,
     withSpring,
     withTiming
 } from 'react-native-reanimated';
 
+const LightningIcon = require('@/assets/images/Reward_Streak-Lightning.png');
+
+import { BlurMask, Canvas, Circle, RadialGradient, vec } from '@shopify/react-native-skia';
+
+const IS_ANDROID = Platform.OS === 'android';
+
 import { Card } from '@/components/ui/Card';
 import { IconSymbol } from '@/components/ui/IconSymbol';
-import { Colors, neonGreen } from '@/constants/Colors';
 import { Spacing } from '@/constants/Spacing';
-import { useColorScheme } from '@/hooks/useColorScheme';
+import { useTheme } from '@/context/ThemeContext';
 import { getDeadlineTimeString } from '@/services/streakService';
 import { MIN_LOGS_PER_DAY, type StreakCardState, type StreakSummary } from '@/types/streak';
 import { ProgressRing } from './ProgressRing';
@@ -37,6 +46,7 @@ interface StreakCardProps {
 
 // Sparkle particle component for celebrations
 function SparkleParticle({ delay, x, y }: { delay: number; x: number; y: number }) {
+  const { tokens } = useTheme();
   const opacity = useSharedValue(0);
   const scale = useSharedValue(0);
   const translateY = useSharedValue(0);
@@ -73,7 +83,7 @@ function SparkleParticle({ delay, x, y }: { delay: number; x: number; y: number 
         animatedStyle,
       ]}
     >
-      <IconSymbol name="sparkle" size={12} color={neonGreen} />
+      <IconSymbol name="sparkle" size={12} color={tokens.accent} />
     </Animated.View>
   );
 }
@@ -84,18 +94,92 @@ export function StreakCard({
   onViewStreak,
   previousCardState,
 }: StreakCardProps) {
-  const colorScheme = useColorScheme();
-  const colors = Colors[colorScheme ?? 'dark'];
+  const { tokens } = useTheme();
+  const isFocused = useIsFocused();
   
-  const { cardState, currentStreak, mealsLoggedToday, isLockedToday } = streakSummary;
+  const { cardState, currentStreak, mealsLoggedToday } = streakSummary;
   
-  // Animation values
-  const badgeScale = useSharedValue(1);
-  const showSparkles = useSharedValue(false);
+  // Animation values - start at 0 for entrance animation
+  const badgeScale = useSharedValue(0);
+  const badgeGlowOpacity = useSharedValue(0);
+  const glowPulse = useSharedValue(0);
+  const [showSparkles, setShowSparkles] = useState(false);
   const celebrationTriggered = useRef(false);
+  const hasAnimatedOnLoad = useRef(false);
+
+  // Derived values for Skia glow to make it more organic
+  const skiaRadius = useDerivedValue(() => 42 + glowPulse.value * 6);
+  const skiaBlur = useDerivedValue(() => 12 + glowPulse.value * 8);
 
   // Calculate progress for ring
   const progress = Math.min(mealsLoggedToday / MIN_LOGS_PER_DAY, 1);
+
+  // Entrance animation for lightning bolt
+  const triggerEntranceAnimation = useCallback(() => {
+    if (hasAnimatedOnLoad.current) {
+      // Already animated, just ensure visible state
+      badgeScale.value = 1;
+      badgeGlowOpacity.value = 1;
+      return;
+    }
+    hasAnimatedOnLoad.current = true;
+    
+    // Elegant bounce scale up with overshoot (bulge effect)
+    badgeScale.value = withSequence(
+      withSpring(1.15, { damping: 8, stiffness: 120 }), // Overshoot
+      withSpring(1, { damping: 12, stiffness: 100 }) // Settle
+    );
+    
+    // Fade in the glow smoothly
+    badgeGlowOpacity.value = withTiming(1, { 
+      duration: 600, 
+      easing: Easing.out(Easing.ease) 
+    });
+    
+    // After entrance, start continuous subtle pulse
+    setTimeout(() => {
+      // Primary scale pulse - very subtle
+      badgeScale.value = withRepeat(
+        withSequence(
+          withTiming(1.02, { duration: 2500, easing: Easing.inOut(Easing.ease) }),
+          withTiming(1, { duration: 2500, easing: Easing.inOut(Easing.ease) })
+        ),
+        -1, // Infinite
+        true
+      );
+      
+      // Opacity pulse for the container
+      badgeGlowOpacity.value = withRepeat(
+        withSequence(
+          withTiming(1, { duration: 2500, easing: Easing.inOut(Easing.ease) }),
+          withTiming(0.8, { duration: 2500, easing: Easing.inOut(Easing.ease) })
+        ),
+        -1,
+        true
+      );
+
+      // Skia-specific internal pulse for radius/blur
+      glowPulse.value = withRepeat(
+        withTiming(1, { duration: 3500, easing: Easing.inOut(Easing.ease) }),
+        -1,
+        true
+      );
+    }, 1000);
+  }, [badgeScale, badgeGlowOpacity, glowPulse]);
+
+  // Reset animation flag when navigating away so it re-plays when returning
+  useEffect(() => {
+    if (!isFocused) {
+      hasAnimatedOnLoad.current = false;
+      badgeScale.value = 0;
+      badgeGlowOpacity.value = 0;
+      glowPulse.value = 0;
+    } else if (isFocused && streakSummary) {
+      // When screen regains focus, trigger animation
+      const timeout = setTimeout(triggerEntranceAnimation, 300);
+      return () => clearTimeout(timeout);
+    }
+  }, [isFocused, streakSummary, triggerEntranceAnimation]);
 
   // Detect transition from NOT_LOCKED to LOCKED
   useEffect(() => {
@@ -125,15 +209,21 @@ export function StreakCard({
     );
 
     // Show sparkles
-    showSparkles.value = true;
+    setShowSparkles(true);
     setTimeout(() => {
-      showSparkles.value = false;
+      setShowSparkles(false);
       celebrationTriggered.current = false;
     }, 800);
   }, []);
 
   // Badge animated style
   const badgeAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: badgeScale.value }],
+  }));
+
+  // Badge glow animated style
+  const badgeGlowStyle = useAnimatedStyle(() => ({
+    opacity: badgeGlowOpacity.value,
     transform: [{ scale: badgeScale.value }],
   }));
 
@@ -171,37 +261,58 @@ export function StreakCard({
   };
 
   return (
-    <Pressable onPress={onViewStreak}>
-      <Card variant="glass" style={styles.card}>
+    <View>
+      <Pressable onPress={onViewStreak}>
+        <Card variant="glass" style={styles.card}>
         {/* Main content area */}
         <View style={styles.mainContent}>
-          {/* Progress Ring with Badge and Text */}
-          <ProgressRing
-            progress={progress}
-            size={180}
-            strokeWidth={8}
-            cardState={cardState}
-          >
-            {/* Badge icon at top of center */}
-            <View style={styles.centerContent}>
-              <Animated.View style={[styles.badgeContainer, badgeAnimatedStyle]}>
-                <View style={styles.badgeBackground}>
-                  <IconSymbol name="bolt.fill" size={28} color="#fbbf24" />
-                </View>
-              </Animated.View>
+          {/* Ring container with overlaid lightning bolt */}
+          <View style={styles.ringContainer}>
+            {/* Progress Ring with Text */}
+            <ProgressRing
+              progress={progress}
+              size={180}
+              strokeWidth={8}
+              cardState={cardState}
+              isActive={isFocused}
+            >
+              {/* Center content - just number and label */}
+              <View style={styles.centerContent}>
+                {/* Streak number */}
+                <Text style={[styles.streakNumber, { color: tokens.textPrimary }]}>
+                  {currentStreak}
+                </Text>
+                <Text style={[styles.streakLabel, { color: tokens.textPrimary }]}>
+                  DAYS
+                </Text>
+              </View>
+            </ProgressRing>
 
-              {/* Streak number */}
-              <Text style={[styles.streakNumber, { color: colors.text }]}>
-                {currentStreak}
-              </Text>
-              <Text style={[styles.streakLabel, { color: colors.text }]}>
-                DAYS
-              </Text>
+            {/* Lightning bolt positioned at top of ring, overlapping the edge */}
+            <View style={styles.lightningWrapper}>
+              {/* Smooth diffuse glow using Skia */}
+              <Animated.View style={[styles.skiaGlowContainer, badgeGlowStyle]}>
+                <Canvas style={styles.glowCanvas}>
+                  <Circle cx={48} cy={48} r={skiaRadius}>
+                    <RadialGradient
+                      c={vec(48, 48)}
+                      r={skiaRadius}
+                      colors={['rgba(255, 200, 74, 0.45)', 'rgba(255, 200, 74, 0)']}
+                    />
+                    {!IS_ANDROID && <BlurMask blur={skiaBlur} style="normal" />}
+                  </Circle>
+                </Canvas>
+              </Animated.View>
+              
+              {/* Lightning icon */}
+              <Animated.View style={[styles.badgeContainer, badgeAnimatedStyle]}>
+                <Image source={LightningIcon} style={{ width: 86, height: 86 }} />
+              </Animated.View>
             </View>
-          </ProgressRing>
+          </View>
 
           {/* Sparkle particles for celebration */}
-          {showSparkles.value && (
+          {showSparkles && (
             <View style={styles.sparklesContainer}>
               <SparkleParticle delay={0} x={60} y={20} />
               <SparkleParticle delay={50} x={100} y={10} />
@@ -212,7 +323,7 @@ export function StreakCard({
           )}
 
           {/* Subtext */}
-          <Text style={[styles.subtext, { color: colors.icon }]}>
+          <Text style={[styles.subtext, { color: tokens.textMuted }]}>
             {getSubtext()}
           </Text>
 
@@ -220,22 +331,31 @@ export function StreakCard({
           <TouchableOpacity
             style={[
               styles.ctaButton,
-              cardState === 'LOCKED' && styles.ctaButtonLocked,
+              { 
+                backgroundColor: tokens.accent,
+                shadowColor: tokens.accent,
+              },
+              cardState === 'LOCKED' && {
+                shadowOpacity: 0.4,
+              },
             ]}
             onPress={handleCtaPress}
             activeOpacity={0.8}
           >
-            <Text style={styles.ctaButtonText}>{getCtaText()}</Text>
+            <Text style={[styles.ctaButtonText, { color: tokens.textOnAccent }]}>
+              {getCtaText()}
+            </Text>
           </TouchableOpacity>
         </View>
 
         {/* Divider */}
-        <View style={[styles.divider, { backgroundColor: colors.border }]} />
+        <View style={[styles.divider, { backgroundColor: tokens.border }]} />
 
         {/* Bottom chips row */}
         <StreakChipsRow streakSummary={streakSummary} />
       </Card>
     </Pressable>
+    </View>
   );
 }
 
@@ -248,26 +368,40 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingBottom: Spacing.lg,
   },
+  ringContainer: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+    // Add padding at top to accommodate the overlapping lightning bolt
+    paddingTop: 36,
+  },
   centerContent: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 8,
   },
-  badgeContainer: {
-    marginBottom: 4,
-  },
-  badgeBackground: {
-    width: 48,
-    height: 48,
-    backgroundColor: 'rgba(251, 191, 36, 0.15)',
-    borderRadius: 12,
+  lightningWrapper: {
+    position: 'absolute',
+    top: 8,
+    left: 7,
+    right: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    // Add subtle glow
-    shadowColor: '#fbbf24',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    zIndex: 10,
+  },
+  skiaGlowContainer: {
+    position: 'absolute',
+    width: 96,
+    height: 96,
+    alignItems: 'center',
+    justifyContent: 'center',
+    // No overflow: 'hidden' so glow can extend naturally
+  },
+  glowCanvas: {
+    width: 96,
+    height: 96,
+  },
+  badgeContainer: {
+    // Lightning bolt sits on top of glow
   },
   streakNumber: {
     fontSize: 48,
@@ -289,22 +423,15 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   ctaButton: {
-    backgroundColor: neonGreen,
     paddingHorizontal: Spacing.xl * 2,
     paddingVertical: Spacing.md,
     borderRadius: 9999,
-    shadowColor: neonGreen,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4,
     shadowRadius: 12,
     elevation: 8,
   },
-  ctaButtonLocked: {
-    backgroundColor: 'rgba(74, 222, 128, 0.2)',
-    shadowOpacity: 0.2,
-  },
   ctaButtonText: {
-    color: '#022c22',
     fontSize: 16,
     fontWeight: '700',
   },

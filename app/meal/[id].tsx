@@ -1,4 +1,6 @@
 import { AnalysisLoadingOverlay, AnalysisStatus } from '@/components/capture/AnalysisLoadingOverlay';
+import { VoicePulseSkia } from '@/components/capture/VoicePulseSkia';
+import { NutrientEducationModal } from '@/components/education/NutrientEducationModal';
 import { ContentContainer } from '@/components/layout/ContentContainer';
 import { PageContainer } from '@/components/layout/PageContainer';
 import { MealShareModal } from '@/components/share/MealShareModal';
@@ -11,22 +13,26 @@ import { Input } from '@/components/ui/Input';
 import { NutritionCard } from '@/components/ui/NutritionCard';
 import { ThumbnailImage } from '@/components/ui/OptimizedImage';
 import { ParallaxImage } from '@/components/ui/ParallaxImage';
+import { SwirlingSpinner } from '@/components/ui/SwirlingSpinner';
 import { bgPrimary, Colors, createColoredGlass, neonGreen, primaryGreen } from '@/constants/Colors';
 import { Shadows } from '@/constants/Layout';
+import type { NutrientKey } from '@/constants/NutrientEducationContent';
 import { PageSpacing, Spacing } from '@/constants/Spacing';
 import { TextStyles } from '@/constants/Typography';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { useFeatureAccess } from '@/hooks/useFeatureAccess';
 import { useNutritionGoals } from '@/hooks/useNutritionGoals';
-import { getMealTag } from '@/lib/nutritionTags';
-import { analyzeMealMulti, deleteMeal, duplicateMealWithTimestamp, getMealById, getMealItems, setMealHeroItem, transcribeAudioDirect, updateMeal } from '@/lib/supabase';
 import { syncMealToHealthKit } from '@/lib/health/sync';
-import { BlurView } from 'expo-blur';
+import { getMealTag } from '@/lib/nutritionTags';
+import { queryClient } from '@/lib/queryClient';
+import { queryKeys } from '@/lib/queryKeys';
+import { analyzeMealMulti, deleteMeal, duplicateMealWithTimestamp, getMealById, getMealItems, setMealHeroItem, transcribeAudioDirect, updateMeal } from '@/lib/supabase';
+import { getCleanTranscript } from '@/lib/transcription';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
     Alert,
     Dimensions,
     FlatList,
@@ -70,6 +76,11 @@ interface Meal {
   meal_type?: string;
 }
 
+interface DateTimePickerFieldProps {
+  value: string;
+  onChange: (nextValue: string) => void;
+}
+
 const { width } = Dimensions.get('window');
 
 export default function MealDetailScreen() {
@@ -81,6 +92,7 @@ export default function MealDetailScreen() {
   const headerHeight = 44 + insets.top;
   const { activeGoal } = useNutritionGoals();
   const { isPro, canScan, showPaywall, ensureSubscriptionSynced } = useFeatureAccess();
+  const actionBarHeight = 76;
   
   const [meal, setMeal] = useState<Meal | null>(null);
   const [mealItems, setMealItems] = useState<Array<{
@@ -120,6 +132,7 @@ export default function MealDetailScreen() {
   
   // Share modal state
   const [showShareModal, setShowShareModal] = useState(false);
+  const [selectedNutrient, setSelectedNutrient] = useState<NutrientKey | null>(null);
 
   const mealTag = getMealTag(meal ? {
     calories: meal.calories || 0,
@@ -132,6 +145,10 @@ export default function MealDetailScreen() {
   const formatMacro = (val: number | undefined | null) => {
     if (val === undefined || val === null) return '0';
     return Number(val.toFixed(1)).toString();
+  };
+
+  const openNutrientEducation = (nutrient: NutrientKey): void => {
+    setSelectedNutrient(nutrient);
   };
 
   useEffect(() => {
@@ -155,10 +172,11 @@ export default function MealDetailScreen() {
     try {
       const { data, error } = await transcribeAudioDirect(audioUri, meal.user_id);
       if (error) throw error;
-      if (data?.transcript) {
+      const transcript = getCleanTranscript(data?.transcript);
+      if (transcript) {
         setTempContextText((prev) => {
           const trimmed = prev.trim();
-          return trimmed ? `${trimmed} ${data.transcript}` : data.transcript;
+          return trimmed ? `${trimmed} ${transcript}` : transcript;
         });
       }
     } catch (e) {
@@ -168,8 +186,9 @@ export default function MealDetailScreen() {
     }
   };
 
-  const { isRecording, startRecording, stopRecording } = useAudioRecorder({
+  const { isRecording, metering, startRecording, stopRecording } = useAudioRecorder({
     onRecordingComplete: handleAudioTranscription,
+    enableMetering: true,
     onError: (error) => {
       Alert.alert('Recording Error', error.message);
     },
@@ -291,6 +310,7 @@ export default function MealDetailScreen() {
         created_at: editedCreatedAt,
       });
       setShowEditMetaModal(false);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.meals.all(meal.user_id) });
     } catch (e: any) {
       console.error('❌ handleUpdateMeta error:', e);
       Alert.alert('Error', `Failed to update meal info: ${e.message || 'Unknown error'}`);
@@ -299,15 +319,6 @@ export default function MealDetailScreen() {
     }
   };
 
-  const adjustDate = (type: 'hour' | 'day', amount: number) => {
-    const date = new Date(editedCreatedAt);
-    if (type === 'hour') {
-      date.setHours(date.getHours() + amount);
-    } else if (type === 'day') {
-      date.setDate(date.getDate() + amount);
-    }
-    setEditedCreatedAt(date.toISOString());
-  };
 
   // Log Again functions
   const openLogAgain = () => {
@@ -318,15 +329,6 @@ export default function MealDetailScreen() {
     setShowLogAgainModal(true);
   };
 
-  const adjustLogAgainDate = (type: 'hour' | 'day', amount: number) => {
-    const date = new Date(logAgainCreatedAt);
-    if (type === 'hour') {
-      date.setHours(date.getHours() + amount);
-    } else if (type === 'day') {
-      date.setDate(date.getDate() + amount);
-    }
-    setLogAgainCreatedAt(date.toISOString());
-  };
 
   const handleLogAgain = async () => {
     if (!meal) return;
@@ -354,7 +356,9 @@ export default function MealDetailScreen() {
       
       // Navigate to the new meal
       if (data?.id) {
-        router.replace(`/meal/${data.id}`);
+        setTimeout(() => {
+          router.replace(`/meal/${data.id}`);
+        }, 120);
       }
     } catch (e: any) {
       console.error('❌ handleLogAgain error:', e);
@@ -375,7 +379,15 @@ export default function MealDetailScreen() {
       // CRITICAL: Ensure subscription tier is synced to database BEFORE re-analysis.
       // This fixes a race condition where the user upgrades to Pro but the backend
       // reads stale 'free' status, resulting in missing fiber/sugar/sodium/cholesterol.
-      await ensureSubscriptionSynced();
+      const isSubscriptionSynced = await ensureSubscriptionSynced();
+      if (isPro && !isSubscriptionSynced) {
+        Alert.alert(
+          'Unable to verify Pro access',
+          'We could not sync your subscription status. Please try again in a moment.'
+        );
+        setAnalysisStatus('idle');
+        return;
+      }
 
       // Filter out invalid items to prevent validation errors
       // (e.g., photo items with missing URLs, text items with empty text)
@@ -411,7 +423,8 @@ export default function MealDetailScreen() {
 
       // Show success state briefly
       setAnalysisStatus('success');
-      
+      void queryClient.invalidateQueries({ queryKey: queryKeys.meals.all(meal.user_id) });
+
       // Delay to show success animation before refreshing
       setTimeout(async () => {
         await loadMealDetail();
@@ -441,6 +454,7 @@ export default function MealDetailScreen() {
                 Alert.alert('Error', 'Failed to delete meal');
                 return;
               }
+              void queryClient.invalidateQueries({ queryKey: queryKeys.meals.all(meal.user_id) });
               router.back();
             } catch (error) {
               Alert.alert('Error', 'Failed to delete meal');
@@ -479,15 +493,97 @@ export default function MealDetailScreen() {
     });
   };
 
+  const DateTimePickerField = ({ value, onChange }: DateTimePickerFieldProps) => {
+    const [showAndroidPicker, setShowAndroidPicker] = useState(false);
+    const [androidMode, setAndroidMode] = useState<'date' | 'time'>('date');
+    const currentDate = new Date(value);
+    const safeDate = Number.isNaN(currentDate.getTime()) ? new Date() : currentDate;
+    const formattedDate = formatDate(safeDate.toISOString());
+    const formattedTime = formatTime(safeDate.toISOString());
+
+    const handleDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
+      if (Platform.OS === 'android') {
+        setShowAndroidPicker(false);
+      }
+      if (event.type === 'dismissed' || !selectedDate) {
+        return;
+      }
+      onChange(selectedDate.toISOString());
+    };
+
+    if (Platform.OS === 'ios') {
+      return (
+        <View style={styles.dateTimePickerContainer}>
+          <View style={styles.datePreviewCard}>
+            <Text style={[TextStyles.body, { color: colors.text, textAlign: 'center' }]}>{formattedDate}</Text>
+            <Text style={[TextStyles.h2, { color: neonGreen, textAlign: 'center', marginTop: Spacing.xs }]}>{formattedTime}</Text>
+          </View>
+          <DateTimePicker
+            value={safeDate}
+            mode="datetime"
+            display="spinner"
+            maximumDate={new Date()}
+            onChange={handleDateChange}
+            textColor={colors.text}
+            themeVariant={colorScheme ?? 'light'}
+            style={styles.iosDateTimePicker}
+          />
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.androidPickerContainer}>
+        <View style={styles.androidPickerRow}>
+          <Button
+            variant="secondary"
+            onPress={() => {
+              setAndroidMode('date');
+              setShowAndroidPicker(true);
+            }}
+            style={styles.androidPickerButton}
+          >
+            {formattedDate}
+          </Button>
+          <Button
+            variant="secondary"
+            onPress={() => {
+              setAndroidMode('time');
+              setShowAndroidPicker(true);
+            }}
+            style={styles.androidPickerButton}
+          >
+            {formattedTime}
+          </Button>
+        </View>
+        {showAndroidPicker && (
+          <DateTimePicker
+            value={safeDate}
+            mode={androidMode}
+            display="default"
+            maximumDate={new Date()}
+            onChange={handleDateChange}
+          />
+        )}
+      </View>
+    );
+  };
+
   // Generate summarized meal title from items or use AI description
   const getMealTitle = (): string => {
-    // 1. Prioritize the AI-generated description if it's available and not a generic placeholder
-    const isGeneric = !meal?.description || 
-                     meal.description === 'Meal' || 
-                     meal.description === 'Analyzed meal' ||
-                     meal.description === 'Analyzed Snack' ||
-                     meal.description.includes('item)') ||
-                     meal.description.includes('items)');
+    const description = meal?.description?.trim() ?? '';
+    const isGeneric = !description ||
+                     description === 'Meal' || 
+                     description === 'Analyzed meal' ||
+                     description === 'Analyzed Snack' ||
+                     description.includes('item)') ||
+                     description.includes('items)');
+
+    const aiName = typeof meal?.ai_analysis?.name === 'string' ? meal.ai_analysis.name.trim() : '';
+    const aiNameIsValid = aiName.length >= 3 && aiName.length <= 60 && !aiName.includes('item)');
+    if (aiNameIsValid && (isGeneric || description.length > aiName.length + 10)) {
+      return aiName;
+    }
     
     // Improved fallback for when analysis is still in progress
     if (meal?.processing_status === 'processing' && isGeneric) {
@@ -495,8 +591,8 @@ export default function MealDetailScreen() {
       return `Analyzing ${mealType}...`;
     }
 
-    if (meal?.description && !isGeneric) {
-      return meal.description;
+    if (description && !isGeneric) {
+      return description;
     }
 
     // 2. Try to use the first item name from AI analysis if it exists but description is still generic
@@ -555,18 +651,16 @@ export default function MealDetailScreen() {
 
   if (loading) {
     return (
-      <PageContainer noPadding edges={['bottom', 'left', 'right']}>
+      <PageContainer noPadding edges={['left', 'right']}>
         {/* Skeleton Header */}
-        <BlurView 
-          intensity={Platform.OS === 'ios' ? 60 : 80} 
-          tint="dark" 
+        <View
           style={[
-            styles.floatingHeader, 
-            { 
-              height: headerHeight, 
+            styles.floatingHeader,
+            {
+              height: headerHeight,
               paddingTop: insets.top,
-              backgroundColor: createColoredGlass(bgPrimary, 0.75)
-            }
+              backgroundColor: 'transparent',
+            },
           ]}
         >
           <View style={styles.headerContent}>
@@ -582,7 +676,7 @@ export default function MealDetailScreen() {
               </View>
             </View>
           </View>
-        </BlurView>
+        </View>
 
         <ContentContainer>
           <View style={{ paddingTop: 24 }}>
@@ -664,18 +758,16 @@ export default function MealDetailScreen() {
   );
 
   return (
-    <PageContainer noPadding edges={['bottom', 'left', 'right']}>
-      {/* Translucent Header Overlay */}
-      <BlurView 
-        intensity={Platform.OS === 'ios' ? 60 : 80} 
-        tint="dark" 
+    <PageContainer noPadding edges={['left', 'right']}>
+      {/* Floating Header */}
+      <View
         style={[
-          styles.floatingHeader, 
-          { 
-            height: headerHeight, 
+          styles.floatingHeader,
+          {
+            height: headerHeight,
             paddingTop: insets.top,
-            backgroundColor: createColoredGlass(bgPrimary, 0.75)
-          }
+            backgroundColor: 'transparent',
+          },
         ]}
       >
         <View style={styles.headerContent}>
@@ -701,51 +793,13 @@ export default function MealDetailScreen() {
             >
               <IconSymbol name="square.and.arrow.up" size={20} color={neonGreen} weight="semibold" />
             </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.headerButton}
-              onPress={openLogAgain}
-              activeOpacity={0.7}
-              accessibilityLabel="Log this meal again"
-            >
-              <IconSymbol name="repeat" size={20} color={neonGreen} weight="semibold" />
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.headerButton}
-              onPress={openEditMeta}
-              activeOpacity={0.7}
-              accessibilityLabel="Edit meal details"
-            >
-              <IconSymbol name="pencil" size={20} color={neonGreen} weight="semibold" />
-            </TouchableOpacity>
-
-            {!isDatabaseMeal && (
-              <TouchableOpacity 
-                style={styles.headerButton}
-                onPress={openReanalyze}
-                activeOpacity={0.7}
-                accessibilityLabel="Reanalyze meal"
-              >
-                <IconSymbol name="arrow.clockwise" size={20} color={neonGreen} weight="semibold" />
-              </TouchableOpacity>
-            )}
-
-            <TouchableOpacity 
-              style={styles.headerButton}
-              onPress={handleDelete}
-              activeOpacity={0.7}
-              accessibilityLabel="Delete meal"
-            >
-              <IconSymbol name="trash" size={20} color={neonGreen} weight="semibold" />
-            </TouchableOpacity>
           </View>
         </View>
-      </BlurView>
+      </View>
 
       <ContentContainer>
         {/* Wrap content in a View to handle dynamic padding based on image presence */}
-        <View style={{ paddingTop: meal.image_url ? 24 : headerHeight + 12 }}>
+        <View style={{ paddingTop: meal.image_url ? 0 : headerHeight + 12, paddingBottom: actionBarHeight + insets.bottom }}>
           {/* Hero Image with Parallax */}
           {meal.image_url && (
             <ParallaxImage source={{ uri: meal.image_url }} height={380} />
@@ -894,6 +948,9 @@ export default function MealDetailScreen() {
                 )}
               </View>
             </View>
+            <Text style={[TextStyles.caption, { color: colors.icon, marginBottom: Spacing.md }]}>
+              Tap a nutrient card to learn what it is and why it matters.
+            </Text>
             
             {/* Calories Hero Card */}
             <View style={styles.caloriesHero}>
@@ -917,31 +974,58 @@ export default function MealDetailScreen() {
             {!!meal.macros && (
               <View style={styles.macrosGrid}>
                 <View style={styles.macroCardWrapper3}>
-                  <NutritionCard
-                    value={meal.macros.protein || 0}
-                    label="Protein"
-                    unit="g"
-                    delay={200}
-                    style={styles.macroCard}
-                  />
+                  <TouchableOpacity
+                    onPress={() => openNutrientEducation('protein')}
+                    activeOpacity={0.85}
+                    style={styles.educationCardButton}
+                    accessibilityRole="button"
+                    accessibilityLabel="Learn about protein"
+                    accessibilityHint="Opens educational details about protein"
+                  >
+                    <NutritionCard
+                      value={meal.macros.protein || 0}
+                      label="Protein"
+                      unit="g"
+                      delay={200}
+                      style={styles.macroCard}
+                    />
+                  </TouchableOpacity>
                 </View>
                 <View style={styles.macroCardWrapper3}>
-                  <NutritionCard
-                    value={meal.macros.fat || 0}
-                    label="Fat"
-                    unit="g"
-                    delay={280}
-                    style={styles.macroCard}
-                  />
+                  <TouchableOpacity
+                    onPress={() => openNutrientEducation('fat')}
+                    activeOpacity={0.85}
+                    style={styles.educationCardButton}
+                    accessibilityRole="button"
+                    accessibilityLabel="Learn about dietary fat"
+                    accessibilityHint="Opens educational details about fat"
+                  >
+                    <NutritionCard
+                      value={meal.macros.fat || 0}
+                      label="Fat"
+                      unit="g"
+                      delay={280}
+                      style={styles.macroCard}
+                    />
+                  </TouchableOpacity>
                 </View>
                 <View style={styles.macroCardWrapper3}>
-                  <NutritionCard
-                    value={meal.macros.carbs || 0}
-                    label="Carbs"
-                    unit="g"
-                    delay={360}
-                    style={styles.macroCard}
-                  />
+                  <TouchableOpacity
+                    onPress={() => openNutrientEducation('carbs')}
+                    activeOpacity={0.85}
+                    style={styles.educationCardButton}
+                    accessibilityRole="button"
+                    accessibilityLabel="Learn about carbohydrates"
+                    accessibilityHint="Opens educational details about carbohydrates"
+                  >
+                    <NutritionCard
+                      value={meal.macros.carbs || 0}
+                      label="Carbs"
+                      unit="g"
+                      delay={360}
+                      style={styles.macroCard}
+                    />
+                  </TouchableOpacity>
                 </View>
               </View>
             )}
@@ -954,46 +1038,82 @@ export default function MealDetailScreen() {
                 </Text>
                 <View style={styles.macrosGrid}>
                   <View style={styles.macroCardWrapper4}>
-                    <NutritionCard
-                      value={meal.macros.fiber || 0}
-                      label="Fiber"
-                      unit="g"
-                      size="small"
-                      delay={440}
-                      style={styles.macroCard}
-                    />
+                    <TouchableOpacity
+                      onPress={() => openNutrientEducation('fiber')}
+                      activeOpacity={0.85}
+                      style={styles.educationCardButton}
+                      accessibilityRole="button"
+                      accessibilityLabel="Learn about fiber"
+                      accessibilityHint="Opens educational details about fiber"
+                    >
+                      <NutritionCard
+                        value={meal.macros.fiber || 0}
+                        label="Fiber"
+                        unit="g"
+                        size="small"
+                        delay={440}
+                        style={styles.macroCard}
+                      />
+                    </TouchableOpacity>
                   </View>
                   <View style={styles.macroCardWrapper4}>
-                    <NutritionCard
-                      value={meal.macros.sugar || 0}
-                      label="Sugar"
-                      unit="g"
-                      size="small"
-                      delay={500}
-                      style={styles.macroCard}
-                    />
+                    <TouchableOpacity
+                      onPress={() => openNutrientEducation('sugar')}
+                      activeOpacity={0.85}
+                      style={styles.educationCardButton}
+                      accessibilityRole="button"
+                      accessibilityLabel="Learn about sugar"
+                      accessibilityHint="Opens educational details about sugar"
+                    >
+                      <NutritionCard
+                        value={meal.macros.sugar || 0}
+                        label="Sugar"
+                        unit="g"
+                        size="small"
+                        delay={500}
+                        style={styles.macroCard}
+                      />
+                    </TouchableOpacity>
                   </View>
                   <View style={styles.macroCardWrapper4}>
-                    <NutritionCard
-                      value={meal.macros.sodium !== undefined 
-                        ? (meal.macros.sodium >= 1000 ? (meal.macros.sodium / 1000).toFixed(1) : meal.macros.sodium) 
-                        : 0}
-                      label="Sodium"
-                      unit={meal.macros.sodium && meal.macros.sodium >= 1000 ? "g" : "mg"}
-                      size="small"
-                      delay={560}
-                      style={styles.macroCard}
-                    />
+                    <TouchableOpacity
+                      onPress={() => openNutrientEducation('sodium')}
+                      activeOpacity={0.85}
+                      style={styles.educationCardButton}
+                      accessibilityRole="button"
+                      accessibilityLabel="Learn about sodium"
+                      accessibilityHint="Opens educational details about sodium"
+                    >
+                      <NutritionCard
+                        value={meal.macros.sodium !== undefined
+                          ? (meal.macros.sodium >= 1000 ? (meal.macros.sodium / 1000).toFixed(1) : meal.macros.sodium)
+                          : 0}
+                        label="Sodium"
+                        unit={meal.macros.sodium && meal.macros.sodium >= 1000 ? "g" : "mg"}
+                        size="small"
+                        delay={560}
+                        style={styles.macroCard}
+                      />
+                    </TouchableOpacity>
                   </View>
                   <View style={styles.macroCardWrapper4}>
-                    <NutritionCard
-                      value={meal.macros.cholesterol || 0}
-                      label="Cholesterol"
-                      unit="mg"
-                      size="small"
-                      delay={620}
-                      style={styles.macroCard}
-                    />
+                    <TouchableOpacity
+                      onPress={() => openNutrientEducation('cholesterol')}
+                      activeOpacity={0.85}
+                      style={styles.educationCardButton}
+                      accessibilityRole="button"
+                      accessibilityLabel="Learn about cholesterol"
+                      accessibilityHint="Opens educational details about cholesterol"
+                    >
+                      <NutritionCard
+                        value={meal.macros.cholesterol || 0}
+                        label="Cholesterol"
+                        unit="mg"
+                        size="small"
+                        delay={620}
+                        style={styles.macroCard}
+                      />
+                    </TouchableOpacity>
                   </View>
                 </View>
               </View>
@@ -1185,6 +1305,50 @@ export default function MealDetailScreen() {
       </View>
     </ContentContainer>
 
+      <View style={[styles.bottomActionBar, { paddingBottom: insets.bottom, height: actionBarHeight + insets.bottom }]}>
+        <TouchableOpacity
+          style={styles.bottomActionButton}
+          onPress={openLogAgain}
+          activeOpacity={0.7}
+          accessibilityLabel="Log this meal again"
+        >
+          <IconSymbol name="repeat" size={20} color={neonGreen} weight="semibold" />
+          <Text style={styles.bottomActionLabel}>Log again</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.bottomActionButton}
+          onPress={openEditMeta}
+          activeOpacity={0.7}
+          accessibilityLabel="Edit meal details"
+        >
+          <IconSymbol name="pencil" size={20} color={neonGreen} weight="semibold" />
+          <Text style={styles.bottomActionLabel}>Edit</Text>
+        </TouchableOpacity>
+
+        {!isDatabaseMeal && (
+          <TouchableOpacity
+            style={styles.bottomActionButton}
+            onPress={openReanalyze}
+            activeOpacity={0.7}
+            accessibilityLabel="Reanalyze meal"
+          >
+            <IconSymbol name="arrow.clockwise" size={20} color={neonGreen} weight="semibold" />
+            <Text style={styles.bottomActionLabel}>Reanalyze</Text>
+          </TouchableOpacity>
+        )}
+
+        <TouchableOpacity
+          style={styles.bottomActionButton}
+          onPress={handleDelete}
+          activeOpacity={0.7}
+          accessibilityLabel="Delete meal"
+        >
+          <IconSymbol name="trash" size={20} color={neonGreen} weight="semibold" />
+          <Text style={styles.bottomActionLabel}>Delete</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* Reanalyze Modal */}
       <Modal
         visible={showReanalyzeModal}
@@ -1223,18 +1387,29 @@ export default function MealDetailScreen() {
                   textAlignVertical="top"
                   rightIcon={
                     !isKeyboardVisible && (
-                      <TouchableOpacity
-                        onPress={handleVoiceInput}
-                        disabled={isTranscribing}
-                        activeOpacity={0.7}
-                        style={styles.voiceInputButton}
-                      >
-                        <IconSymbol
-                          name={isRecording ? 'stop.fill' : isTranscribing ? 'hourglass' : 'mic'}
-                          size={26}
-                          color={isRecording ? '#EF4444' : neonGreen}
-                        />
-                      </TouchableOpacity>
+                      <View style={styles.voiceInputWrapper}>
+                        <View style={styles.voicePulseClip}>
+                          <VoicePulseSkia metering={metering} isRecording={isRecording} size={56} />
+                        </View>
+                        <TouchableOpacity
+                          onPress={handleVoiceInput}
+                          disabled={isTranscribing}
+                          activeOpacity={0.7}
+                          style={[
+                            styles.voiceInputButton,
+                            {
+                              backgroundColor: isRecording ? 'rgba(239, 68, 68, 0.15)' : `${neonGreen}15`,
+                              borderColor: isRecording ? '#EF4444' : `${neonGreen}40`,
+                            },
+                          ]}
+                        >
+                          <IconSymbol
+                            name={isRecording ? 'stop.fill' : isTranscribing ? 'hourglass' : 'mic'}
+                            size={24}
+                            color={isRecording ? '#EF4444' : neonGreen}
+                          />
+                        </TouchableOpacity>
+                      </View>
                     )
                   }
                   containerStyle={{ marginBottom: Spacing.lg }}
@@ -1252,7 +1427,7 @@ export default function MealDetailScreen() {
                 {/* Transcribing indicator */}
                 {isTranscribing && (
                   <View style={styles.transcribingIndicator}>
-                    <ActivityIndicator size="small" color={neonGreen} />
+                    <SwirlingSpinner size="small" color={neonGreen} />
                     <Text style={[TextStyles.bodySmall, { color: colors.icon }]}>Transcribing…</Text>
                   </View>
                 )}
@@ -1323,39 +1498,7 @@ export default function MealDetailScreen() {
                 <Text style={[TextStyles.h4, { color: colors.text, marginTop: Spacing.lg, marginBottom: Spacing.sm }]}>
                   Date & Time
                 </Text>
-                <View style={styles.dateDisplayCard}>
-                  <Text style={[TextStyles.body, { color: colors.text, textAlign: 'center' }]}>
-                    {formatDate(editedCreatedAt)}
-                  </Text>
-                  <Text style={[TextStyles.h2, { color: neonGreen, textAlign: 'center', marginTop: Spacing.xs }]}>
-                    {formatTime(editedCreatedAt)}
-                  </Text>
-                </View>
-
-                <View style={styles.adjustmentGrid}>
-                  <View style={styles.adjustmentColumn}>
-                    <Text style={[TextStyles.caption, { color: colors.icon, textAlign: 'center' }]}>Hours</Text>
-                    <View style={styles.adjustmentButtons}>
-                      <TouchableOpacity style={styles.adjustBtn} onPress={() => adjustDate('hour', -1)}>
-                        <IconSymbol name="minus" size={16} color={colors.text} />
-                      </TouchableOpacity>
-                      <TouchableOpacity style={styles.adjustBtn} onPress={() => adjustDate('hour', 1)}>
-                        <IconSymbol name="plus" size={16} color={colors.text} />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                  <View style={styles.adjustmentColumn}>
-                    <Text style={[TextStyles.caption, { color: colors.icon, textAlign: 'center' }]}>Days</Text>
-                    <View style={styles.adjustmentButtons}>
-                      <TouchableOpacity style={styles.adjustBtn} onPress={() => adjustDate('day', -1)}>
-                        <IconSymbol name="minus" size={16} color={colors.text} />
-                      </TouchableOpacity>
-                      <TouchableOpacity style={styles.adjustBtn} onPress={() => adjustDate('day', 1)}>
-                        <IconSymbol name="plus" size={16} color={colors.text} />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </View>
+                <DateTimePickerField value={editedCreatedAt} onChange={setEditedCreatedAt} />
 
                 <View style={[styles.modalActions, { marginTop: Spacing.xl }]}>
                   <Button variant="secondary" onPress={() => setShowEditMetaModal(false)} style={styles.modalActionBtn}>
@@ -1366,7 +1509,7 @@ export default function MealDetailScreen() {
                     onPress={handleUpdateMeta}
                     style={styles.modalActionBtn}
                     disabled={savingMeta}
-                    icon={savingMeta ? <ActivityIndicator size="small" color="#000000" /> : undefined}
+                    icon={savingMeta ? <SwirlingSpinner size="small" color="#000000" /> : undefined}
                   >
                     {savingMeta ? 'Saving...' : 'Save Changes'}
                   </Button>
@@ -1429,39 +1572,7 @@ export default function MealDetailScreen() {
                 <Text style={[TextStyles.h4, { color: colors.text, marginTop: Spacing.lg, marginBottom: Spacing.sm }]}>
                   Date & Time
                 </Text>
-                <View style={styles.dateDisplayCard}>
-                  <Text style={[TextStyles.body, { color: colors.text, textAlign: 'center' }]}>
-                    {formatDate(logAgainCreatedAt)}
-                  </Text>
-                  <Text style={[TextStyles.h2, { color: neonGreen, textAlign: 'center', marginTop: Spacing.xs }]}>
-                    {formatTime(logAgainCreatedAt)}
-                  </Text>
-                </View>
-
-                <View style={styles.adjustmentGrid}>
-                  <View style={styles.adjustmentColumn}>
-                    <Text style={[TextStyles.caption, { color: colors.icon, textAlign: 'center' }]}>Hours</Text>
-                    <View style={styles.adjustmentButtons}>
-                      <TouchableOpacity style={styles.adjustBtn} onPress={() => adjustLogAgainDate('hour', -1)}>
-                        <IconSymbol name="minus" size={16} color={colors.text} />
-                      </TouchableOpacity>
-                      <TouchableOpacity style={styles.adjustBtn} onPress={() => adjustLogAgainDate('hour', 1)}>
-                        <IconSymbol name="plus" size={16} color={colors.text} />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                  <View style={styles.adjustmentColumn}>
-                    <Text style={[TextStyles.caption, { color: colors.icon, textAlign: 'center' }]}>Days</Text>
-                    <View style={styles.adjustmentButtons}>
-                      <TouchableOpacity style={styles.adjustBtn} onPress={() => adjustLogAgainDate('day', -1)}>
-                        <IconSymbol name="minus" size={16} color={colors.text} />
-                      </TouchableOpacity>
-                      <TouchableOpacity style={styles.adjustBtn} onPress={() => adjustLogAgainDate('day', 1)}>
-                        <IconSymbol name="plus" size={16} color={colors.text} />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </View>
+                <DateTimePickerField value={logAgainCreatedAt} onChange={setLogAgainCreatedAt} />
 
                 <View style={[styles.modalActions, { marginTop: Spacing.xl }]}>
                   <Button variant="secondary" onPress={() => setShowLogAgainModal(false)} style={styles.modalActionBtn}>
@@ -1472,7 +1583,7 @@ export default function MealDetailScreen() {
                     onPress={handleLogAgain}
                     style={styles.modalActionBtn}
                     disabled={savingLogAgain}
-                    icon={savingLogAgain ? <ActivityIndicator size="small" color="#000000" /> : undefined}
+                    icon={savingLogAgain ? <SwirlingSpinner size="small" color="#000000" /> : undefined}
                   >
                     {savingLogAgain ? 'Logging...' : 'Log Again'}
                   </Button>
@@ -1508,6 +1619,12 @@ export default function MealDetailScreen() {
           }}
         />
       )}
+
+      <NutrientEducationModal
+        visible={selectedNutrient !== null}
+        nutrient={selectedNutrient}
+        onClose={() => setSelectedNutrient(null)}
+      />
     </PageContainer>
   );
 }
@@ -1519,8 +1636,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 100,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.05)',
   },
   headerContent: {
     flex: 1,
@@ -1534,6 +1649,10 @@ const styles = StyleSheet.create({
     height: 44,
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: 999,
+    backgroundColor: createColoredGlass(bgPrimary, 0.6),
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
   },
   headerTitleContainer: {
     flex: 1,
@@ -1625,16 +1744,18 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   caloriesHero: {
-    marginBottom: Spacing.md,
+    marginBottom: Spacing.xs,
   },
   caloriesCard: {
     width: '100%',
+    padding: Spacing.base,
+    minHeight: 140,
   },
   macrosGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8, // Fixed small gap for precision
-    marginBottom: Spacing.base,
+    marginBottom: 2,
     justifyContent: 'center',
   },
   macroCardWrapper: {
@@ -1654,12 +1775,22 @@ const styles = StyleSheet.create({
   },
   macroCard: {
     width: '100%',
+    padding: Spacing.sm,
+  },
+  educationCardButton: {
+    width: '100%',
   },
   microsSection: {
-    marginTop: Spacing.lg,
-    paddingTop: Spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+    marginTop: Spacing.xs,
+    padding: Spacing.sm,
+    // Panel container styling
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    // Inner highlight effect via top border (simulates light source from top)
+    borderTopColor: 'rgba(255, 255, 255, 0.12)',
+    overflow: 'hidden',
   },
   microDivider: {
     marginBottom: Spacing.md,
@@ -1734,6 +1865,32 @@ const styles = StyleSheet.create({
   itemsCarousel: {
     marginTop: Spacing.base,
     marginBottom: PageSpacing.sectionGap,
+  },
+  bottomActionBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: PageSpacing.containerPadding,
+    paddingTop: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: createColoredGlass(bgPrimary, 0.85),
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  bottomActionButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: 56,
+  },
+  bottomActionLabel: {
+    ...TextStyles.caption,
+    color: 'white',
+    opacity: 0.85,
   },
   itemsCarouselContent: {
     paddingHorizontal: PageSpacing.containerPadding,
@@ -1827,8 +1984,29 @@ const styles = StyleSheet.create({
   modalActionBtn: {
     flex: 1,
   },
+  voiceInputWrapper: {
+    width: 72,
+    height: 72,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  voicePulseClip: {
+    position: 'absolute',
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    overflow: Platform.OS === 'android' ? 'visible' : 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   voiceInputButton: {
-    padding: Spacing.xs,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    zIndex: 1,
   },
   recordingIndicator: {
     flexDirection: 'row',
@@ -1906,32 +2084,31 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.1)',
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
   },
-  dateDisplayCard: {
+  dateTimePickerContainer: {
+    marginTop: Spacing.sm,
+    alignItems: 'center',
+  },
+  datePreviewCard: {
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
     borderRadius: 16,
     padding: Spacing.md,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.1)',
+    width: '100%',
+    marginBottom: Spacing.sm,
   },
-  adjustmentGrid: {
+  iosDateTimePicker: {
+    width: '100%',
+    height: 200,
+  },
+  androidPickerContainer: {
+    marginTop: Spacing.sm,
+  },
+  androidPickerRow: {
     flexDirection: 'row',
-    gap: Spacing.lg,
-    marginTop: Spacing.md,
+    gap: Spacing.md,
   },
-  adjustmentColumn: {
+  androidPickerButton: {
     flex: 1,
-    gap: Spacing.xs,
-  },
-  adjustmentButtons: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-  },
-  adjustBtn: {
-    flex: 1,
-    height: 44,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 }); 

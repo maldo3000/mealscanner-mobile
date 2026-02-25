@@ -1,32 +1,29 @@
-import { BlurView } from 'expo-blur';
 import React, { useState } from 'react';
 import {
-    ActivityIndicator,
     KeyboardAvoidingView,
     Modal,
     Platform,
+    SafeAreaView,
     ScrollView,
+    StatusBar,
     StyleSheet,
     Text,
     TouchableOpacity,
     View,
-    SafeAreaView,
-    StatusBar,
 } from 'react-native';
 
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { Input } from '@/components/ui/Input';
-import { RecipeCardDiscover } from '@/components/recipe/RecipeCardDiscover';
-import type { Recipe } from '@/components/recipe/types';
-import { Colors, glassBorder, neonGreen, deepGreen, accentSky, glassSurface } from '@/constants/Colors';
+import { SwirlingSpinner } from '@/components/ui/SwirlingSpinner';
+import { accentSky, Colors, deepGreen, glassBorder, neonGreen } from '@/constants/Colors';
 import { Spacing } from '@/constants/Spacing';
 import { TextStyles } from '@/constants/Typography';
+import { useSubscription } from '@/context/SubscriptionContext';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { useNutritionGoals } from '@/hooks/useNutritionGoals';
-import { useSubscription } from '@/context/SubscriptionContext';
-import { generateRecipeFromSuggestion, generateRecipeSuggestions } from '@/lib/supabase';
+import { generateRecipeFromSuggestion, generateRecipeSuggestions, isRecipeFeatureUnavailableError } from '@/lib/supabase';
 
 interface RecipeSuggestion {
   name: string;
@@ -100,7 +97,11 @@ export function RecipeGeneratorModal({
 
       setSuggestions(data.suggestions);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to generate recipe suggestions';
+      const message = isRecipeFeatureUnavailableError(err)
+        ? 'Recipe generation is currently unavailable.'
+        : err instanceof Error
+          ? err.message
+          : 'Failed to generate recipe suggestions';
       setError(message);
       console.error('Error generating suggestions:', err);
     } finally {
@@ -139,7 +140,11 @@ export function RecipeGeneratorModal({
       onRecipeGenerated();
       onClose();
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to generate recipe';
+      const message = isRecipeFeatureUnavailableError(err)
+        ? 'Recipe generation is currently unavailable.'
+        : err instanceof Error
+          ? err.message
+          : 'Failed to generate recipe';
       setError(message);
       console.error('Error generating recipe:', err);
       setSelectedSuggestion(null);
@@ -242,7 +247,7 @@ export function RecipeGeneratorModal({
 
               {loadingSuggestions && (
                 <View style={styles.centeredContent}>
-                  <ActivityIndicator size="large" color={neonGreen} />
+                  <SwirlingSpinner size="large" color={neonGreen} />
                   <Text style={styles.loadingTitle}>Curating your menu...</Text>
                   <Text style={styles.loadingSub}>Analyzing your goals and ingredients</Text>
                 </View>
@@ -309,7 +314,7 @@ export function RecipeGeneratorModal({
 
               {generatingRecipe && (
                 <View style={styles.centeredContent}>
-                  <ActivityIndicator size="large" color={neonGreen} />
+                  <SwirlingSpinner size="large" color={neonGreen} />
                   <Text style={styles.loadingTitle}>Crafting {selectedSuggestion?.name}...</Text>
                   <Text style={styles.loadingSub}>Creating step-by-step instructions and nutrition details</Text>
                 </View>

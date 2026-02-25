@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { verifyAuth, createUnauthorizedResponse, validateUserMatch } from '../_shared/auth.ts';
 import { getSmartCorsHeaders, handleCorsPreflightRequest } from '../_shared/cors.ts';
+import { getProAccessForUser } from '../_shared/subscription.ts';
 
 interface GenerateRecipeRequest {
   suggestion: {
@@ -14,7 +15,6 @@ interface GenerateRecipeRequest {
     difficulty?: 'Easy' | 'Medium' | 'Hard';
   };
   user_id: string;
-  is_pro?: boolean;
   nutrition_goals?: {
     dailyTargets: {
       calories: number;
@@ -75,7 +75,7 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { suggestion, user_id: payload_user_id, is_pro, nutrition_goals } = await req.json() as GenerateRecipeRequest;
+    const { suggestion, user_id: payload_user_id, nutrition_goals } = await req.json() as GenerateRecipeRequest;
     
     // Use authenticated user ID, validate if payload specifies one
     if (payload_user_id && !validateUserMatch(auth.userId, payload_user_id)) {
@@ -96,7 +96,18 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (!is_pro) {
+    const proAccess = await getProAccessForUser(supabaseClient, user_id);
+    if (proAccess.error) {
+      return new Response(
+        JSON.stringify({ error: `Failed to verify subscription status: ${proAccess.error}` }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    if (!proAccess.isPro) {
       return new Response(
         JSON.stringify({ error: 'Recipe generation is a Pro feature.' }),
         { 

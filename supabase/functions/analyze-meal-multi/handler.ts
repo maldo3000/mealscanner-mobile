@@ -1,11 +1,11 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { getLLMRouter } from '../_shared/llm/router.ts'
-import type { ChatMessage, LLMConfig } from '../_shared/llm/types.ts'
-import { verifyAuth, createUnauthorizedResponse, validateUserMatch } from '../_shared/auth.ts'
-import { AnalyzeMealMultiRequestSchema, validateRequest, createValidationErrorResponse } from '../_shared/validation.ts'
+import { createUnauthorizedResponse, validateUserMatch, verifyAuth } from '../_shared/auth.ts'
 import { getSmartCorsHeaders, handleCorsPreflightRequest } from '../_shared/cors.ts'
-import { checkRateLimit, getRateLimitIdentifier, createRateLimitResponse, RateLimitPresets, addRateLimitHeaders } from '../_shared/rateLimit.ts'
 import { ipBlocklistMiddleware } from '../_shared/ipBlocklist.ts'
+import { getLLMRouter } from '../_shared/llm/router.ts'
+import type { ChatMessage, LLMConfig, ModelQualityMetrics } from '../_shared/llm/types.ts'
+import { checkRateLimit, createRateLimitResponse, getRateLimitIdentifier, RateLimitPresets } from '../_shared/rateLimit.ts'
+import { AnalyzeMealMultiRequestSchema, createValidationErrorResponse, validateRequest } from '../_shared/validation.ts'
 
 export interface MealMultiItemInput {
   itemType: 'photo' | 'text' | 'verified'
@@ -131,6 +131,106 @@ function stripMarkdown(text: string): string {
   return text.replace(/```json/g, '').replace(/```/g, '').trim()
 }
 
+const MAX_MEAL_NAME_CHARS = 60
+const MAX_MEAL_NAME_WORDS = 8
+
+function normalizeWhitespace(text: string): string {
+  return text.replace(/\s+/g, ' ').trim()
+}
+
+function truncateAtWordBoundary(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text
+  const truncated = text.slice(0, maxChars)
+  const lastSpace = truncated.lastIndexOf(' ')
+  if (lastSpace > Math.floor(maxChars * 0.6)) {
+    return truncated.slice(0, lastSpace).trim()
+  }
+  return truncated.trim()
+}
+
+function shortenToWordCount(text: string, maxWords: number): string {
+  const words = text.split(/\s+/).filter(Boolean)
+  return words.slice(0, maxWords).join(' ')
+}
+
+const GENERIC_MEAL_NAMES = new Set([
+  'meal',
+  'analyzed meal',
+  'analyzed snack',
+  'food',
+  'food item',
+  'snack',
+  'my meal',
+  'untitled meal',
+])
+
+function isGenericMealName(name: string): boolean {
+  const lower = name.toLowerCase().trim()
+  if (GENERIC_MEAL_NAMES.has(lower)) return true
+  if (/^meal\s*\(\d+\s*items?\)$/i.test(lower)) return true
+  if (lower.includes('<generate')) return true
+  return false
+}
+
+function buildItemNameSummary(names: string[]): string {
+  const cleanNames = names.map(normalizeWhitespace).filter(Boolean)
+  if (cleanNames.length === 0) return ''
+  const first = cleanNames[0]!
+  if (cleanNames.length === 1) return first
+  const second = cleanNames[1]!
+  const withSecond = `${first} with ${second}`
+  return withSecond.length <= MAX_MEAL_NAME_CHARS ? withSecond : first
+}
+
+function buildConciseMealName(params: {
+  candidate?: string | null
+  normalizedItems: AnalyzeMealMultiLLMResponse['items']
+  textItems: MealMultiItemInput[]
+  existingMealDescription?: string | null
+}): string {
+  const { candidate, normalizedItems, textItems, existingMealDescription } = params
+  const cleanedCandidate = normalizeWhitespace(candidate ?? '')
+  const textItemRaw = textItems.find((item) => typeof item.text === 'string' && item.text.trim().length > 0)?.text ?? ''
+  const textItemClean = normalizeWhitespace(textItemRaw)
+  const textItemWordCount = textItemClean.split(/\s+/).filter(Boolean).length
+  const isVerbatimText = textItemClean.length > 0 && cleanedCandidate.toLowerCase() === textItemClean.toLowerCase()
+
+  let chosen = cleanedCandidate
+  if (!chosen) {
+    chosen = ''
+  }
+
+  if (isVerbatimText && textItemWordCount > 10) {
+    chosen = shortenToWordCount(textItemClean, MAX_MEAL_NAME_WORDS)
+  }
+
+  if (chosen.length > MAX_MEAL_NAME_CHARS) {
+    const firstClause = normalizeWhitespace(chosen.split(/[.!?;]/)[0] ?? '')
+    if (firstClause.length >= 3 && firstClause.length < chosen.length) {
+      chosen = firstClause
+    }
+  }
+
+  if (chosen.length > MAX_MEAL_NAME_CHARS) {
+    chosen = truncateAtWordBoundary(chosen, MAX_MEAL_NAME_CHARS)
+  }
+
+  if (chosen.length >= 3 && !isGenericMealName(chosen)) return chosen
+
+  const itemNames = normalizedItems
+    .map((item) => normalizeWhitespace(item.name))
+    .filter((name) => name.length > 0 && !isGenericMealName(name) && !name.toLowerCase().includes('item'))
+  const summary = buildItemNameSummary(itemNames)
+  if (summary) return summary
+
+  const fallback = normalizeWhitespace(existingMealDescription ?? '')
+  if (fallback.length > 0 && !isGenericMealName(fallback)) {
+    return truncateAtWordBoundary(fallback, MAX_MEAL_NAME_CHARS)
+  }
+
+  return 'Meal'
+}
+
 function buildInitialMealDescription(items: MealMultiItemInput[]): string {
   const textItems = items.filter((i) => i.itemType === 'text' && typeof i.text === 'string' && i.text.trim().length > 0)
   if (textItems.length > 0) {
@@ -144,6 +244,60 @@ function pickHeroIndex(items: MealMultiItemInput[]): number | null {
   if (heroCandidate >= 0) return heroCandidate
   const firstPhoto = items.findIndex((i) => i.itemType === 'photo')
   return firstPhoto >= 0 ? firstPhoto : null
+}
+
+interface NutritionClaim {
+  nutrient: string
+  value: number
+  unit: string
+  source: string
+}
+
+function extractNutritionClaims(contextText?: string, textItems?: string[]): NutritionClaim[] {
+  const claims: NutritionClaim[] = []
+  const sources = [
+    ...(contextText ? [contextText] : []),
+    ...(textItems ?? []),
+  ]
+
+  const patterns: Array<{ regex: RegExp; nutrient: string; unit: string }> = [
+    { regex: /(\d+)\s*(?:g|gram|grams)\s+(?:of\s+)?protein/gi, nutrient: 'protein', unit: 'g' },
+    { regex: /(\d+)\s*(?:g|gram|grams)\s+(?:scoop|serving)\s+(?:of\s+)?protein/gi, nutrient: 'protein', unit: 'g' },
+    { regex: /protein[:\s]+(\d+)\s*g/gi, nutrient: 'protein', unit: 'g' },
+    { regex: /(\d+)\s*(?:cal|cals|calories|kcal)/gi, nutrient: 'calories', unit: 'kcal' },
+    { regex: /(\d+)\s*(?:g|gram|grams)\s+(?:of\s+)?(?:carb|carbs|carbohydrates)/gi, nutrient: 'carbs', unit: 'g' },
+    { regex: /(\d+)\s*(?:g|gram|grams)\s+(?:of\s+)?fat/gi, nutrient: 'fat', unit: 'g' },
+    { regex: /(\d+)\s*(?:g|gram|grams)\s+(?:of\s+)?fiber/gi, nutrient: 'fiber', unit: 'g' },
+    { regex: /(\d+)\s*(?:g|gram|grams)\s+(?:of\s+)?sugar/gi, nutrient: 'sugar', unit: 'g' },
+    { regex: /(\d+)\s*(?:mg)\s+(?:of\s+)?sodium/gi, nutrient: 'sodium', unit: 'mg' },
+  ]
+
+  for (const source of sources) {
+    for (const { regex, nutrient, unit } of patterns) {
+      regex.lastIndex = 0
+      let match: RegExpExecArray | null
+      while ((match = regex.exec(source)) !== null) {
+        const value = parseInt(match[1]!, 10)
+        if (value > 0 && value < 10000) {
+          const isDuplicate = claims.some((c) => c.nutrient === nutrient && c.value === value)
+          if (!isDuplicate) {
+            claims.push({ nutrient, value, unit, source: match[0]! })
+          }
+        }
+      }
+    }
+  }
+
+  return claims
+}
+
+function buildLockedValuesBlock(claims: NutritionClaim[]): string {
+  if (claims.length === 0) return ''
+  const lines = claims.map((c) => `- ${c.nutrient}: ${c.value}${c.unit} (from user input: "${c.source}")`)
+  return `
+USER-STATED NUTRITION VALUES (treat as exact, do NOT adjust):
+${lines.join('\n')}
+`
 }
 
 function buildUserPrompt(params: {
@@ -163,6 +317,10 @@ function buildUserPrompt(params: {
     .filter((x): x is string => typeof x === 'string')
     .join('\n')
 
+  const textItemTexts = items
+    .filter((item) => item.itemType === 'text' && item.text?.trim())
+    .map((item) => item.text!.trim())
+
   const photosDescription = items
     .map((item, index) => {
       if (item.itemType !== 'photo') return null
@@ -181,6 +339,9 @@ function buildUserPrompt(params: {
     .filter((x): x is string => typeof x === 'string')
     .join('\n')
 
+  const nutritionClaims = extractNutritionClaims(contextText, textItemTexts)
+  const lockedValuesBlock = buildLockedValuesBlock(nutritionClaims)
+
   const tierRules = isPro 
     ? `- ANALYSIS DEPTH: Provide Basic Macros + Micronutrients (Calories, Protein, Carbs, Fat, Fiber, Sugar, Sodium, Cholesterol).
 - CRITICAL: You MUST provide non-zero estimates for Sodium (mg) and Cholesterol (mg) for items like meat, dairy, and processed foods. 
@@ -198,17 +359,20 @@ Important rules:
 - INDEXING: Use the provided "Photo item X" or "Text item X" index for each item. 
 - MULTIPLE ITEMS IN ONE PHOTO: If a single photo contains multiple distinct food components (e.g., a plate with chicken, rice, and broccoli), you should list them as separate objects in the "items" array, but ALL of them must use the SAME "index" provided for that photo.
 - For 'verified' items, use them ONLY for context; do NOT include them in your "items" array response.
-- For photo and text items, follow this Chain of Thought (Volume First) process:
+- USER CONTEXT AUTHORITY: The "Overall meal context" and text item descriptions are provided directly by the user. If the user states specific quantities, portions, or nutritional values (e.g. "24g protein", "2 tablespoons of olive oil", "300 calories"), treat those as EXACT ground-truth values. Do NOT adjust or second-guess them based on visual estimation.
+- SUPPLEMENT CONVENTION: When a user says "X gram scoop of protein powder" or "X gram protein", interpret X as the protein CONTENT (grams of protein), not the powder weight. This matches how supplements are labeled (e.g. "24g scoop" = 24g of protein).
+- PHOTO ITEMS — follow this Chain of Thought (Volume First) process:
   1. IDENTIFY: Precisely identify the food item.
   2. SPATIAL REFERENCE: Compare the item's size to reference objects in the photo (e.g., standard 10-inch plate, fork, glass, or the user's hand).
   3. VOLUME: Estimate the physical volume (e.g., "roughly 1.5 cups" or "200ml").
   4. WEIGHT: Estimate the physical weight in grams based on density.
   5. CALCULATE: Only after estimating weight, calculate the nutrition values.
+- TEXT ITEMS — the user has already described the food. Use their stated quantities and portions as exact values. Only estimate nutrition for details the user did NOT specify. Do NOT re-estimate portions the user already provided.
 ${tierRules}
 - Quantity is an integer multiplier for the entire item.
 - If an item seems to have 0 calories but is clearly food, set "needs_review": true.
 - Return strict JSON only.
-
+${lockedValuesBlock}
 Overall meal context:
 ${contextText ? `"${contextText}"` : 'None provided'}
 
@@ -223,7 +387,7 @@ ${verifiedDescription || '(no verified items)'}
 Return JSON with this schema:
 {
   "meal": {
-    "name": "<descriptive title, 40-60 chars>",
+    "name": "<short, descriptive title (max 50 chars). Must describe the actual food, e.g. 'Berry Protein Smoothie' or 'Grilled Chicken Salad'. NEVER use generic names like 'Analyzed meal', 'Meal', 'Food', or 'Snack'. Do NOT repeat the user's full text verbatim.>",
     "description": "<detailed description including all items>",
     "serving_size": "<overall serving size estimate>",
     "health_score": <1-10>,
@@ -510,7 +674,7 @@ export async function handleAnalyzeMealMulti(req: Request): Promise<Response> {
 
         if (countError) {
           console.error('❌ Error checking scan limit:', countError);
-        } else if (count !== null && count >= 25) {
+        } else if (count !== null && count >= 3) {
           return new Response(
             JSON.stringify({ success: false, error: 'Daily scan limit reached. Upgrade to Pro for unlimited scans!' }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 }
@@ -734,6 +898,19 @@ export async function handleAnalyzeMealMulti(req: Request): Promise<Response> {
     }
     console.log('✅ LLM response received.')
 
+    // Extract canary routing metadata (present when using the updated router)
+    const routing = (chatResponse as any)._routing as {
+      model: string;
+      isCanary: boolean;
+      usedFallback: boolean;
+      fallbackReason?: string;
+      latencyMs: number;
+    } | undefined
+
+    if (routing) {
+      console.log(`🎯 Routing info: model=${routing.model}, isCanary=${routing.isCanary}, usedFallback=${routing.usedFallback}, latency=${routing.latencyMs}ms`)
+    }
+
     const analysisTextRaw = chatResponse.content
     const analysisText = stripMarkdown(analysisTextRaw)
     const openaiData = {
@@ -743,9 +920,11 @@ export async function handleAnalyzeMealMulti(req: Request): Promise<Response> {
     }
 
     let analysis: AnalyzeMealMultiLLMResponse
+    let jsonParseSuccess = true
     try {
       analysis = JSON.parse(analysisText) as AnalyzeMealMultiLLMResponse
     } catch (err) {
+      jsonParseSuccess = false
       console.error('❌ Failed to parse AI response:', err)
       console.log('Raw response:', analysisTextRaw)
       analysis = {
@@ -777,32 +956,42 @@ export async function handleAnalyzeMealMulti(req: Request): Promise<Response> {
     
     const normalized = normalizeLLMResponse(analysis, normalizedItemsWithHero.length, isPro)
 
+    // Log model quality metrics for canary comparison
+    const needsReviewCount = normalized.items.filter((it) => it.needs_review).length
+    const qualityMetrics: ModelQualityMetrics = {
+      model: routing?.model ?? chatResponse.model,
+      jsonParseSuccess,
+      usedFallback: routing?.usedFallback ?? false,
+      latencyMs: routing?.latencyMs ?? (Date.now() - startTime),
+      usage: chatResponse.usage,
+      needsReviewCount,
+      totalItemCount: normalized.items.length,
+      fallbackReason: routing?.fallbackReason,
+    }
+    llmRouter.logQualityMetrics(qualityMetrics)
+
     // Clean up generic names/placeholders
-    if (
-      normalized.meal.name.includes('<Generate') ||
-      normalized.meal.name === 'Meal' ||
-      normalized.meal.name === 'Analyzed meal' ||
-      normalized.meal.name === 'Analyzed Snack' ||
-      normalized.meal.name.includes('item)') ||
-      normalized.meal.name.includes('items)')
-    ) {
-      // Use the first identifiable item name
-      const firstValidItem = normalized.items.find((it) => it.name && !it.name.includes('Item') && it.name !== 'Food item');
+    if (isGenericMealName(normalized.meal.name)) {
+      const firstValidItem = normalized.items.find(
+        (it) => it.name && !isGenericMealName(it.name) && !it.name.toLowerCase().includes('item')
+      );
       if (firstValidItem) {
         normalized.meal.name = firstValidItem.name;
-      } else {
-        normalized.meal.name = buildInitialMealDescription(normalizedItemsWithHero);
       }
+      // If no valid item found, leave as-is — buildConciseMealName will try item names next
     }
 
-    // Save analysis_results record
+    // Save analysis_results record (includes model quality metrics for canary comparison)
     const processingTime = Date.now() - startTime
     const { data: analysisRecord } = await supabase
       .from('analysis_results')
       .insert({
         meal_id: finalMealId,
         analysis_type: 'combined',
-        raw_response: openaiData,
+        raw_response: {
+          ...openaiData,
+          _quality_metrics: qualityMetrics,
+        },
         extracted_nutrition: normalized,
         processing_time_ms: processingTime,
       })
@@ -871,12 +1060,13 @@ export async function handleAnalyzeMealMulti(req: Request): Promise<Response> {
     console.log('✅ Meal items update attempt completed.')
 
     // Update meal record with summary fields + keep old `ai_analysis.recommendations` shape compatible
-    const isSingleTextItem =
-      normalizedItemsWithHero.length === 1 && normalizedItemsWithHero[0]?.itemType === 'text' && !!normalizedItemsWithHero[0]?.text
-
-    const finalName = isSingleTextItem
-      ? normalizedItemsWithHero[0]!.text!.trim()
-      : normalized.meal.name || existingMealDescription || 'Meal'
+    const finalName = buildConciseMealName({
+      candidate: normalized.meal.name,
+      normalizedItems: normalized.items,
+      textItems: normalizedItemsWithHero.filter((item) => item.itemType === 'text'),
+      existingMealDescription,
+    })
+    normalized.meal.name = finalName
 
     console.log(`⏳ Finalizing meal record: ${finalMealId}...`)
     
@@ -948,6 +1138,8 @@ export async function handleAnalyzeMealMulti(req: Request): Promise<Response> {
         meal_id: finalMealId,
         analysis_id: analysisRecord?.id,
         processing_time_ms: processingTime,
+        _model: qualityMetrics.model,
+        _used_fallback: qualityMetrics.usedFallback,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     )

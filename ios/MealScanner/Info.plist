@@ -49,7 +49,7 @@
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>LSMinimumSystemVersion</key>
-    <string>12.0</string>
+    <string>15.1</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
     <key>NSAppTransportSecurity</key>
@@ -61,8 +61,10 @@
     </dict>
     <key>NSCameraUsageDescription</key>
     <string>MealScanner needs access to your camera to scan and analyze meal images for nutritional information.</string>
-    <key>NSFaceIDUsageDescription</key>
-    <string>MealScanner uses Face ID to securely authenticate and protect your account information.</string>
+    <key>NSHealthShareUsageDescription</key>
+    <string>MealScanner reads your active energy and steps to adjust your daily nutrition targets.</string>
+    <key>NSHealthUpdateUsageDescription</key>
+    <string>MealScanner logs your meal calories and macros to your Apple Health history.</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>Allow $(PRODUCT_NAME) to access your microphone for voice input.</string>
     <key>NSPhotoLibraryUsageDescription</key>

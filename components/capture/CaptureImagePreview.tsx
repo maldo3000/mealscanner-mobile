@@ -1,11 +1,11 @@
-import React from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, SafeAreaView, useWindowDimensions } from 'react-native';
-import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
-import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
-import { Image } from 'expo-image';
-import { Viewfinder } from './Viewfinder';
 import { neonGreen } from '@/constants/Colors';
 import { TextStyles } from '@/constants/Typography';
+import { Image } from 'expo-image';
+import React from 'react';
+import { SafeAreaView, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import { Viewfinder } from './Viewfinder';
 
 interface CaptureImagePreviewProps {
   uri: string;
@@ -56,41 +56,39 @@ export function CaptureImagePreview({ uri, onConfirm, onCancel }: CaptureImagePr
   }));
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={onCancel} style={styles.headerButton} activeOpacity={0.7}>
-            <Text style={styles.headerButtonText}>Cancel</Text>
-          </TouchableOpacity>
-          <Text style={styles.title}>Preview Photo</Text>
-          <TouchableOpacity onPress={onConfirm} style={styles.headerButton} activeOpacity={0.7}>
-            <Text style={[styles.headerButtonText, { color: neonGreen }]}>Choose</Text>
-          </TouchableOpacity>
-        </View>
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={onCancel} style={styles.headerButton} activeOpacity={0.7}>
+          <Text style={styles.headerButtonText}>Cancel</Text>
+        </TouchableOpacity>
+        <Text style={styles.title}>Preview Photo</Text>
+        <TouchableOpacity onPress={onConfirm} style={styles.headerButton} activeOpacity={0.7}>
+          <Text style={[styles.headerButtonText, { color: neonGreen }]}>Choose</Text>
+        </TouchableOpacity>
+      </View>
 
-        <View style={styles.imageContainer}>
-          <GestureDetector gesture={composedGesture}>
-            <Animated.View style={[styles.animatedWrapper, animatedStyle]}>
-              <Image 
-                source={{ uri }} 
-                style={{ width: windowWidth, height: windowHeight }} 
-                contentFit="contain" 
-              />
-            </Animated.View>
-          </GestureDetector>
-          
-          <View style={styles.viewfinderOverlay} pointerEvents="none">
-            <Viewfinder />
-          </View>
-        </View>
+      <View style={styles.imageContainer}>
+        <GestureDetector gesture={composedGesture}>
+          <Animated.View style={[styles.animatedWrapper, animatedStyle]}>
+            <Image 
+              source={{ uri }} 
+              style={{ width: windowWidth, height: windowHeight }} 
+              contentFit="contain" 
+            />
+          </Animated.View>
+        </GestureDetector>
         
-        <View style={styles.footer}>
-          <Text style={styles.hint}>
-            Pinch to zoom • Drag to center
-          </Text>
+        <View style={styles.viewfinderOverlay} pointerEvents="none">
+          <Viewfinder />
         </View>
-      </SafeAreaView>
-    </GestureHandlerRootView>
+      </View>
+      
+      <View style={styles.footer}>
+        <Text style={styles.hint}>
+          Pinch to zoom • Drag to center
+        </Text>
+      </View>
+    </SafeAreaView>
   );
 }
 

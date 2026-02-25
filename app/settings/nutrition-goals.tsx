@@ -1,12 +1,14 @@
-import React, { useEffect, useMemo, useState, useRef } from 'react';
-import { KeyboardAvoidingView, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useState, useRef } from 'react';
+import { Keyboard, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import BottomSheet from '@gorhom/bottom-sheet';
 
 import { ContentContainer } from '@/components/layout/ContentContainer';
 import { PageContainer } from '@/components/layout/PageContainer';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Section } from '@/components/layout/Section';
+import { GoalCalculationSheet } from '@/components/nutrition/GoalCalculationSheet';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { IconSymbol } from '@/components/ui/IconSymbol';
@@ -24,6 +26,14 @@ import type {
   NutritionGoalType,
 } from '@/lib/goals/types';
 import { calculateGoalTargets } from '@/lib/goals/goalEngine';
+
+/** Pure helper – parse a string to a number, or return undefined if empty / NaN. */
+const parseNumeric = (value: string): number | undefined => {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
 
 interface EnumOption<T> {
   label: string;
@@ -58,6 +68,18 @@ const paceOptions: EnumOption<GoalPace>[] = [
   { label: 'Faster', value: 'aggressive' },
 ];
 
+// ─── Unit conversion helpers ────────────────────────────────────────────────
+const kgToLbs = (kg: number) => Math.round(kg * 2.205);
+const lbsToKg = (lbs: number) => Math.round(lbs / 2.205);
+const cmToInches = (cm: number) => Math.round(cm / 2.54);
+const inchesToCm = (inches: number) => Math.round(inches * 2.54);
+
+const formatFeetInches = (totalInches: number): string => {
+  const feet = Math.floor(totalInches / 12);
+  const inches = totalInches % 12;
+  return `${feet}'${inches}"`;
+};
+
 const presetQualitativeGoals = [
   'Improve fibre intake',
   'Eat less carbs',
@@ -71,8 +93,7 @@ const presetQualitativeGoals = [
   'Improve hydration',
 ];
 
-function GoalWizard() {
-  const insets = useSafeAreaInsets();
+function GoalWizard({ onShowCalculationInfo }: { onShowCalculationInfo: () => void }) {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
   const { activeGoal, setGoalFromWizard, loading, error } = useNutritionGoals();
@@ -89,12 +110,50 @@ function GoalWizard() {
       ? String(activeGoal.profileSnapshot.ageYears)
       : '',
   );
-  const [heightCm, setHeightCm] = useState<string>(
+
+  // Height and weight each have their own metric/imperial toggle.
+  const [heightMetric, setHeightMetric] = useState(true);
+  const [weightMetric, setWeightMetric] = useState(true);
+
+  const [heightDisplay, setHeightDisplay] = useState<string>(
     activeGoal ? String(activeGoal.profileSnapshot.heightCm) : '',
   );
-  const [weightKg, setWeightKg] = useState<string>(
+  const [weightDisplay, setWeightDisplay] = useState<string>(
     activeGoal ? String(activeGoal.profileSnapshot.weightKg) : '',
   );
+
+  const getHeightCm = (): number | undefined => {
+    const val = parseNumeric(heightDisplay);
+    if (val == null) return undefined;
+    return heightMetric ? val : inchesToCm(val);
+  };
+
+  const getWeightKg = (): number | undefined => {
+    const val = parseNumeric(weightDisplay);
+    if (val == null) return undefined;
+    return weightMetric ? val : lbsToKg(val);
+  };
+
+  const handleToggleHeightUnit = (metric: boolean) => {
+    if (metric === heightMetric) return;
+    const hVal = parseNumeric(heightDisplay);
+    if (hVal != null) {
+      const cm = heightMetric ? hVal : inchesToCm(hVal);
+      setHeightDisplay(String(metric ? cm : cmToInches(cm)));
+    }
+    setHeightMetric(metric);
+  };
+
+  const handleToggleWeightUnit = (metric: boolean) => {
+    if (metric === weightMetric) return;
+    const wVal = parseNumeric(weightDisplay);
+    if (wVal != null) {
+      const kg = weightMetric ? wVal : lbsToKg(wVal);
+      setWeightDisplay(String(metric ? kg : kgToLbs(kg)));
+    }
+    setWeightMetric(metric);
+  };
+
   const [activityLevel, setActivityLevel] = useState<ActivityLevel>(
     activeGoal?.profileSnapshot.activityLevel ?? 'light',
   );
@@ -103,11 +162,21 @@ function GoalWizard() {
   );
   const [pace, setPace] = useState<GoalPace>('moderate');
 
-  const [customCalories, setCustomCalories] = useState<string>('');
-  const [customProtein, setCustomProtein] = useState<string>('');
-  const [customCarbs, setCustomCarbs] = useState<string>('');
-  const [customFat, setCustomFat] = useState<string>('');
-  const [customFibre, setCustomFibre] = useState<string>('');
+  const [customCalories, setCustomCalories] = useState<string>(
+    activeGoal?.dailyTargets.calories != null ? String(Math.round(activeGoal.dailyTargets.calories)) : '',
+  );
+  const [customProtein, setCustomProtein] = useState<string>(
+    activeGoal?.dailyTargets.proteinGrams != null ? String(Math.round(activeGoal.dailyTargets.proteinGrams)) : '',
+  );
+  const [customCarbs, setCustomCarbs] = useState<string>(
+    activeGoal?.dailyTargets.carbGrams != null ? String(Math.round(activeGoal.dailyTargets.carbGrams)) : '',
+  );
+  const [customFat, setCustomFat] = useState<string>(
+    activeGoal?.dailyTargets.fatGrams != null ? String(Math.round(activeGoal.dailyTargets.fatGrams)) : '',
+  );
+  const [customFibre, setCustomFibre] = useState<string>(
+    activeGoal?.dailyTargets.fibreGrams != null ? String(Math.round(activeGoal.dailyTargets.fibreGrams)) : '',
+  );
 
   const [selectedQualitativeGoals, setSelectedQualitativeGoals] = useState<string[]>(
     activeGoal?.meta?.focusAreas ?? [],
@@ -116,6 +185,15 @@ function GoalWizard() {
 
   const [validationError, setValidationError] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  // Clear stale feedback whenever the user edits any form field
+  useEffect(() => {
+    setValidationError(null);
+    setSaveMessage(null);
+  }, [sex, ageYears, heightDisplay, weightDisplay, heightMetric, weightMetric,
+      activityLevel, goalType, pace, selectedQualitativeGoals,
+      customCalories, customProtein, customCarbs, customFat, customFibre]);
 
   // Track if we've already synced from activeGoal to avoid overwriting user edits
   const hasSyncedFromGoal = useRef(false);
@@ -130,65 +208,75 @@ function GoalWizard() {
           ? String(activeGoal.profileSnapshot.ageYears)
           : '',
       );
-      setHeightCm(String(activeGoal.profileSnapshot.heightCm));
-      setWeightKg(String(activeGoal.profileSnapshot.weightKg));
+      // Sync height/weight (stored in metric, convert for display if needed)
+      const cm = activeGoal.profileSnapshot.heightCm;
+      const kg = activeGoal.profileSnapshot.weightKg;
+      setHeightDisplay(String(heightMetric ? cm : cmToInches(cm)));
+      setWeightDisplay(String(weightMetric ? kg : kgToLbs(kg)));
+
       setActivityLevel(activeGoal.profileSnapshot.activityLevel);
       setGoalType(activeGoal.type);
       setSelectedQualitativeGoals(activeGoal.meta?.focusAreas ?? []);
+
+      // Sync target fields
+      if (activeGoal.dailyTargets.calories != null) {
+        setCustomCalories(String(Math.round(activeGoal.dailyTargets.calories)));
+      }
+      if (activeGoal.dailyTargets.proteinGrams != null) {
+        setCustomProtein(String(Math.round(activeGoal.dailyTargets.proteinGrams)));
+      }
+      if (activeGoal.dailyTargets.carbGrams != null) {
+        setCustomCarbs(String(Math.round(activeGoal.dailyTargets.carbGrams)));
+      }
+      if (activeGoal.dailyTargets.fatGrams != null) {
+        setCustomFat(String(Math.round(activeGoal.dailyTargets.fatGrams)));
+      }
+      if (activeGoal.dailyTargets.fibreGrams != null) {
+        setCustomFibre(String(Math.round(activeGoal.dailyTargets.fibreGrams)));
+      }
     }
   }, [loading, activeGoal]);
 
-  const numericOrUndefined = (value: string): number | undefined => {
-    if (!value.trim()) return undefined;
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : undefined;
+  const heightCm = getHeightCm();
+  const weightKg = getWeightKg();
+
+  /** Build a list of missing profile fields, or null if everything is filled. */
+  const getMissingFields = (): string | null => {
+    const missing: string[] = [];
+    if (parseNumeric(ageYears) == null) missing.push('age');
+    if (heightCm == null) missing.push('height');
+    if (weightKg == null) missing.push('weight');
+    if (missing.length === 0) return null;
+    return `Please enter your ${missing.join(', ')} to calculate targets.`;
   };
 
-  const profileValid =
-    numericOrUndefined(ageYears) != null &&
-    numericOrUndefined(heightCm) != null &&
-    numericOrUndefined(weightKg) != null;
+  const handleCalculateTargets = () => {
+    Keyboard.dismiss();
+    setSaveMessage(null);
 
-  const previewTargets = useMemo(() => {
-    if (!profileValid) {
-      return null;
+    const missingMsg = getMissingFields();
+    if (missingMsg) {
+      setValidationError(missingMsg);
+      return;
     }
+    setValidationError(null);
 
-    const profile = {
-      sex,
-      ageYears: numericOrUndefined(ageYears),
-      heightCm: numericOrUndefined(heightCm) as number,
-      weightKg: numericOrUndefined(weightKg) as number,
-      activityLevel,
-    };
+    const age = parseNumeric(ageYears)!;
 
     const result = calculateGoalTargets({
-      profile,
+      profile: { sex, ageYears: age, heightCm: heightCm!, weightKg: weightKg!, activityLevel },
       goalType,
       pace: goalType === 'maintenance' || goalType === 'custom' ? undefined : pace,
-      customCalories: numericOrUndefined(customCalories),
-      customProteinGrams: numericOrUndefined(customProtein),
-      customCarbGrams: numericOrUndefined(customCarbs),
-      customFatGrams: numericOrUndefined(customFat),
-      customFibreGrams: numericOrUndefined(customFibre),
+      focusAreas: selectedQualitativeGoals.length > 0 ? selectedQualitativeGoals : undefined,
     });
 
-    return result.dailyTargets;
-  }, [
-    activityLevel,
-    ageYears,
-    customCalories,
-    customCarbs,
-    customFat,
-    customFibre,
-    customProtein,
-    goalType,
-    heightCm,
-    pace,
-    profileValid,
-    sex,
-    weightKg,
-  ]);
+    const t = result.dailyTargets;
+    setCustomCalories(String(Math.round(t.calories)));
+    setCustomProtein(String(Math.round(t.proteinGrams)));
+    setCustomCarbs(String(Math.round(t.carbGrams)));
+    setCustomFat(String(Math.round(t.fatGrams)));
+    setCustomFibre(String(Math.round(t.fibreGrams)));
+  };
 
   const handleToggleQualitativeGoal = (goal: string) => {
     setSelectedQualitativeGoals((prev) =>
@@ -213,59 +301,52 @@ function GoalWizard() {
   const handleSave = async () => {
     setSaveMessage(null);
 
-    const age = numericOrUndefined(ageYears);
-    const height = numericOrUndefined(heightCm);
-    const weight = numericOrUndefined(weightKg);
-
-    if (!age || !height || !weight) {
-      setValidationError('Please enter your age, height, and weight to calculate your goal.');
+    const missingMsg = getMissingFields();
+    if (missingMsg) {
+      setValidationError(missingMsg);
       return;
     }
-
     setValidationError(null);
+    setSaving(true);
 
-    const profile = {
-      sex,
-      ageYears: age,
-      heightCm: height,
-      weightKg: weight,
-      activityLevel,
-    };
+    try {
+      const age = parseNumeric(ageYears)!;
 
-    const name =
-      goalType === 'weight_loss'
-        ? 'Weight loss'
-        : goalType === 'weight_gain'
-        ? 'Weight gain'
-        : goalType === 'maintenance'
-        ? 'Maintenance'
-        : 'Custom';
+      const name =
+        goalType === 'weight_loss'
+          ? 'Weight loss'
+          : goalType === 'weight_gain'
+          ? 'Weight gain'
+          : goalType === 'maintenance'
+          ? 'Maintenance'
+          : 'Custom';
 
-    await setGoalFromWizard({
-      name,
-      profile,
-      goalType,
-      pace: goalType === 'maintenance' || goalType === 'custom' ? undefined : pace,
-      customCalories: numericOrUndefined(customCalories),
-      customProteinGrams: numericOrUndefined(customProtein),
-      customCarbGrams: numericOrUndefined(customCarbs),
-      customFatGrams: numericOrUndefined(customFat),
-      customFibreGrams: numericOrUndefined(customFibre),
-      meta: selectedQualitativeGoals.length > 0
-        ? {
-            focusAreas: selectedQualitativeGoals,
-          }
-        : undefined,
-    });
+      await setGoalFromWizard({
+        name,
+        profile: { sex, ageYears: age, heightCm: heightCm!, weightKg: weightKg!, activityLevel },
+        goalType,
+        pace: goalType === 'maintenance' || goalType === 'custom' ? undefined : pace,
+        focusAreas: selectedQualitativeGoals.length > 0 ? selectedQualitativeGoals : undefined,
+        customCalories: parseNumeric(customCalories),
+        customProteinGrams: parseNumeric(customProtein),
+        customCarbGrams: parseNumeric(customCarbs),
+        customFatGrams: parseNumeric(customFat),
+        customFibreGrams: parseNumeric(customFibre),
+        meta: selectedQualitativeGoals.length > 0
+          ? { focusAreas: selectedQualitativeGoals }
+          : undefined,
+      });
 
-    setSaveMessage('Goal saved. Your insights will now use this as your target.');
+      setSaveMessage('Goal saved.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
         <ContentContainer 
-          keyboardAvoiding 
           scrollable
-          keyboardVerticalOffset={insets.top + 64}
+          automaticallyAdjustKeyboardInsets
         >
           <View style={styles.summaryContainer}>
             <Card variant="glass" padding="md">
@@ -320,21 +401,52 @@ function GoalWizard() {
                 />
               </View>
               <View style={styles.fieldColumn}>
+                <View style={styles.labelWithToggle}>
+                  <Text style={[TextStyles.body, { color: colors.text }]}>Height</Text>
+                  <View style={styles.unitToggle}>
+                    <TouchableOpacity onPress={() => handleToggleHeightUnit(true)} hitSlop={8}>
+                      <Text style={[styles.unitOption, heightMetric && { color: neonGreen, fontWeight: '600' as const }, !heightMetric && { color: colors.icon }]}>
+                        cm
+                      </Text>
+                    </TouchableOpacity>
+                    <Text style={{ color: colors.icon, fontSize: 12 }}>/</Text>
+                    <TouchableOpacity onPress={() => handleToggleHeightUnit(false)} hitSlop={8}>
+                      <Text style={[styles.unitOption, !heightMetric && { color: neonGreen, fontWeight: '600' as const }, heightMetric && { color: colors.icon }]}>
+                        ft
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
                 <Input
-                  label="Height"
                   keyboardType="number-pad"
-                  value={heightCm}
-                  onChangeText={setHeightCm}
-                  placeholder="cm"
+                  value={heightDisplay}
+                  onChangeText={setHeightDisplay}
+                  placeholder={heightMetric ? 'cm' : 'inches'}
+                  helperText={!heightMetric && heightDisplay ? formatFeetInches(Number(heightDisplay) || 0) : undefined}
                 />
               </View>
               <View style={styles.fieldColumn}>
+                <View style={styles.labelWithToggle}>
+                  <Text style={[TextStyles.body, { color: colors.text }]}>Weight</Text>
+                  <View style={styles.unitToggle}>
+                    <TouchableOpacity onPress={() => handleToggleWeightUnit(true)} hitSlop={8}>
+                      <Text style={[styles.unitOption, weightMetric && { color: neonGreen, fontWeight: '600' as const }, !weightMetric && { color: colors.icon }]}>
+                        kg
+                      </Text>
+                    </TouchableOpacity>
+                    <Text style={{ color: colors.icon, fontSize: 12 }}>/</Text>
+                    <TouchableOpacity onPress={() => handleToggleWeightUnit(false)} hitSlop={8}>
+                      <Text style={[styles.unitOption, !weightMetric && { color: neonGreen, fontWeight: '600' as const }, weightMetric && { color: colors.icon }]}>
+                        lbs
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
                 <Input
-                  label="Weight"
                   keyboardType="number-pad"
-                  value={weightKg}
-                  onChangeText={setWeightKg}
-                  placeholder="kg"
+                  value={weightDisplay}
+                  onChangeText={setWeightDisplay}
+                  placeholder={weightMetric ? 'kg' : 'lbs'}
                 />
               </View>
             </View>
@@ -384,7 +496,7 @@ function GoalWizard() {
             </View>
           </Section>
 
-          <Section title="Step 2 – Goal">
+          <Section title="Step 2 – Goal" style={{ overflow: 'visible' }}>
             <View style={styles.chipRow}>
               {goalTypeOptions.map((option) => {
                 const isSelected = option.value === goalType;
@@ -429,95 +541,9 @@ function GoalWizard() {
             )}
           </Section>
 
-          <Section title="Step 3 – Targets">
+          <Section title="Step 3 – Focus Areas" style={{ overflow: 'visible' }}>
             <Text style={[TextStyles.bodySmall, { color: colors.icon, marginBottom: Spacing.sm }]}>
-              We&apos;ll suggest daily targets from your profile. You can fine‑tune them here if
-              you like.
-            </Text>
-
-            <View style={styles.fieldRow}>
-              <View style={styles.fieldColumnWide}>
-                <Input
-                  label="Calories"
-                  keyboardType="number-pad"
-                  value={customCalories}
-                  onChangeText={setCustomCalories}
-                  placeholder={
-                    previewTargets ? `${formatMacro(previewTargets.calories)} kcal` : 'kcal / day'
-                  }
-                />
-              </View>
-            </View>
-
-            <View style={styles.fieldRow}>
-              <View style={styles.fieldColumn}>
-                <Input
-                  label="Protein"
-                  keyboardType="number-pad"
-                  value={customProtein}
-                  onChangeText={setCustomProtein}
-                  placeholder={
-                    previewTargets ? `${formatMacro(previewTargets.proteinGrams)} g` : 'g'
-                  }
-                />
-              </View>
-              <View style={styles.fieldColumn}>
-                <Input
-                  label="Carbs"
-                  keyboardType="number-pad"
-                  value={customCarbs}
-                  onChangeText={setCustomCarbs}
-                  placeholder={
-                    previewTargets ? `${formatMacro(previewTargets.carbGrams)} g` : 'g'
-                  }
-                />
-              </View>
-            </View>
-
-            <View style={styles.fieldRow}>
-              <View style={styles.fieldColumn}>
-                <Input
-                  label="Fat"
-                  keyboardType="number-pad"
-                  value={customFat}
-                  onChangeText={setCustomFat}
-                  placeholder={
-                    previewTargets ? `${formatMacro(previewTargets.fatGrams)} g` : 'g'
-                  }
-                />
-              </View>
-              <View style={styles.fieldColumn}>
-                <Input
-                  label="Fibre"
-                  keyboardType="number-pad"
-                  value={customFibre}
-                  onChangeText={setCustomFibre}
-                  placeholder={
-                    previewTargets ? `${formatMacro(previewTargets.fibreGrams)} g` : 'g'
-                  }
-                />
-              </View>
-            </View>
-
-            {previewTargets && (
-              <Card variant="glass" padding="md" style={styles.previewCard}>
-                <Text style={[TextStyles.body, { color: colors.text, marginBottom: Spacing.sm }]}>
-                  Daily target preview
-                </Text>
-                <Text style={[TextStyles.bodySmall, { color: colors.icon }]}>
-                  {formatMacro(previewTargets.calories)} kcal •{' '}
-                  {formatMacro(previewTargets.proteinGrams)}g protein •{' '}
-                  {formatMacro(previewTargets.carbGrams)}g carbs •{' '}
-                  {formatMacro(previewTargets.fatGrams)}g fat •{' '}
-                  {formatMacro(previewTargets.fibreGrams)}g fibre
-                </Text>
-              </Card>
-            )}
-          </Section>
-
-          <Section title="Step 4 – Qualitative Goals">
-            <Text style={[TextStyles.bodySmall, { color: colors.icon, marginBottom: Spacing.sm }]}>
-              Select goals that describe what you want to focus on. You can also add your own.
+              Select goals that describe what you want to focus on. These influence your calculated targets.
             </Text>
 
             <View style={styles.chipRow}>
@@ -595,6 +621,88 @@ function GoalWizard() {
             </View>
           </Section>
 
+          <Section title="Step 4 – Targets">
+            <Text style={[TextStyles.bodySmall, { color: colors.icon, marginBottom: Spacing.md }]}>
+              Enter your daily targets manually, or calculate them from your profile.
+            </Text>
+
+            <Button
+              variant="secondary"
+              size="medium"
+              fullWidth
+              onPress={handleCalculateTargets}
+              icon={<IconSymbol name="sparkles" size={16} color={neonGreen} />}
+              style={styles.calculateButton}
+            >
+              Calculate from profile
+            </Button>
+            
+            <TouchableOpacity 
+              onPress={onShowCalculationInfo}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: Spacing.lg }}
+            >
+              <IconSymbol name="info.circle" size={16} color={neonGreen} />
+              <Text style={[TextStyles.bodySmall, { color: neonGreen, fontWeight: '600' }]}>
+                How we calculate your targets
+              </Text>
+            </TouchableOpacity>
+
+            <View style={styles.fieldRow}>
+              <View style={styles.fieldColumnWide}>
+                <Input
+                  label="Calories"
+                  keyboardType="number-pad"
+                  value={customCalories}
+                  onChangeText={setCustomCalories}
+                  placeholder="kcal / day"
+                />
+              </View>
+            </View>
+
+            <View style={styles.fieldRow}>
+              <View style={styles.fieldColumn}>
+                <Input
+                  label="Protein"
+                  keyboardType="number-pad"
+                  value={customProtein}
+                  onChangeText={setCustomProtein}
+                  placeholder="g"
+                />
+              </View>
+              <View style={styles.fieldColumn}>
+                <Input
+                  label="Carbs"
+                  keyboardType="number-pad"
+                  value={customCarbs}
+                  onChangeText={setCustomCarbs}
+                  placeholder="g"
+                />
+              </View>
+            </View>
+
+            <View style={styles.fieldRow}>
+              <View style={styles.fieldColumn}>
+                <Input
+                  label="Fat"
+                  keyboardType="number-pad"
+                  value={customFat}
+                  onChangeText={setCustomFat}
+                  placeholder="g"
+                />
+              </View>
+              <View style={styles.fieldColumn}>
+                <Input
+                  label="Fibre"
+                  keyboardType="number-pad"
+                  value={customFibre}
+                  onChangeText={setCustomFibre}
+                  placeholder="g"
+                />
+              </View>
+            </View>
+          </Section>
+
           {validationError && (
             <Text style={[TextStyles.bodySmall, { color: '#F97316', marginBottom: Spacing.sm }]}>
               {validationError}
@@ -613,15 +721,15 @@ function GoalWizard() {
             </Text>
           )}
 
-          <View style={styles.footer}>
+          <View style={[styles.footer, { overflow: 'visible' }]}>
             <Button
               variant="primary"
               size="large"
               fullWidth
-              disabled={loading || !profileValid}
+              disabled={saving}
               onPress={handleSave}
             >
-              {loading ? 'Saving…' : 'Save goal'}
+              {saving ? 'Saving…' : 'Save goal'}
             </Button>
           </View>
         </ContentContainer>
@@ -633,6 +741,12 @@ export default function NutritionGoalsScreen() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
   const insets = useSafeAreaInsets();
+  
+  const calculationSheetRef = useRef<BottomSheet>(null);
+
+  const handleShowCalculationInfo = () => {
+    calculationSheetRef.current?.expand();
+  };
 
   return (
     <PageContainer edges={[]}>
@@ -650,7 +764,12 @@ export default function NutritionGoalsScreen() {
           </TouchableOpacity>
         }
       />
-      <GoalWizard />
+      <GoalWizard onShowCalculationInfo={handleShowCalculationInfo} />
+      
+      <GoalCalculationSheet
+        ref={calculationSheetRef}
+        onClose={() => calculationSheetRef.current?.close()}
+      />
     </PageContainer>
   );
 }
@@ -682,15 +801,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: Spacing.sm,
-    // Add padding to prevent shadow clipping
-    padding: Spacing.sm,
-    // Compensate for padding to maintain alignment
+    // Keep normal chip alignment while leaving a small glow gutter.
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.base,
     marginHorizontal: -Spacing.sm,
-    marginTop: -Spacing.sm,
-    marginBottom: Spacing.xs, // Reduced to account for paddingBottom
+    marginTop: -Spacing.base,
+    marginBottom: -Spacing.sm,
   },
   chipButton: {
     paddingHorizontal: Spacing.lg,
+    overflow: 'visible',
   },
   fieldRow: {
     flexDirection: 'row',
@@ -717,12 +837,12 @@ const styles = StyleSheet.create({
   paceContainer: {
     marginTop: Spacing.md,
   },
-  previewCard: {
-    marginTop: Spacing.md,
+  calculateButton: {
+    marginBottom: Spacing.md,
   },
   footer: {
     marginTop: PageSpacing.sectionGap,
-    marginBottom: Spacing.sm,
+    paddingBottom: Spacing['2xl'],
   },
   selectedGoalsContainer: {
     marginTop: Spacing.md,
@@ -758,6 +878,22 @@ const styles = StyleSheet.create({
   addButton: {
     paddingHorizontal: Spacing.lg,
     marginBottom: 0,
+  },
+  labelWithToggle: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+  },
+  unitToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  unitOption: {
+    fontSize: 13,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
   },
 });
 

@@ -16,13 +16,13 @@ import {
 } from '@/constants/recipeCategories';
 import { PageSpacing, Spacing } from '@/constants/Spacing';
 import { FontFamilies, TextStyles } from '@/constants/Typography';
+import { useAuth } from '@/context/AuthContext';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { useFeatureAccess } from '@/hooks/useFeatureAccess';
 import { useNutritionGoals } from '@/hooks/useNutritionGoals';
 import { useRecipes, type PrebakedRecipe } from '@/hooks/useRecipes';
-import { getCurrentUser } from '@/lib/supabase';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
     FlatList,
     ScrollView,
@@ -45,11 +45,11 @@ export default function RecipesScreen() {
   const colors = Colors[colorScheme ?? 'light'];
   const router = useRouter();
   const { activeGoal } = useNutritionGoals();
+  const { user, isLoading: isAuthLoading } = useAuth();
   
   // Pre-baked recipes from JSON catalog with filtering
   const {
     filteredRecipes: prebakedRecipes,
-    recipes: allRecipes,
     tagCategories,
     filters,
     loading: recipesLoading,
@@ -64,8 +64,6 @@ export default function RecipesScreen() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearchSuggestions, setShowSearchSuggestions] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState<any>(null);
   const [showGeneratorModal, setShowGeneratorModal] = useState(false);
   const [paywallVisible, setPaywallVisible] = useState(false);
   const [filterSheetVisible, setFilterSheetVisible] = useState(false);
@@ -101,23 +99,6 @@ export default function RecipesScreen() {
   // Check if a calorie range is active
   const isCalorieRangeActive = (max: number): boolean => {
     return filters.maxCalories === max;
-  };
-
-  // Fetch user on component mount
-  useEffect(() => {
-    loadUser();
-  }, []);
-
-  const loadUser = async () => {
-    try {
-      setLoading(true);
-      const { user: currentUser } = await getCurrentUser();
-      setUser(currentUser);
-    } catch (error) {
-      console.error('Error loading user:', error);
-    } finally {
-      setLoading(false);
-    }
   };
 
   const handleSearch = (query: string) => {
@@ -202,7 +183,7 @@ export default function RecipesScreen() {
         >
           <IconSymbol name="magnifyingglass" size={20} color={colors.icon} />
           <Text style={[TextStyles.body, { color: colors.text }]}>
-            Search recipes for <Text style={{ fontWeight: 'bold' }}>"{searchQuery}"</Text>
+            Search recipes for <Text style={{ fontWeight: 'bold' }}>{`"${searchQuery}"`}</Text>
           </Text>
         </TouchableOpacity>
         
@@ -349,7 +330,7 @@ export default function RecipesScreen() {
         <PageHeader title="Recipes" />
 
         {/* Generate Recipe Button - Hidden when ENABLE_RECIPE_GENERATION is false */}
-        {ENABLE_RECIPE_GENERATION && !loading && user && (
+        {ENABLE_RECIPE_GENERATION && !isAuthLoading && user && (
           <TouchableOpacity
             style={[styles.generateButton, { backgroundColor: neonGreen }]}
             onPress={handleOpenGenerator}
@@ -409,7 +390,7 @@ export default function RecipesScreen() {
         )}
 
         {/* Content */}
-        {(loading || recipesLoading) ? (
+        {(isAuthLoading || recipesLoading) ? (
           <View style={styles.loadingContainer}>
             <Text style={[TextStyles.body, { color: colors.icon }]}>Loading recipes...</Text>
           </View>
@@ -424,9 +405,7 @@ export default function RecipesScreen() {
           visible={showGeneratorModal}
           userId={user.id}
           onClose={() => setShowGeneratorModal(false)}
-          onRecipeGenerated={() => {
-            loadUser();
-          }}
+          onRecipeGenerated={() => {}}
         />
       )}
 

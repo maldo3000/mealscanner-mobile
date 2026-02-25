@@ -4,11 +4,11 @@ import { getLLMRouter } from '../_shared/llm/router.ts';
 import type { LLMConfig } from '../_shared/llm/types.ts';
 import { verifyAuth, createUnauthorizedResponse, validateUserMatch } from '../_shared/auth.ts';
 import { getSmartCorsHeaders, handleCorsPreflightRequest } from '../_shared/cors.ts';
+import { getProAccessForUser } from '../_shared/subscription.ts';
 
 interface RecipeAnalysisRequest {
   image_url: string;
   user_id: string;
-  is_pro?: boolean;
   description?: string;
   source_meal_id?: string;
   llm?: LLMConfig;
@@ -65,7 +65,7 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { image_url, user_id: payload_user_id, is_pro, description, source_meal_id, llm } = await req.json() as RecipeAnalysisRequest;
+    const { image_url, user_id: payload_user_id, description, source_meal_id, llm } = await req.json() as RecipeAnalysisRequest;
     
     // Use authenticated user ID, validate if payload specifies one
     if (payload_user_id && !validateUserMatch(auth.userId, payload_user_id)) {
@@ -86,7 +86,18 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    if (!is_pro) {
+    const proAccess = await getProAccessForUser(supabaseClient, user_id);
+    if (proAccess.error) {
+      return new Response(
+        JSON.stringify({ error: `Failed to verify subscription status: ${proAccess.error}` }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    if (!proAccess.isPro) {
       return new Response(
         JSON.stringify({ error: 'Recipe generation is a Pro feature.' }),
         { 

@@ -1,22 +1,20 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { Alert, Platform } from 'react-native';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { Alert } from 'react-native';
 import RevenueCatUI from 'react-native-purchases-ui';
 
 import {
-  configureRevenueCat,
-  identifyUser,
-  resetUser,
-  getCustomerInfo,
-  hasProEntitlement,
-  isBetaTester as checkIsBetaTester,
-  purchasePackage,
-  restorePurchases,
-  addCustomerInfoUpdateListener,
-  ENTITLEMENTS,
-  type CustomerInfo,
-  type PurchasesPackage,
+    addCustomerInfoUpdateListener,
+    isBetaTester as checkIsBetaTester,
+    configureRevenueCat,
+    getCustomerInfo,
+    hasProEntitlement,
+    identifyUser,
+    purchasePackage,
+    resetUser,
+    restorePurchases,
+    type CustomerInfo, type PurchasesPackage,
 } from '@/lib/revenueCat';
-import { updateUserProfile } from '@/lib/supabase';
+import { syncSubscriptionTier } from '@/lib/supabase';
 import { useAuth } from './AuthContext';
 
 interface SubscriptionContextType {
@@ -123,22 +121,18 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     syncUser();
   }, [user?.id, isLoading]);
 
-  // Sync Pro status to Supabase profile
+  // Sync subscription status to Supabase profile (server-authoritative)
   useEffect(() => {
     async function syncProStatus() {
       if (!user?.id || isLoading) return;
 
       try {
-        const targetTier = isPro || isBetaTester ? 'pro' : 'free';
-        
-        const { error } = await updateUserProfile(user.id, { 
-          subscription_tier: targetTier 
-        });
+        const { error } = await syncSubscriptionTier();
         
         if (error) {
           console.error('🛒 Failed to sync subscription to Supabase:', error);
         } else {
-          console.log(`🛒 Synced subscription status to Supabase: ${targetTier}`);
+          console.log('🛒 Synced subscription status to Supabase (server-authoritative)');
         }
       } catch (error) {
         console.error('🛒 Failed to sync subscription to Supabase:', error);
@@ -235,23 +229,40 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       return false;
     }
 
+    const formatSyncError = (error: unknown): Record<string, string | undefined> => {
+      if (!error || typeof error !== 'object') {
+        return { message: String(error) };
+      }
+
+      const candidate = error as {
+        message?: string;
+        code?: string;
+        details?: string;
+        hint?: string;
+      };
+
+      return {
+        message: candidate.message,
+        code: candidate.code,
+        details: candidate.details,
+        hint: candidate.hint,
+      };
+    };
+
     try {
-      const targetTier = isPro || isBetaTester ? 'pro' : 'free';
-      console.log(`🛒 Ensuring subscription synced to database: ${targetTier}`);
+      console.log('🛒 Ensuring subscription synced to database (server-authoritative)');
       
-      const { error } = await updateUserProfile(user.id, { 
-        subscription_tier: targetTier 
-      });
+      const { error } = await syncSubscriptionTier();
       
       if (error) {
-        console.error('🛒 Failed to sync subscription before operation:', error);
+        console.error('🛒 Failed to sync subscription before operation:', formatSyncError(error));
         return false;
       }
       
-      console.log(`🛒 ✅ Subscription tier confirmed in database: ${targetTier}`);
+      console.log('🛒 ✅ Subscription tier confirmed in database');
       return true;
     } catch (error) {
-      console.error('🛒 Failed to sync subscription before operation:', error);
+      console.error('🛒 Failed to sync subscription before operation:', formatSyncError(error));
       return false;
     }
   }, [user?.id, isPro, isBetaTester]);

@@ -75,12 +75,14 @@ export function GlassCircleButton({
         {/* INNER glass container */}
         <View style={[styles.glass, { width: size, height: size, borderRadius: r }]}>
           
-          {/* Milky Translucent Blur */}
-          <BlurView
-            intensity={isPrimary ? 40 : 50}
-            tint="dark"
-            style={[StyleSheet.absoluteFill, { borderRadius: r }]}
-          />
+          {/* Milky Translucent Blur — skip on Android for performance */}
+          {Platform.OS !== 'android' && (
+            <BlurView
+              intensity={isPrimary ? 40 : 50}
+              tint="dark"
+              style={[StyleSheet.absoluteFill, { borderRadius: r }]}
+            />
+          )}
 
           {/* Milky/Bright Green Wash */}
           <View
@@ -116,15 +118,17 @@ export function GlassCircleButton({
               {/* Surface Sheen */}
               <Rect x="0" y="0" width="100%" height="100%" fill="url(#faceSheen)" />
 
-              {/* Sharp Edge Rim (The specular catch) */}
-              <Circle
-                cx={r}
-                cy={r}
-                r={r - 0.5}
-                fill="none"
-                stroke="url(#liquidSheen)"
-                strokeWidth="1.2"
-              />
+              {/* Sharp Edge Rim (The specular catch) - Skip on Android to prevent hexagonal artifacts */}
+              {Platform.OS !== 'android' && (
+                <Circle
+                  cx={r}
+                  cy={r}
+                  r={r - 0.5}
+                  fill="none"
+                  stroke="url(#liquidSheen)"
+                  strokeWidth="1.2"
+                />
+              )}
             </Svg>
           </View>
 

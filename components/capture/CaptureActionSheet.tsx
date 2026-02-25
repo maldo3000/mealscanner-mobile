@@ -3,12 +3,12 @@ import * as Haptics from 'expo-haptics';
 import React, { useEffect } from 'react';
 import { Dimensions, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
-  FadeIn,
-  FadeOut,
-  useAnimatedStyle,
-  useSharedValue,
-  withDelay,
-  withSpring,
+    FadeIn,
+    FadeOut,
+    useAnimatedStyle,
+    useSharedValue,
+    withDelay,
+    withSpring,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
@@ -178,7 +178,11 @@ export function CaptureActionSheet({
                 onPress={onLog}
                 accessibilityLabel="Search food database"
               >
-                <IconSymbol name="magnifyingglass" size={BUTTON_SIZE * 0.36} color="rgba(255, 255, 255, 0.95)" />
+                <IconSymbol
+                  name="magnifyingglass"
+                  size={BUTTON_SIZE * 0.36}
+                  color="rgba(255, 255, 255, 0.95)"
+                />
               </GlassCircleButton>
               <Text style={[TextStyles.bodySmall, styles.buttonLabel]}>Database</Text>
             </View>
@@ -213,7 +217,7 @@ export function CaptureActionSheet({
           accessibilityRole="button"
           accessibilityLabel="Close capture menu"
         >
-          <IconSymbol name="xmark" size={22} color="#000" />
+          <IconSymbol name="xmark" size={22} color="#FFFFFF" />
         </Pressable>
       </Animated.View>
     </Animated.View>

@@ -143,6 +143,13 @@ export const SpeechToTextDirectRequestSchema = z.object({
   language: z.string().min(2).max(10).default('en'),
 })
 
+export const GenerateWeeklyNutritionReportRequestSchema = z.object({
+  user_id: z.string().uuid().optional(),
+  timezone: z.string().min(1, 'Timezone is required').max(100).default('UTC'),
+  include_summary: z.boolean().optional(),
+  window_end_local: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'window_end_local must be YYYY-MM-DD').optional(),
+})
+
 // ==========================================
 // Validation Helper Functions
 // ==========================================

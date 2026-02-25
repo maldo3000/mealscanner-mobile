@@ -11,7 +11,10 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import { MILESTONE_DAYS, getMilestoneName, type DayLogEntry, type StreakSummary } from '@/types/streak';
 import BottomSheet, { BottomSheetBackdrop, BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import React, { forwardRef, useCallback, useMemo } from 'react';
-import { Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+
+const BalancedLotusIcon = require('@/assets/images/Reward_Balanced-Lotus.png');
+const ConsistencyCheckmarkIcon = require('@/assets/images/Reward_Concistency-Checkmark.png');
 
 interface StreakHubSheetProps {
   streakSummary: StreakSummary | null;
@@ -125,19 +128,6 @@ export const StreakHubSheet = forwardRef<BottomSheet, StreakHubSheetProps>(
       []
     );
 
-    // Handle share
-    const handleShare = async () => {
-      if (!streakSummary) return;
-
-      try {
-        await Share.share({
-          message: `I'm on a ${streakSummary.currentStreak}-day streak logging my meals with MealScanner! 🔥`,
-        });
-      } catch (error) {
-        console.error('Error sharing:', error);
-      }
-    };
-
     if (!streakSummary) return null;
 
     const { currentStreak, longestStreak, shields, weeklyStats, recentDays, milestones, nextMilestone } = streakSummary;
@@ -243,7 +233,7 @@ export const StreakHubSheet = forwardRef<BottomSheet, StreakHubSheetProps>(
             <View style={[styles.weeklyContainer, { backgroundColor: colors.surface }]}>
               <View style={styles.weeklyRow}>
                 <View style={styles.weeklyItem}>
-                  <IconSymbol name="leaf.fill" size={20} color="#22c55e" />
+                  <Image source={BalancedLotusIcon} style={{ width: 22, height: 22 }} />
                   <Text style={[styles.weeklyLabel, { color: colors.icon }]}>Balanced</Text>
                   <Text style={[styles.weeklyValue, { color: colors.text }]}>
                     {weeklyStats.balancedDaysThisWeek}/7
@@ -251,7 +241,7 @@ export const StreakHubSheet = forwardRef<BottomSheet, StreakHubSheetProps>(
                 </View>
                 <View style={[styles.weeklyDivider, { backgroundColor: colors.border }]} />
                 <View style={styles.weeklyItem}>
-                  <IconSymbol name="calendar" size={20} color="#38bdf8" />
+                  <Image source={ConsistencyCheckmarkIcon} style={{ width: 22, height: 22 }} />
                   <Text style={[styles.weeklyLabel, { color: colors.icon }]}>Consistency</Text>
                   <Text style={[styles.weeklyValue, { color: colors.text }]}>
                     {weeklyStats.loggedDaysThisWeek}/7
@@ -260,16 +250,6 @@ export const StreakHubSheet = forwardRef<BottomSheet, StreakHubSheetProps>(
               </View>
             </View>
           </View>
-
-          {/* Share Button */}
-          <TouchableOpacity
-            style={[styles.shareButton, { borderColor: neonGreen }]}
-            onPress={handleShare}
-            activeOpacity={0.7}
-          >
-            <IconSymbol name="square.and.arrow.up" size={18} color={neonGreen} />
-            <Text style={[styles.shareButtonText, { color: neonGreen }]}>Share streak</Text>
-          </TouchableOpacity>
 
           {/* Bottom spacing */}
           <View style={styles.bottomSpacer} />
@@ -476,23 +456,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginTop: 2,
   },
-  // Share button
-  shareButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.sm,
-    paddingVertical: Spacing.md,
-    borderWidth: 1,
-    borderRadius: BorderRadius.pill,
-    marginTop: Spacing.xl,
-  },
-  shareButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
   bottomSpacer: {
-    height: 40,
+    height: 120,
   },
 });
 

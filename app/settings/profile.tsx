@@ -1,20 +1,21 @@
-import React, { useEffect, useState } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ContentContainer } from '@/components/layout/ContentContainer';
 import { PageContainer } from '@/components/layout/PageContainer';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { ContentContainer } from '@/components/layout/ContentContainer';
 import { Section } from '@/components/layout/Section';
-import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { IconSymbol } from '@/components/ui/IconSymbol';
+import { Input } from '@/components/ui/Input';
+import { SwirlingSpinner } from '@/components/ui/SwirlingSpinner';
 import { Colors, neonGreen } from '@/constants/Colors';
-import { Spacing, PageSpacing } from '@/constants/Spacing';
+import { Spacing } from '@/constants/Spacing';
 import { TextStyles } from '@/constants/Typography';
-import { useColorScheme } from '@/hooks/useColorScheme';
 import { useAuth } from '@/context/AuthContext';
+import { useColorScheme } from '@/hooks/useColorScheme';
 import { getUserProfile, updateUserProfile } from '@/lib/supabase';
 
 export default function EditProfileScreen() {
@@ -79,7 +80,7 @@ export default function EditProfileScreen() {
       <PageContainer>
         <PageHeader title="Edit Profile" />
         <View style={styles.center}>
-          <ActivityIndicator size="large" color={neonGreen} />
+          <SwirlingSpinner size="large" color={neonGreen} />
         </View>
       </PageContainer>
     );

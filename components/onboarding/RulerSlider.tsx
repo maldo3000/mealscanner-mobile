@@ -1,7 +1,7 @@
-import React, { useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, NativeSyntheticEvent, NativeScrollEvent, Dimensions } from 'react-native';
-import { neonGreen, textMuted, glassBorder } from '@/constants/Colors';
+import { glassBorder, neonGreen, textMuted } from '@/constants/Colors';
 import { TextStyles } from '@/constants/Typography';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import { Dimensions, NativeScrollEvent, NativeSyntheticEvent, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 interface RulerSliderProps {
   min: number;
@@ -13,76 +13,71 @@ interface RulerSliderProps {
   formatValue?: (value: number) => string;
 }
 
-const { width } = Dimensions.get('window');
-const ITEM_WIDTH = 8; // Slightly smaller for more precision
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const ITEM_WIDTH = 14; // Wider ticks for better precision and touch targeting
 const SNAP_INTERVAL = ITEM_WIDTH;
 
 export function RulerSlider({ min, max, value, onValueChange, unit, step = 1, formatValue }: RulerSliderProps) {
   const scrollViewRef = useRef<ScrollView>(null);
-  const totalSteps = (max - min) / step;
-  const contentPadding = width / 2;
+  const contentPadding = SCREEN_WIDTH / 2;
 
-  // Initial scroll position
+  // Use refs to avoid stale closures during rapid scroll events
+  const valueRef = useRef(value);
+  const onValueChangeRef = useRef(onValueChange);
+  valueRef.current = value;
+  onValueChangeRef.current = onValueChange;
+
+  const totalSteps = Math.round((max - min) / step);
+
+  // Sync scroll position on mount and when the range changes (e.g. unit switch via key remount)
   useEffect(() => {
-    const initialOffset = (value - min) / step * ITEM_WIDTH;
-    setTimeout(() => {
-      scrollViewRef.current?.scrollTo({ x: initialOffset, animated: false });
-    }, 100);
-  }, []);
+    const initialOffset = ((value - min) / step) * ITEM_WIDTH;
+    // Use two rAFs to ensure layout is fully measured before scrolling
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        scrollViewRef.current?.scrollTo({ x: initialOffset, animated: false });
+      });
+    });
+  }, [min, max]);
 
-  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+  const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const offset = event.nativeEvent.contentOffset.x;
-    const newValue = Math.round(offset / ITEM_WIDTH) * step + min;
-    if (newValue !== value && newValue >= min && newValue <= max) {
-      onValueChange(newValue);
-    }
-  };
+    const rawValue = (offset / ITEM_WIDTH) * step + min;
+    const snapped = Math.round(rawValue / step) * step;
+    const clamped = Math.max(min, Math.min(max, snapped));
 
-  const renderRuler = () => {
+    if (clamped !== valueRef.current) {
+      valueRef.current = clamped;
+      onValueChangeRef.current(clamped);
+    }
+  }, [min, max, step]);
+
+  // Memoize the ruler tick marks — they only change when the range changes,
+  // not on every scroll frame
+  const rulerTicks = useMemo(() => {
     const items = [];
     for (let i = 0; i <= totalSteps; i++) {
       const currentValue = min + i * step;
-      // Show labels every 10 units to prevent overlap
       const isMajor = currentValue % 10 === 0;
       const isMedium = currentValue % 5 === 0 && !isMajor;
-      
+
       items.push(
         <View key={i} style={[styles.rulerItem, { width: ITEM_WIDTH }]}>
-          <View 
+          <View
             style={[
-              styles.rulerLine, 
-              { 
+              styles.rulerLine,
+              {
                 height: isMajor ? 28 : isMedium ? 18 : 10,
                 backgroundColor: isMajor ? neonGreen : isMedium ? 'rgba(74, 222, 128, 0.4)' : glassBorder,
                 width: isMajor ? 2 : 1,
-              }
-            ]} 
+              },
+            ]}
           />
-        </View>
+        </View>,
       );
     }
     return items;
-  };
-
-  // Render labels separately below the ruler to prevent overlap
-  const renderLabels = () => {
-    const labels = [];
-    for (let i = 0; i <= totalSteps; i++) {
-      const currentValue = min + i * step;
-      if (currentValue % 20 === 0) { // Labels every 20 units
-        const position = i * ITEM_WIDTH;
-        labels.push(
-          <Text 
-            key={currentValue} 
-            style={[styles.rulerLabel, { left: position + contentPadding - 20 }]}
-          >
-            {currentValue}
-          </Text>
-        );
-      }
-    }
-    return labels;
-  };
+  }, [min, max, step, totalSteps]);
 
   const displayValue = formatValue ? formatValue(value) : value.toString();
 
@@ -92,7 +87,7 @@ export function RulerSlider({ min, max, value, onValueChange, unit, step = 1, fo
         <Text style={styles.valueText}>{displayValue}</Text>
         {!formatValue && <Text style={styles.unitText}>{unit}</Text>}
       </View>
-      
+
       <View style={styles.rulerWrapper}>
         <View style={styles.rulerContainer}>
           <ScrollView
@@ -104,9 +99,10 @@ export function RulerSlider({ min, max, value, onValueChange, unit, step = 1, fo
             snapToInterval={SNAP_INTERVAL}
             contentContainerStyle={{ paddingHorizontal: contentPadding }}
             decelerationRate="fast"
+            bounces={false}
           >
             <View style={styles.rulerTrack}>
-              {renderRuler()}
+              {rulerTicks}
             </View>
           </ScrollView>
           {/* Center indicator */}
@@ -160,18 +156,9 @@ const styles = StyleSheet.create({
   rulerLine: {
     borderRadius: 1,
   },
-  rulerLabel: {
-    position: 'absolute',
-    top: 45,
-    width: 40,
-    textAlign: 'center',
-    color: textMuted,
-    fontSize: 11,
-    fontFamily: 'SpaceMono',
-  },
   indicator: {
     position: 'absolute',
-    left: width / 2 - 1.5,
+    left: SCREEN_WIDTH / 2 - 1.5,
     top: 0,
     bottom: 0,
     width: 3,

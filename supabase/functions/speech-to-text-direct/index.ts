@@ -1,10 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createUnauthorizedResponse, validateUserMatch, verifyAuth } from '../_shared/auth.ts'
+import { getSmartCorsHeaders, handleCorsPreflightRequest } from '../_shared/cors.ts'
 import { getLLMRouter } from '../_shared/llm/router.ts'
 import type { LLMConfig } from '../_shared/llm/types.ts'
-import { verifyAuth, createUnauthorizedResponse, validateUserMatch } from '../_shared/auth.ts'
-import { SpeechToTextDirectRequestSchema, validateRequest, createValidationErrorResponse, validateAudioSize } from '../_shared/validation.ts'
-import { getSmartCorsHeaders, handleCorsPreflightRequest } from '../_shared/cors.ts'
-import { checkRateLimit, getRateLimitIdentifier, createRateLimitResponse, RateLimitPresets } from '../_shared/rateLimit.ts'
+import { checkRateLimit, createRateLimitResponse, getRateLimitIdentifier, RateLimitPresets } from '../_shared/rateLimit.ts'
+import { createValidationErrorResponse, SpeechToTextDirectRequestSchema, validateAudioSize, validateRequest } from '../_shared/validation.ts'
 
 interface SpeechToTextDirectRequest {
   audio_data: string // base64 data URL
@@ -48,10 +48,39 @@ const HALLUCINATION_PATTERNS = [
 const MIN_TRANSCRIPT_LENGTH = 3
 
 /**
+ * Tokens commonly seen in auto-caption credits when Whisper hallucinates.
+ * If the transcript only contains these tokens (and is short), treat as noise.
+ */
+const CREDIT_TOKENS = new Set([
+  'thank',
+  'thanks',
+  'you',
+  'for',
+  'watching',
+  'listening',
+  'viewing',
+  'please',
+  'like',
+  'subscribe',
+  'comment',
+  'and',
+  'to',
+  'the',
+  'a',
+  'an',
+  'video',
+  'audio',
+  'subtitles',
+  'by',
+])
+
+/**
  * Check if a transcript is likely a Whisper hallucination
  */
 function isHallucination(transcript: string): boolean {
   const trimmed = transcript.trim()
+  const normalized = trimmed.replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim()
+  const tokens = normalized.length > 0 ? normalized.toLowerCase().split(' ') : []
   
   // Too short to be meaningful
   if (trimmed.length < MIN_TRANSCRIPT_LENGTH) {
@@ -64,6 +93,12 @@ function isHallucination(transcript: string): boolean {
       console.log(`Filtered hallucination: "${trimmed}" matched pattern ${pattern}`)
       return true
     }
+  }
+
+  // Catch short auto-caption credit phrases like "thank you" or "thanks for watching"
+  if (tokens.length > 0 && tokens.length <= 6 && tokens.every((token) => CREDIT_TOKENS.has(token))) {
+    console.log(`Filtered hallucination: "${trimmed}" matched credit tokens`)
+    return true
   }
   
   return false

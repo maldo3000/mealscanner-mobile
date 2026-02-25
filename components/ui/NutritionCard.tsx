@@ -1,14 +1,17 @@
+import { BlurMask, Canvas, Circle, RadialGradient, vec } from '@shopify/react-native-skia';
 import React from 'react';
-import { StyleSheet, Text, View, ViewProps } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
-import Svg, { Path, G } from 'react-native-svg';
+import { Platform, StyleSheet, Text, View, ViewProps } from 'react-native';
 
-import { Colors, neonGreen, accentSky, accentYellow, accentCoral } from '@/constants/Colors';
-import { BorderRadius, Shadows } from '@/constants/Layout';
-import { ComponentSpacing, Spacing } from '@/constants/Spacing';
+const IS_ANDROID = Platform.OS === 'android';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+
+import { accentCoral, accentSky, accentYellow, Colors, neonGreen, withAlpha } from '@/constants/Colors';
+import { BorderRadius } from '@/constants/Layout';
+import { Spacing } from '@/constants/Spacing';
 import { TextStyles } from '@/constants/Typography';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from './IconSymbol';
+import { MaterialSegmentRing, type SegmentData } from './skia';
 
 interface MicroArcData {
   label: string;
@@ -86,6 +89,9 @@ export function NutritionCard({
   const cardColor = color || nutritionColors[label.toLowerCase()] || colors.tint;
   const cardIcon = icon || nutritionIcons[label.toLowerCase()] || 'circle.fill';
 
+  const iconWrapperSize = size === 'large' ? 80 : size === 'small' ? 36 : 48;
+  const iconSize = size === 'large' ? 32 : size === 'small' ? 20 : 24;
+
   const getSizeStyles = () => {
     switch (size) {
       case 'large':
@@ -122,40 +128,57 @@ export function NutritionCard({
 
   const textStyles = getTextSize();
 
-  const renderMicroArcs = () => {
-    if (size !== 'large' || !microArcs || microArcs.length === 0) return null;
-    
-    const centerX = 40;
-    const centerY = 40;
-    const radius = 34;
+  // Convert MicroArcData to SegmentData for the Skia ring
+  const segments: SegmentData[] = microArcs?.map(arc => ({
+    label: arc.label,
+    value: arc.value,
+    color: arc.color,
+  })) || [];
+
+  const hasSkiaRing = size === 'large' && segments.length > 0;
+  const ringSize = 80;
+  const ringStrokeWidth = 4;
+
+  // Render icon bloom (subtle radial glow behind icon)
+  const renderIconBloom = (): React.ReactNode => {
+    // Tune bloom per card size so macros/micros get the same “light glow” treatment as Calories.
+    const bloomSize = size === 'large' ? 48 : size === 'small' ? 28 : 36;
+    const center = bloomSize / 2;
+    const gradientStrength = size === 'small' ? 0.16 : size === 'large' ? 0.22 : 0.18;
+    const blur = size === 'small' ? 6 : 8;
+    const coreOpacity = size === 'small' ? 0.06 : 0.08;
+
+    // withAlpha expects a hex color; cardColor is sourced from our palette constants (hex).
+    const glowStart = withAlpha(cardColor, gradientStrength);
+    const glowEnd = withAlpha(cardColor, 0);
+
+    return (
+      <View style={styles.bloomOverlay} pointerEvents="none">
+        <Canvas style={{ width: bloomSize, height: bloomSize }} pointerEvents="none">
+          <Circle cx={center} cy={center} r={center * 0.85}>
+            <RadialGradient c={vec(center, center)} r={center * 0.85} colors={[glowStart, glowEnd]} />
+          </Circle>
+          <Circle cx={center} cy={center} r={center * 0.5} color={cardColor} opacity={coreOpacity}>
+            {!IS_ANDROID && <BlurMask blur={blur} style="normal" />}
+          </Circle>
+        </Canvas>
+      </View>
+    );
+  };
+
+  // Render the Skia material segment ring
+  const renderMaterialRing = () => {
+    if (!hasSkiaRing) return null;
     
     return (
       <View style={styles.arcsOverlay}>
-        <Svg width="80" height="80" viewBox="0 0 80 80">
-          <G rotation="-90" origin="40, 40">
-            {microArcs.map((arc, index) => {
-              const startAngle = index * 90 + 5;
-              const endAngle = (index + 1) * 90 - 5;
-              
-              const x1 = centerX + radius * Math.cos((Math.PI * startAngle) / 180);
-              const y1 = centerY + radius * Math.sin((Math.PI * startAngle) / 180);
-              const x2 = centerX + radius * Math.cos((Math.PI * endAngle) / 180);
-              const y2 = centerY + radius * Math.sin((Math.PI * endAngle) / 180);
-              
-              return (
-                <Path
-                  key={arc.label}
-                  d={`M ${x1} ${y1} A ${radius} ${radius} 0 0 1 ${x2} ${y2}`}
-                  stroke={arc.color}
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                  fill="none"
-                  opacity={0.8}
-                />
-              );
-            })}
-          </G>
-        </Svg>
+        <MaterialSegmentRing
+          size={ringSize}
+          strokeWidth={ringStrokeWidth}
+          segments={segments}
+          animationDuration={600}
+          animationDelay={delay + 100}
+        />
       </View>
     );
   };
@@ -174,26 +197,49 @@ export function NutritionCard({
         <View style={[
           styles.iconWrapper, 
           { 
-            width: size === 'large' ? 80 : size === 'small' ? 36 : 48,
-            height: size === 'large' ? 80 : size === 'small' ? 36 : 48,
+            width: iconWrapperSize,
+            height: iconWrapperSize,
             marginBottom: size === 'small' ? 2 : 4,
           }
         ]}>
-          {renderMicroArcs()}
+          {renderMaterialRing()}
+          {renderIconBloom()}
           <IconSymbol 
             name={cardIcon} 
-            size={size === 'large' ? 32 : size === 'small' ? 20 : 24} 
+            size={iconSize} 
             color={cardColor} 
           />
         </View>
         
         <View style={styles.textContainer}>
-          <Text style={[textStyles.value, { color: cardColor, fontWeight: '700' as const, lineHeight: size === 'small' ? 18 : size === 'large' ? 42 : 28 }]}>
+          <Text style={[
+            textStyles.value, 
+            { 
+              color: cardColor, 
+              fontWeight: '700' as const, 
+              lineHeight: size === 'small' ? 18 : size === 'large' ? 42 : 28,
+              // Subtle text shadow for large cards - improves readability on textured backgrounds
+              ...(size === 'large' && {
+                textShadowColor: 'rgba(0, 0, 0, 0.35)',
+                textShadowOffset: { width: 0, height: 1 },
+                textShadowRadius: 3,
+              }),
+            }
+          ]}>
             {typeof value === 'number' ? Number(value.toFixed(1)) : value}
             {unit && <Text style={[textStyles.label, { color: cardColor, fontSize: (textStyles.value.fontSize || 24) * 0.5, fontWeight: '400' as const }]}> {unit}</Text>}
           </Text>
           <Text 
-            style={[textStyles.label, { color: colors.icon, marginTop: size === 'small' ? 0 : 2, textAlign: 'center' }]}
+            style={[
+              textStyles.label, 
+              { 
+                color: colors.icon, 
+                marginTop: size === 'small' ? 0 : 2, 
+                textAlign: 'center',
+                // Slightly reduce label opacity for large cards to emphasize the value
+                opacity: size === 'large' ? 0.7 : 1,
+              }
+            ]}
             numberOfLines={1}
             adjustsFontSizeToFit
           >
@@ -261,6 +307,12 @@ const styles = StyleSheet.create({
     bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  bloomOverlay: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
   },
   textContainer: {
     alignItems: 'center',

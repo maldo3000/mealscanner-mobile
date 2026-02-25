@@ -1,3 +1,4 @@
+import { bgPrimary } from '@/constants/Colors';
 import { Stack } from 'expo-router';
 
 export default function AuthLayout() {
@@ -5,7 +6,7 @@ export default function AuthLayout() {
     <Stack
       screenOptions={{
         headerShown: false,
-        contentStyle: { backgroundColor: 'transparent' },
+        contentStyle: { backgroundColor: bgPrimary },
       }}
     >
       <Stack.Screen name="index" />

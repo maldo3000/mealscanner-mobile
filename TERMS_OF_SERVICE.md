@@ -1,11 +1,11 @@
 # Terms of Service for MealScanner
 
-**Last Updated: January 4, 2026**
+**Last Updated: January 31, 2026**
 
 By using the MealScanner mobile application ("Service"), you agree to be bound by these Terms of Service.
 
 ## 1. Description of Service
-MealScanner provides AI-powered nutritional analysis of food images. The information provided is for educational purposes only and is not medical advice.
+MealScanner provides AI-powered nutritional analysis of food images and integrates with Apple Health (HealthKit) to log nutritional data and personalize goals based on your health activity. The information provided is for educational purposes only and is not medical advice. Always consult with a healthcare professional for dietary guidance.
 
 ## 2. Subscriptions
 - Certain features require a "MealScanner Pro" subscription.

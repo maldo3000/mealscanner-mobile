@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
-import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import { IconSymbol } from '@/components/ui/IconSymbol';
-import { Colors, neonGreen, glassBorder, accentSky, semanticColors } from '@/constants/Colors';
+import { accentSky, Colors, neonGreen, semanticColors } from '@/constants/Colors';
 import { Spacing } from '@/constants/Spacing';
 import { TextStyles } from '@/constants/Typography';
-import { useColorScheme } from '@/hooks/useColorScheme';
 import { useSubscription } from '@/context/SubscriptionContext';
+import { useColorScheme } from '@/hooks/useColorScheme';
 import { Paywall } from './Paywall';
 
 interface UpgradePromptProps {
@@ -65,7 +65,7 @@ export function UpgradePrompt({
         return {
           icon: 'sparkles',
           title: 'Pro Feature',
-          message: 'AI Recipe Generation is available with Pro',
+          message: 'Unlock the entire recipe database with Pro',
           accentColor: accentSky,
         };
       case 'nutrition':
@@ -136,6 +136,7 @@ export function UpgradePrompt({
 
         <Button
           variant="primary"
+          fullWidth
           onPress={handleUpgrade}
           style={styles.upgradeButton}
         >

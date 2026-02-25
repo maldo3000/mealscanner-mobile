@@ -59,6 +59,39 @@ export interface LLMProviderClient {
   transcribeAudio?(options: TranscriptionOptions): Promise<TranscriptionResponse>;
 }
 
+// ==========================================
+// Model Routing & Canary Types
+// ==========================================
+
+/** Configuration for safe model rollout with canary + fallback */
+export interface ModelRoutingConfig {
+  /** The new stable model to canary traffic to */
+  primary: string;
+  /** The current known-good model (receives non-canary traffic and serves as fallback) */
+  fallback: string;
+  /** Percentage of requests routed to the primary model (0-100). 0 = all fallback, 100 = all primary */
+  canaryPercent: number;
+}
+
+/** Quality metrics logged per LLM call for model comparison */
+export interface ModelQualityMetrics {
+  /** Which model actually handled the request */
+  model: string;
+  /** Whether the response was valid JSON */
+  jsonParseSuccess: boolean;
+  /** Whether the router had to fall back to the fallback model */
+  usedFallback: boolean;
+  /** Total LLM round-trip latency in ms */
+  latencyMs: number;
+  /** Token usage from the response */
+  usage?: ChatCompletionResponse['usage'];
+  /** Number of items that got flagged as needs_review */
+  needsReviewCount?: number;
+  /** Total number of items analyzed */
+  totalItemCount?: number;
+  /** Error message if primary model failed and we fell back */
+  fallbackReason?: string;
+}
 
 
 

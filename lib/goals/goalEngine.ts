@@ -1,8 +1,8 @@
 import type {
   ActivityLevel,
-  BiologicalSex,
   GoalCalculationParams,
   GoalCalculationResult,
+  GoalPace,
   NutritionDailyTargets,
   NutritionGoalType,
   NutritionProfileSnapshot,
@@ -19,7 +19,7 @@ const PROTEIN_G_PER_KG: Record<NutritionGoalType, number> = {
   custom: 1.6,
 };
 
-const FIBRE_MIN_GRAMS = 25;
+const FIBRE_BASE_GRAMS = 25;
 
 const FAT_RATIO_BY_GOAL: Record<NutritionGoalType, number> = {
   weight_loss: 0.30,
@@ -113,29 +113,133 @@ const applyGoalAdjustment = (
   return maintenanceCalories + adjustment;
 };
 
+// ─── Focus-area modifiers ───────────────────────────────────────────────────
+// Each recognised focus area can nudge protein g/kg, fat/carb split, and fibre.
+// Modifiers are additive – selecting multiple focus areas stacks them.
+
+interface FocusAreaModifier {
+  /** Extra g of protein per kg body weight (additive). */
+  proteinPerKgDelta?: number;
+  /** Shift in fat ratio of remaining calories (additive, clamped later). */
+  fatRatioDelta?: number;
+  /** Shift in carb ratio of remaining calories (additive, clamped later). */
+  carbRatioDelta?: number;
+  /** Override fibre target in grams (takes the max if multiple). */
+  fibreGrams?: number;
+}
+
+/**
+ * Normalised focus-area keys. We do a case-insensitive includes match so
+ * "Eat less carbs" and "eat less carbs" both hit.
+ */
+const FOCUS_AREA_MODIFIERS: { pattern: string; modifier: FocusAreaModifier }[] = [
+  {
+    pattern: 'increase protein',
+    modifier: { proteinPerKgDelta: 0.4 },
+  },
+  {
+    pattern: 'eat less carbs',
+    modifier: { carbRatioDelta: -0.15, fatRatioDelta: 0.15 },
+  },
+  {
+    pattern: 'low-carb',
+    modifier: { carbRatioDelta: -0.15, fatRatioDelta: 0.15 },
+  },
+  {
+    pattern: 'eat less sugar',
+    modifier: { carbRatioDelta: -0.08, fatRatioDelta: 0.08 },
+  },
+  {
+    pattern: 'eat less fat',
+    modifier: { fatRatioDelta: -0.10, carbRatioDelta: 0.10 },
+  },
+  {
+    pattern: 'improve fibre',
+    modifier: { fibreGrams: 35 },
+  },
+  {
+    pattern: 'eat more vegetables',
+    modifier: { fibreGrams: 30 },
+  },
+  {
+    pattern: 'manage diabetes',
+    modifier: { carbRatioDelta: -0.10, fatRatioDelta: 0.05, proteinPerKgDelta: 0.1, fibreGrams: 30 },
+  },
+  {
+    pattern: 'keto',
+    modifier: { carbRatioDelta: -0.40, fatRatioDelta: 0.40 },
+  },
+];
+
+interface ResolvedModifiers {
+  proteinPerKgExtra: number;
+  fatRatioShift: number;
+  carbRatioShift: number;
+  fibreOverride: number | undefined;
+}
+
+const resolveFocusAreaModifiers = (focusAreas: string[] | undefined): ResolvedModifiers => {
+  const result: ResolvedModifiers = {
+    proteinPerKgExtra: 0,
+    fatRatioShift: 0,
+    carbRatioShift: 0,
+    fibreOverride: undefined,
+  };
+
+  if (!focusAreas || focusAreas.length === 0) {
+    return result;
+  }
+
+  const normalised = focusAreas.map((f) => f.toLowerCase());
+
+  for (const { pattern, modifier } of FOCUS_AREA_MODIFIERS) {
+    const matched = normalised.some((f) => f.includes(pattern));
+    if (!matched) continue;
+
+    result.proteinPerKgExtra += modifier.proteinPerKgDelta ?? 0;
+    result.fatRatioShift += modifier.fatRatioDelta ?? 0;
+    result.carbRatioShift += modifier.carbRatioDelta ?? 0;
+
+    if (modifier.fibreGrams != null) {
+      result.fibreOverride = Math.max(result.fibreOverride ?? 0, modifier.fibreGrams);
+    }
+  }
+
+  return result;
+};
+
 const calculateMacroTargets = (
   goalType: NutritionGoalType,
   profile: NutritionProfileSnapshot,
   goalCalories: number,
+  focusAreas?: string[],
 ): NutritionDailyTargets => {
-  const proteinPerKg = PROTEIN_G_PER_KG[goalType];
+  const mods = resolveFocusAreaModifiers(focusAreas);
+
+  // Protein: base per-kg + any focus-area boost
+  const proteinPerKg = PROTEIN_G_PER_KG[goalType] + mods.proteinPerKgExtra;
   const proteinGrams = round(Math.max(proteinPerKg * profile.weightKg, 40));
 
-  const fibreGrams = FIBRE_MIN_GRAMS;
+  // Fibre: base or focus-area override
+  const fibreGrams = mods.fibreOverride ?? FIBRE_BASE_GRAMS;
 
   const proteinCalories = proteinGrams * KCAL_PER_GRAM_PROTEIN;
   const fibreCalories = fibreGrams * KCAL_PER_GRAM_FIBRE;
 
   const remainingCalories = Math.max(goalCalories - proteinCalories - fibreCalories, 0);
 
-  const fatRatio = FAT_RATIO_BY_GOAL[goalType];
-  const carbRatio = CARB_RATIO_BY_GOAL[goalType];
-  const ratioSum = fatRatio + carbRatio || 1;
-  const normalizedFatRatio = fatRatio / ratioSum;
-  const normalizedCarbRatio = carbRatio / ratioSum;
+  // Fat / carb split: base ratios + focus-area shifts, clamped to [0.10, 0.90]
+  const clampRatio = (r: number) => Math.min(0.90, Math.max(0.10, r));
+  let fatRatio = clampRatio(FAT_RATIO_BY_GOAL[goalType] + mods.fatRatioShift);
+  let carbRatio = clampRatio(CARB_RATIO_BY_GOAL[goalType] + mods.carbRatioShift);
 
-  const fatCalories = remainingCalories * normalizedFatRatio;
-  const carbCalories = remainingCalories * normalizedCarbRatio;
+  // Normalise so they sum to 1
+  const ratioSum = fatRatio + carbRatio || 1;
+  fatRatio = fatRatio / ratioSum;
+  carbRatio = carbRatio / ratioSum;
+
+  const fatCalories = remainingCalories * fatRatio;
+  const carbCalories = remainingCalories * carbRatio;
 
   const fatGrams = round(fatCalories / KCAL_PER_GRAM_FAT);
   const carbGrams = round(carbCalories / KCAL_PER_GRAM_CARB);
@@ -146,9 +250,9 @@ const calculateMacroTargets = (
     fatGrams * KCAL_PER_GRAM_FAT +
     carbGrams * KCAL_PER_GRAM_CARB;
 
-  const proteinRatio = round(proteinCalories / totalMacroCalories, 2);
-  const fatMacroRatio = round((fatGrams * KCAL_PER_GRAM_FAT) / totalMacroCalories, 2);
-  const carbMacroRatio = round((carbGrams * KCAL_PER_GRAM_CARB) / totalMacroCalories, 2);
+  const proteinRatioFinal = totalMacroCalories > 0 ? round(proteinCalories / totalMacroCalories, 2) : 0;
+  const fatMacroRatio = totalMacroCalories > 0 ? round((fatGrams * KCAL_PER_GRAM_FAT) / totalMacroCalories, 2) : 0;
+  const carbMacroRatio = totalMacroCalories > 0 ? round((carbGrams * KCAL_PER_GRAM_CARB) / totalMacroCalories, 2) : 0;
 
   return {
     calories: round(goalCalories),
@@ -156,7 +260,7 @@ const calculateMacroTargets = (
     carbGrams,
     fatGrams,
     fibreGrams,
-    proteinRatio,
+    proteinRatio: proteinRatioFinal,
     fatRatio: fatMacroRatio,
     carbRatio: carbMacroRatio,
   };
@@ -165,7 +269,7 @@ const calculateMacroTargets = (
 export const calculateGoalTargets = (
   params: GoalCalculationParams,
 ): GoalCalculationResult => {
-  const { profile, goalType } = params;
+  const { profile, goalType, focusAreas } = params;
 
   const bmr = calculateBmrMifflin(profile);
   const activityMultiplier = getActivityMultiplier(profile.activityLevel);
@@ -175,7 +279,7 @@ export const calculateGoalTargets = (
     applyGoalAdjustment(maintenanceCalories, goalType, params.pace),
   );
 
-  let dailyTargets = calculateMacroTargets(goalType, profile, adjustedCalories);
+  let dailyTargets = calculateMacroTargets(goalType, profile, adjustedCalories, focusAreas);
 
   if (typeof params.customCalories === 'number') {
     dailyTargets = {
@@ -214,8 +318,6 @@ export const calculateGoalTargets = (
     dailyTargets,
   };
 };
-
-type GoalPace = 'slow' | 'moderate' | 'aggressive';
 
 
 

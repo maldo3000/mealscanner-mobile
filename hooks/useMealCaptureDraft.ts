@@ -1,9 +1,9 @@
-import { Platform } from 'react-native';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Platform } from 'react-native';
 
 import * as FileSystem from 'expo-file-system/legacy';
 
-import type { DraftMealItem, MealCaptureDraft, DatabaseFoodItem } from '@/components/capture/types';
+import type { DatabaseFoodItem, DraftMealItem, MealCaptureDraft } from '@/components/capture/types';
 import { useAuth } from '@/context/AuthContext';
 
 type AsyncStorageLike = {
@@ -96,6 +96,7 @@ export interface UseMealCaptureDraftResult {
   removeItem(localId: string): Promise<void>;
   setHero(localId: string): Promise<void>;
   updateQuantity(localId: string, nextQuantity: number): Promise<void>;
+  updateTextItem(localId: string, text: string): Promise<void>;
 
   setContextText(next: string): Promise<void>;
 }
@@ -161,6 +162,19 @@ export function useMealCaptureDraft(): UseMealCaptureDraftResult {
     const prevDraft = draft;
     setDraft(null);
 
+    // Explicitly clear from AsyncStorage immediately.
+    // We can't rely on the persistence effect because the component may
+    // unmount before it fires (e.g. when onClose() is called right after).
+    // A stale draft in storage would cause the CaptureContext restore
+    // effect to re-set isCaptureVisible on subsequent renders.
+    if (AsyncStorage) {
+      try {
+        await AsyncStorage.removeItem(storageKey);
+      } catch {
+        // best effort
+      }
+    }
+
     if (prevDraft?.sessionId) {
       const sessionDir = `${DRAFTS_DIR}/${prevDraft.sessionId}`;
       try {
@@ -172,7 +186,7 @@ export function useMealCaptureDraft(): UseMealCaptureDraftResult {
         // ignore
       }
     }
-  }, [draft]);
+  }, [draft, storageKey]);
 
   const mutate = useCallback(
     async (mutator: (prev: MealCaptureDraft) => MealCaptureDraft): Promise<void> => {
@@ -304,6 +318,21 @@ export function useMealCaptureDraft(): UseMealCaptureDraftResult {
     [mutate]
   );
 
+  const updateTextItem = useCallback(
+    async (localId: string, text: string): Promise<void> => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      await mutate((prev) => ({
+        ...prev,
+        items: prev.items.map((i) =>
+          i.localId === localId && i.itemType === 'text' ? { ...i, text: trimmed } : i
+        ),
+        updatedAtMs: Date.now(),
+      }));
+    },
+    [mutate]
+  );
+
   const addVerifiedItem = useCallback(
     async (foodItem: DatabaseFoodItem, quantity: number): Promise<void> => {
       const q = clampQuantity(quantity);
@@ -343,6 +372,7 @@ export function useMealCaptureDraft(): UseMealCaptureDraftResult {
     removeItem,
     setHero,
     updateQuantity,
+    updateTextItem,
 
     setContextText: setContextTextSafe,
   };

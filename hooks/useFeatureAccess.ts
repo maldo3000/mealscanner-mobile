@@ -1,8 +1,8 @@
 import { useCallback, useMemo } from 'react';
 
 import { useSubscription } from '@/context/SubscriptionContext';
-import { useScanLimit } from './useScanLimit';
 import { FREE_TIER_LIMITS } from '@/lib/revenueCat';
+import { useScanLimit } from './useScanLimit';
 
 export interface FeatureAccessResult {
   /** Whether the feature is allowed */
@@ -108,7 +108,7 @@ export function useFeatureAccess(): UseFeatureAccessReturn {
 
     return {
       allowed: false,
-      reason: 'AI Recipe Generation is a Pro feature. Upgrade to create custom recipes tailored to your nutrition goals!',
+      reason: 'The full recipe database is a Pro feature. Upgrade to unlock recipe access tailored to your nutrition goals!',
       context: { isPro: false },
     };
   }, [isPro]);
