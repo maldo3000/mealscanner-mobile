@@ -10,7 +10,6 @@ import { localGoalsRepository } from '@/lib/goals/LocalGoalsRepository';
 import type { ActivityLevel, BiologicalSex, NutritionGoal, NutritionGoalType } from '@/lib/goals/types';
 import { signInWithApple, signInWithGoogle, supabase } from '@/lib/supabase';
 import { AppleHealthService } from '@/lib/health/AppleHealthService';
-import { BiologicalSex as HKBiologicalSex } from '@kingstinct/react-native-healthkit';
 import { FontAwesome } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
@@ -713,8 +712,9 @@ export default function OnboardingScreen() {
                     if (profile.weightKg) updates.weight = profile.weightKg;
                     if (profile.heightCm) updates.height = profile.heightCm;
                     if (profile.biologicalSex) {
-                      updates.gender = profile.biologicalSex === HKBiologicalSex.female ? 'female' : 
-                                      profile.biologicalSex === HKBiologicalSex.male ? 'male' : 'other';
+                      const { BiologicalSex } = require('@kingstinct/react-native-healthkit');
+                      updates.gender = profile.biologicalSex === BiologicalSex.female ? 'female' : 
+                                      profile.biologicalSex === BiologicalSex.male ? 'male' : 'other';
                     }
                     if (profile.dateOfBirth) {
                       const age = new Date().getFullYear() - profile.dateOfBirth.getFullYear();

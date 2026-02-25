@@ -1,47 +1,61 @@
-import {
-  HKQuantityTypeIdentifier,
-  HKUnit,
-  HKCharacteristicTypeIdentifier,
-  isHealthDataAvailable,
-  requestAuthorization,
-  saveQuantitySample,
-  queryQuantitySamples,
-  getBiologicalSexAsync,
-  getDateOfBirthAsync,
-  getMostRecentQuantitySample,
-} from '@kingstinct/react-native-healthkit';
 import { Platform } from 'react-native';
 
-export const NUTRITION_TYPES = [
-  HKQuantityTypeIdentifier.dietaryEnergyConsumed,
-  HKQuantityTypeIdentifier.dietaryProtein,
-  HKQuantityTypeIdentifier.dietaryCarbohydrates,
-  HKQuantityTypeIdentifier.dietaryFatTotal,
-  HKQuantityTypeIdentifier.dietaryFiber,
-  HKQuantityTypeIdentifier.dietarySugar,
-  HKQuantityTypeIdentifier.dietarySodium,
-];
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _hk: any = null;
 
-export const ACTIVITY_READ_TYPES = [
-  HKQuantityTypeIdentifier.stepCount,
-  HKQuantityTypeIdentifier.activeEnergyBurned,
-  HKQuantityTypeIdentifier.basalEnergyBurned,
-];
+function getHK() {
+  if (!_hk) {
+    if (Platform.OS !== 'ios') {
+      throw new Error('HealthKit is only available on iOS');
+    }
+    _hk = require('@kingstinct/react-native-healthkit');
+  }
+  return _hk;
+}
 
-export const PROFILE_READ_TYPES = [
-  HKQuantityTypeIdentifier.height,
-  HKQuantityTypeIdentifier.bodyMass,
-];
+export const getNutritionTypes = () => {
+  const { HKQuantityTypeIdentifier } = getHK();
+  return [
+    HKQuantityTypeIdentifier.dietaryEnergyConsumed,
+    HKQuantityTypeIdentifier.dietaryProtein,
+    HKQuantityTypeIdentifier.dietaryCarbohydrates,
+    HKQuantityTypeIdentifier.dietaryFatTotal,
+    HKQuantityTypeIdentifier.dietaryFiber,
+    HKQuantityTypeIdentifier.dietarySugar,
+    HKQuantityTypeIdentifier.dietarySodium,
+  ];
+};
 
-// characteristic types are handled differently in this library usually, but let's check
-export const CHARACTERISTIC_TYPES = [
-  HKCharacteristicTypeIdentifier.biologicalSex,
-  HKCharacteristicTypeIdentifier.dateOfBirth,
-];
+export const getActivityReadTypes = () => {
+  const { HKQuantityTypeIdentifier } = getHK();
+  return [
+    HKQuantityTypeIdentifier.stepCount,
+    HKQuantityTypeIdentifier.activeEnergyBurned,
+    HKQuantityTypeIdentifier.basalEnergyBurned,
+  ];
+};
+
+export const getProfileReadTypes = () => {
+  const { HKQuantityTypeIdentifier } = getHK();
+  return [
+    HKQuantityTypeIdentifier.height,
+    HKQuantityTypeIdentifier.bodyMass,
+  ];
+};
+
+export const getCharacteristicTypes = () => {
+  const { HKCharacteristicTypeIdentifier } = getHK();
+  return [
+    HKCharacteristicTypeIdentifier.biologicalSex,
+    HKCharacteristicTypeIdentifier.dateOfBirth,
+  ];
+};
 
 export const AppleHealthService = {
   isAvailable: async (): Promise<boolean> => {
-    return Platform.OS === 'ios' && isHealthDataAvailable();
+    if (Platform.OS !== 'ios') return false;
+    const { isHealthDataAvailable } = getHK();
+    return isHealthDataAvailable();
   },
 
   requestPermissions: async (): Promise<boolean> => {
@@ -51,16 +65,14 @@ export const AppleHealthService = {
     }
 
     try {
+      const { requestAuthorization } = getHK();
       const success = await requestAuthorization({
-        // Write permissions (toShare)
-        toShare: [...NUTRITION_TYPES],
-        // Read permissions (toRead)
+        toShare: [...getNutritionTypes()],
         toRead: [
-          ...NUTRITION_TYPES,
-          ...ACTIVITY_READ_TYPES,
-          ...PROFILE_READ_TYPES,
-          // Characteristics aren't always in ObjectTypeIdentifier but usually work
-          ...(CHARACTERISTIC_TYPES as any), 
+          ...getNutritionTypes(),
+          ...getActivityReadTypes(),
+          ...getProfileReadTypes(),
+          ...(getCharacteristicTypes() as any),
         ],
       });
       return success;
@@ -70,21 +82,21 @@ export const AppleHealthService = {
     }
   },
 
-  // --- ACTIVITY READ ---
   getTodaySteps: async (): Promise<number> => {
     if (!(await AppleHealthService.isAvailable())) return 0;
-    
+
+    const { HKQuantityTypeIdentifier, HKUnit, queryQuantitySamples } = getHK();
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
+
     try {
       const samples = await queryQuantitySamples(HKQuantityTypeIdentifier.stepCount, {
         from: startOfDay,
         to: now,
         unit: HKUnit.count,
       });
-      
-      return samples.reduce((sum, sample) => sum + sample.value, 0);
+
+      return samples.reduce((sum: number, sample: any) => sum + sample.value, 0);
     } catch (error) {
       console.error('Error fetching today\'s steps:', error);
       return 0;
@@ -93,25 +105,25 @@ export const AppleHealthService = {
 
   getTodayActiveCalories: async (): Promise<number> => {
     if (!(await AppleHealthService.isAvailable())) return 0;
-    
+
+    const { HKQuantityTypeIdentifier, HKUnit, queryQuantitySamples } = getHK();
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
+
     try {
       const samples = await queryQuantitySamples(HKQuantityTypeIdentifier.activeEnergyBurned, {
         from: startOfDay,
         to: now,
         unit: HKUnit.kilocalorie,
       });
-      
-      return Math.round(samples.reduce((sum, sample) => sum + sample.value, 0));
+
+      return Math.round(samples.reduce((sum: number, sample: any) => sum + sample.value, 0));
     } catch (error) {
       console.error('Error fetching active calories:', error);
       return 0;
     }
   },
 
-  // --- NUTRITION WRITE ---
   syncMealToHealth: async (meal: {
     calories: number;
     protein?: number;
@@ -124,13 +136,13 @@ export const AppleHealthService = {
   }): Promise<void> => {
     if (!(await AppleHealthService.isAvailable())) return;
 
+    const { HKQuantityTypeIdentifier, HKUnit, saveQuantitySample } = getHK();
     const startDate = new Date(meal.timestamp);
-    const endDate = new Date(startDate.getTime() + 1000); // 1 second duration
+    const endDate = new Date(startDate.getTime() + 1000);
 
     try {
       const syncTasks = [];
 
-      // Energy
       syncTasks.push(
         saveQuantitySample(
           HKQuantityTypeIdentifier.dietaryEnergyConsumed,
@@ -141,7 +153,6 @@ export const AppleHealthService = {
         )
       );
 
-      // Protein
       if (meal.protein) {
         syncTasks.push(
           saveQuantitySample(
@@ -154,7 +165,6 @@ export const AppleHealthService = {
         );
       }
 
-      // Carbs
       if (meal.carbs) {
         syncTasks.push(
           saveQuantitySample(
@@ -167,7 +177,6 @@ export const AppleHealthService = {
         );
       }
 
-      // Fat
       if (meal.fat) {
         syncTasks.push(
           saveQuantitySample(
@@ -180,7 +189,6 @@ export const AppleHealthService = {
         );
       }
 
-      // Fiber
       if (meal.fiber) {
         syncTasks.push(
           saveQuantitySample(
@@ -193,7 +201,6 @@ export const AppleHealthService = {
         );
       }
 
-      // Sugar
       if (meal.sugar) {
         syncTasks.push(
           saveQuantitySample(
@@ -206,7 +213,6 @@ export const AppleHealthService = {
         );
       }
 
-      // Sodium (mg)
       if (meal.sodium) {
         syncTasks.push(
           saveQuantitySample(
@@ -225,9 +231,10 @@ export const AppleHealthService = {
     }
   },
 
-  // --- PROFILE READ ---
   getUserProfileData: async () => {
     if (!(await AppleHealthService.isAvailable())) return null;
+
+    const { HKQuantityTypeIdentifier, HKUnit, getMostRecentQuantitySample, getBiologicalSexAsync, getDateOfBirthAsync } = getHK();
 
     try {
       const [weight, height, sex, dob] = await Promise.all([
@@ -240,7 +247,7 @@ export const AppleHealthService = {
       return {
         weightKg: weight ? (weight.unit === HKUnit.gram ? weight.value / 1000 : weight.value) : null,
         heightCm: height ? (height.unit === HKUnit.inch ? height.value * 2.54 : height.value) : null,
-        biologicalSex: sex, // HKBiologicalSex
+        biologicalSex: sex,
         dateOfBirth: dob,
       };
     } catch (error) {
