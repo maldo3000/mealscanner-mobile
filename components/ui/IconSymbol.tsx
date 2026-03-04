@@ -3,7 +3,7 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { SymbolWeight } from 'expo-symbols';
 import { ComponentProps } from 'react';
-import { OpaqueColorValue, type StyleProp, type TextStyle } from 'react-native';
+import { Platform, OpaqueColorValue, type StyleProp, type TextStyle } from 'react-native';
 
 type IconMapping = Record<string, ComponentProps<typeof MaterialIcons>['name']>;
 type IconSymbolName = keyof typeof MAPPING;
@@ -52,6 +52,8 @@ const MAPPING = {
   'barcode': 'qr-code-scanner',
   'calendar': 'calendar-today',
   'chart.bar': 'bar-chart',
+  'chart.bar.doc.horizontal': 'assessment',
+  'envelope': 'mail',
   'square.grid.2x2': 'grid-view',
   'photo': 'photo',
   'photo.on.rectangle': 'photo-library',
@@ -124,5 +126,8 @@ export function IconSymbol({
   style?: StyleProp<TextStyle>;
   weight?: SymbolWeight;
 }) {
-  return <MaterialIcons color={color} size={size} name={MAPPING[name]} style={style} />;
+  // Use simpler 'book' icon on Android for book.closed — menu-book renders with a dark hexagon artifact
+  const materialName =
+    name === 'book.closed' && Platform.OS === 'android' ? 'book' : MAPPING[name];
+  return <MaterialIcons color={color} size={size} name={materialName} style={style} />;
 }
