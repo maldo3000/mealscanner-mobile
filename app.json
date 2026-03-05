@@ -2,7 +2,7 @@
   "expo": {
     "name": "MealScanner",
     "slug": "mealscanner-mobile",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "mealscanner",
@@ -12,7 +12,7 @@
       "icon": "./assets/images/ios-icon.jpg",
       "supportsTablet": true,
       "bundleIdentifier": "app.mealscanner",
-      "buildNumber": "1",
+      "buildNumber": "2",
       "infoPlist": {
         "NSCameraUsageDescription": "MealScanner needs access to your camera to scan and analyze meal images for nutritional information.",
         "NSPhotoLibraryUsageDescription": "MealScanner needs access to your photo library to select meal images for nutritional analysis.",
@@ -20,19 +20,19 @@
         "NSHealthShareUsageDescription": "MealScanner reads your active energy and steps to adjust your daily nutrition targets.",
         "NSHealthUpdateUsageDescription": "MealScanner logs your meal calories and macros to your Apple Health history."
       },
-      "runtimeVersion": "1.0.0"
+      "runtimeVersion": "1.0.1"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#143c23"
+        "backgroundColor": "#c8db66"
       },
       "edgeToEdgeEnabled": true,
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS"
       ],
-      "runtimeVersion": "1.0.0",
+      "runtimeVersion": "1.0.1",
       "package": "app.mealscanner"
     },
     "web": {
