@@ -29,7 +29,7 @@ export function useMealsQuery({ userId, daysLimit, limit, journalMode, enabled =
         if (error) throw error;
         return data ?? [];
       }
-      const { data, error } = await getAllUserMeals(userId, daysLimit);
+      const { data, error } = await getAllUserMeals(userId, daysLimit ?? 365);
       if (error) throw error;
       return data ?? [];
     },

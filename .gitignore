@@ -39,6 +39,9 @@ yarn-error.*
 *.keystore
 !android/app/debug.keystore
 
+# Google Play service account (never commit)
+mealscanner-345c8e63fe16.json
+
 # typescript
 *.tsbuildinfo
 

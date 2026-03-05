@@ -8,8 +8,8 @@ import BottomSheet, {
     BottomSheetScrollView,
     type BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
-import React, { forwardRef, useCallback, useMemo } from 'react';
-import { Image, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { forwardRef, useCallback, useMemo, useState } from 'react';
+import { Image, Linking, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -30,6 +30,7 @@ export const NutritionTipSheet = forwardRef<BottomSheet, NutritionTipSheetProps>
   ({ tip, onClose }, ref) => {
     const { tokens, accentAlpha, withAlpha } = useTheme();
     const insets = useSafeAreaInsets();
+    const [sourcesExpanded, setSourcesExpanded] = useState(false);
 
     // Account for floating tab bar: height 72 + bottom position (34 iOS / 24 Android)
     const TAB_BAR_HEIGHT = 72;
@@ -124,7 +125,10 @@ export const NutritionTipSheet = forwardRef<BottomSheet, NutritionTipSheetProps>
         backgroundStyle={[styles.sheetBackground, { backgroundColor: tokens.background }]}
         handleIndicatorStyle={[styles.handleIndicator, { backgroundColor: tokens.borderSubtle }]}
         onChange={(index) => {
-          if (index === -1) onClose();
+          if (index === -1) {
+            setSourcesExpanded(false);
+            onClose();
+          }
         }}
       >
         <View style={[styles.header, { borderBottomColor: tokens.borderSubtle }]}>
@@ -159,6 +163,44 @@ export const NutritionTipSheet = forwardRef<BottomSheet, NutritionTipSheetProps>
           <View style={[styles.divider, { backgroundColor: tokens.borderSubtle }]} />
 
           <Markdown style={markdownStyles}>{tip.markdown}</Markdown>
+
+          <View style={[styles.sourcesDivider, { backgroundColor: tokens.borderSubtle }]} />
+          <Text style={[TextStyles.caption, styles.sourcesDisclaimer, { color: tokens.textMuted }]}>
+            For informational purposes only. Not medical advice.
+          </Text>
+
+          {tip.sources.length > 0 && (
+            <TouchableOpacity
+              onPress={() => setSourcesExpanded(!sourcesExpanded)}
+              style={styles.sourcesToggle}
+              accessibilityRole="button"
+              accessibilityLabel={sourcesExpanded ? 'Hide sources' : 'Show sources'}
+            >
+              <IconSymbol name="doc.text" size={14} color={tokens.textMuted} />
+              <Text style={[TextStyles.caption, { color: tokens.textMuted }]}>
+                Sources (tap to view)
+              </Text>
+              <IconSymbol
+                name={sourcesExpanded ? 'chevron.up' : 'chevron.down'}
+                size={12}
+                color={tokens.textMuted}
+              />
+            </TouchableOpacity>
+          )}
+
+          {sourcesExpanded && tip.sources.map((source) => (
+            <TouchableOpacity
+              key={source.url}
+              onPress={() => Linking.openURL(source.url)}
+              accessibilityRole="link"
+              accessibilityLabel={`Open source: ${source.label}`}
+              style={styles.sourceLinkRow}
+            >
+              <Text style={[styles.sourceLink, { color: tokens.accent }]}>
+                {source.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
           <View style={{ height: bottomSpacerHeight }} />
         </BottomSheetScrollView>
       </BottomSheet>
@@ -223,6 +265,32 @@ const styles = StyleSheet.create({
     height: 1,
     marginVertical: Spacing.lg,
     opacity: 0.8,
+  },
+  sourcesDivider: {
+    height: 1,
+    marginTop: Spacing.xl,
+    marginBottom: Spacing.md,
+    opacity: 0.5,
+  },
+  sourcesDisclaimer: {
+    lineHeight: 16,
+    fontStyle: 'italic' as const,
+  },
+  sourcesToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: Spacing.sm,
+    paddingVertical: 4,
+  },
+  sourceLinkRow: {
+    marginTop: 4,
+    paddingLeft: 20,
+  },
+  sourceLink: {
+    ...TextStyles.caption,
+    textDecorationLine: 'underline' as const,
+    lineHeight: 18,
   },
 });
 

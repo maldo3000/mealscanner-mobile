@@ -143,12 +143,12 @@ export function Button({
             {
               left: fullWidthGlowInset,
               right: fullWidthGlowInset,
-              backgroundColor: Platform.OS === 'android' ? `${tokens.accent}20` : 'transparent',
+              backgroundColor: 'transparent',
               shadowColor: tokens.accent,
               shadowOffset: { width: 0, height: 0 },
-              shadowOpacity: disabled ? 0.25 : fullWidth ? 0.6 : 0.45,
+              shadowOpacity: Platform.OS === 'android' ? 0 : (disabled ? 0.25 : fullWidth ? 0.6 : 0.45),
               shadowRadius: fullWidth ? 12 : 9,
-              elevation: fullWidth ? 8 : 6,
+              elevation: Platform.OS === 'android' ? 0 : (fullWidth ? 8 : 6),
             },
           ]}
         />

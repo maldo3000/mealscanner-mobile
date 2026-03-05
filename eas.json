@@ -1,7 +1,7 @@
 {
   "cli": {
     "version": ">= 16.17.3",
-    "appVersionSource": "remote"
+    "appVersionSource": "local"
   },
   "build": {
     "development": {
@@ -23,6 +23,10 @@
     "production": {
       "ios": {
         "ascAppId": "6755496251"
+      },
+      "android": {
+        "serviceAccountKeyPath": "./mealscanner-345c8e63fe16.json",
+        "track": "internal"
       }
     }
   }

@@ -27,7 +27,7 @@ import { FontFamilies, TextStyles } from '@/constants/Typography';
 import { useTheme } from '@/context/ThemeContext';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { useColorScheme } from '@/hooks/useColorScheme';
-import { transcribeAudioDirect } from '@/lib/supabase';
+import { isDailyLimitError, transcribeAudioDirect } from '@/lib/supabase';
 import { getCleanTranscript } from '@/lib/transcription';
 import { AnalysisLoadingOverlay, AnalysisStatus } from './AnalysisLoadingOverlay';
 import { VoicePulseSkia } from './VoicePulseSkia';
@@ -210,8 +210,12 @@ export function MealStagingScreen(props: MealStagingScreenProps): React.ReactEle
             return trimmed ? `${trimmed} ${transcript}` : transcript;
           });
         }
-      } catch {
-        Alert.alert('Transcription Error', 'Failed to transcribe audio. Please try again or type your feedback.');
+      } catch (err) {
+        if (isDailyLimitError(err)) {
+          Alert.alert('Scan Limit Reached', err instanceof Error ? err.message : "You've hit today's scan limit. This resets at midnight UTC.");
+        } else {
+          Alert.alert('Transcription Error', 'Failed to transcribe audio. Please try again or type your feedback.');
+        }
       } finally {
         setIsTranscribing(false);
       }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const FIRST_LAUNCH_KEY = '@mealscanner/hasLaunchedBefore';
+const INSTALL_DATE_KEY = '@mealscanner/installDate';
 
 interface UseFirstLaunchResult {
   /** Whether this is the user's first time launching the app */
@@ -35,11 +36,19 @@ export function useFirstLaunch(): UseFirstLaunchResult {
         const hasLaunchedBefore = await AsyncStorage.getItem(FIRST_LAUNCH_KEY);
         
         if (hasLaunchedBefore === null) {
-          // First time launching - set the flag for future launches
           setIsFirstLaunch(true);
           await AsyncStorage.setItem(FIRST_LAUNCH_KEY, 'true');
+          const existingDate = await AsyncStorage.getItem(INSTALL_DATE_KEY);
+          if (!existingDate) {
+            await AsyncStorage.setItem(INSTALL_DATE_KEY, new Date().toISOString());
+          }
         } else {
           setIsFirstLaunch(false);
+          // Backfill install date for existing users who upgraded
+          const existingDate = await AsyncStorage.getItem(INSTALL_DATE_KEY);
+          if (!existingDate) {
+            await AsyncStorage.setItem(INSTALL_DATE_KEY, new Date().toISOString());
+          }
         }
       } catch (error) {
         // If AsyncStorage fails, treat as returning user (safer default)
@@ -54,6 +63,13 @@ export function useFirstLaunch(): UseFirstLaunchResult {
   }, []);
 
   return { isFirstLaunch, isChecking };
+}
+
+/**
+ * Returns the ISO date string when the app was first launched, or null if not set.
+ */
+export async function getInstallDate(): Promise<string | null> {
+  return AsyncStorage.getItem(INSTALL_DATE_KEY);
 }
 
 /**

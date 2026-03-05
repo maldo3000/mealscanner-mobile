@@ -30,8 +30,8 @@ import { queryKeys } from '@/lib/queryKeys';
 import { analyzeMealMulti, deleteMeal, duplicateMealWithTimestamp, getMealById, getMealItems, setMealHeroItem, transcribeAudioDirect, updateMeal } from '@/lib/supabase';
 import { getCleanTranscript } from '@/lib/transcription';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
     Alert,
     Dimensions,
@@ -140,6 +140,7 @@ export default function MealDetailScreen() {
     carbs: meal.macros?.carbs || 0,
     fat: meal.macros?.fat || 0
   } : null);
+  const mealTagForegroundColor = mealTag.label === 'Carb-forward' ? '#000000' : 'white';
 
   // Helper to format macro values to 1 decimal point max, removing trailing .0
   const formatMacro = (val: number | undefined | null) => {
@@ -206,11 +207,13 @@ export default function MealDetailScreen() {
     }
   };
 
-  useEffect(() => {
-    if (id) {
-      loadMealDetail();
-    }
-  }, [id]);
+  useFocusEffect(
+    useCallback(() => {
+      if (id && analysisStatus === 'idle') {
+        loadMealDetail();
+      }
+    }, [id, analysisStatus])
+  );
 
   const loadMealDetail = async () => {
     try {
@@ -884,22 +887,6 @@ export default function MealDetailScreen() {
             <Text style={[TextStyles.h3, { color: colors.text, flex: 1 }]}>
               {getMealTitle()}
             </Text>
-            {/* Show health score for AI meals, or "Quick Logged" badge for database meals */}
-            {isDatabaseMeal ? (
-              <View style={[styles.healthBadge, { backgroundColor: '#3B82F6' }]}>
-                <IconSymbol name="bolt.fill" size={14} color="white" />
-                <Text style={[TextStyles.bodySmall, { color: 'white', fontWeight: '600' }]}>
-                  Quick Logged
-                </Text>
-              </View>
-            ) : (
-              <View style={[styles.healthBadge, { backgroundColor: mealTag.color }]}>
-                <IconSymbol name={mealTag.icon as any} size={16} color="white" />
-                <Text style={[TextStyles.bodySmall, { color: 'white', fontWeight: '600' }]}>
-                  {mealTag.label}
-                </Text>
-              </View>
-            )}
           </View>
 
           {/* Only show AI description for non-database meals */}
@@ -914,17 +901,36 @@ export default function MealDetailScreen() {
           )}
           
           <View style={styles.metaContainer}>
-            <View style={[styles.mealTypeBadge, { backgroundColor: neonGreen, flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
-              <IconSymbol 
-                name={getMealType(meal.created_at) === 'Pill' ? 'pill' : 'fork.knife'} 
-                size={14} 
-                color="#000000" 
-              />
-              <Text style={[TextStyles.bodySmall, { color: '#000000', fontWeight: '600' }]}>
-                {getMealType(meal.created_at)}
-              </Text>
+            <View style={styles.metaBadgesRow}>
+              <View style={[styles.mealTypeBadge, { backgroundColor: neonGreen, flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
+                <IconSymbol
+                  name={getMealType(meal.created_at) === 'Pill' ? 'pill' : 'fork.knife'}
+                  size={14}
+                  color="#000000"
+                />
+                <Text style={[TextStyles.bodySmall, { color: '#000000', fontWeight: '600' }]}>
+                  {getMealType(meal.created_at)}
+                </Text>
+              </View>
+
+              {/* Show health score for AI meals, or "Quick Logged" badge for database meals */}
+              {isDatabaseMeal ? (
+                <View style={[styles.healthBadge, { backgroundColor: '#3B82F6' }]}>
+                  <IconSymbol name="bolt.fill" size={14} color="white" />
+                  <Text style={[TextStyles.bodySmall, { color: 'white', fontWeight: '600' }]}>
+                    Quick Logged
+                  </Text>
+                </View>
+              ) : (
+                <View style={[styles.healthBadge, { backgroundColor: mealTag.color }]}>
+                  <IconSymbol name={mealTag.icon as any} size={16} color={mealTagForegroundColor} />
+                  <Text style={[TextStyles.bodySmall, { color: mealTagForegroundColor, fontWeight: '600' }]}>
+                    {mealTag.label}
+                  </Text>
+                </View>
+              )}
             </View>
-            
+
             <View style={styles.dateTimeRow}>
               <IconSymbol name="calendar" size={16} color={colors.icon} />
               <Text style={[TextStyles.bodySmall, { color: colors.icon, marginLeft: Spacing.xs }]}>
@@ -936,16 +942,14 @@ export default function MealDetailScreen() {
 
         {/* Nutrition Overview - Enhanced Cards */}
         {!!meal.calories && (
-          <AnimatedCard delay={200}>
+          <AnimatedCard delay={200} style={{ marginBottom: PageSpacing.sectionGap }}>
             <View style={styles.sectionHeader}>
               <IconSymbol name="chart.bar" size={24} color={colors.tint} />
               <View style={{ flex: 1 }}>
                 <Text style={[TextStyles.h4, { color: colors.text }]}>Nutrition Overview</Text>
-                {activeGoal && (
-                  <Text style={[TextStyles.bodySmall, { color: colors.icon }]}>
-                    Based on your {activeGoal.name.toLowerCase()} goal of {formatMacro(activeGoal.dailyTargets.calories)} kcal / day
-                  </Text>
-                )}
+                <Text style={[TextStyles.bodySmall, { color: colors.icon }]}>
+                  {getMealTitle()}
+                </Text>
               </View>
             </View>
             <Text style={[TextStyles.caption, { color: colors.icon, marginBottom: Spacing.md }]}>
@@ -1033,7 +1037,7 @@ export default function MealDetailScreen() {
             {/* Micronutrients Section (Pro Only) */}
             {isPro && hasMicronutrientData && !!meal.macros && (
               <View style={styles.microsSection}>
-                <Text style={[TextStyles.bodySmall, { color: colors.icon, marginBottom: Spacing.sm, fontWeight: '600' }]}>
+                <Text style={[TextStyles.bodySmall, { color: colors.icon, marginBottom: 2, fontWeight: '600', marginLeft: Spacing.sm }]}>
                   Micronutrients
                 </Text>
                 <View style={styles.macrosGrid}>
@@ -1176,7 +1180,7 @@ export default function MealDetailScreen() {
             <>
               {/* Health Assessment - Quote Style */}
               {meal.qualitative_feedback && (
-                <AnimatedCard delay={450} style={styles.quoteCard}>
+                <AnimatedCard delay={450} style={[styles.quoteCard, { marginBottom: PageSpacing.sectionGap }]}>
                   <View style={styles.quoteHeader}>
                     <IconSymbol name="brain.head.profile" size={24} color={colors.tint} />
                     <Text style={[TextStyles.h4, { color: colors.text }]}>
@@ -1194,7 +1198,7 @@ export default function MealDetailScreen() {
 
               {/* Recommendations */}
               {meal.ai_analysis?.recommendations && meal.ai_analysis.recommendations.length > 0 && (
-                <AnimatedCard delay={600}>
+                <AnimatedCard delay={600} style={{ marginBottom: PageSpacing.sectionGap }}>
                   <View style={styles.sectionHeader}>
                     <IconSymbol name="lightbulb" size={24} color={colors.tint} />
                     <Text style={[TextStyles.h4, { color: colors.text }]}>
@@ -1240,6 +1244,16 @@ export default function MealDetailScreen() {
                   </View>
                 </AnimatedCard>
               )}
+
+              {/* AI Disclaimer */}
+              {(meal.qualitative_feedback || (meal.ai_analysis?.recommendations && meal.ai_analysis.recommendations.length > 0)) && (
+                <View style={[styles.aiDisclaimer, { marginBottom: PageSpacing.sectionGap }]}>
+                  <IconSymbol name="info.circle" size={14} color={colors.icon} />
+                  <Text style={[TextStyles.caption, { color: colors.icon, flex: 1, lineHeight: 16 }]}>
+                    AI-generated estimates. For informational purposes only. Not medical advice.
+                  </Text>
+                </View>
+              )}
             </>
           ) : (
             <UpgradePrompt 
@@ -1253,7 +1267,7 @@ export default function MealDetailScreen() {
 
         {/* Ingredients - Tag Style */}
         {meal.ingredients && meal.ingredients.length > 0 && (
-          <AnimatedCard delay={500}>
+          <AnimatedCard delay={500} style={{ marginBottom: PageSpacing.sectionGap }}>
             <View style={styles.sectionHeader}>
               <IconSymbol name="list.bullet" size={24} color={colors.tint} />
               <Text style={[TextStyles.h4, { color: colors.text }]}>
@@ -1266,7 +1280,7 @@ export default function MealDetailScreen() {
 
         {/* Serving Size */}
         {meal.serving_estimate && (
-          <AnimatedCard delay={550}>
+          <AnimatedCard delay={550} style={{ marginBottom: PageSpacing.sectionGap }}>
             <View style={styles.sectionHeader}>
               <IconSymbol name="scalemass" size={24} color={colors.tint} />
               <Text style={[TextStyles.h4, { color: colors.text }]}>
@@ -1281,7 +1295,7 @@ export default function MealDetailScreen() {
 
         {/* Processing Status */}
         {meal.processing_status && meal.processing_status !== 'completed' && (
-          <AnimatedCard delay={650}>
+          <AnimatedCard delay={650} style={{ marginBottom: PageSpacing.sectionGap }}>
             <View style={styles.sectionHeader}>
               <IconSymbol 
                 name={meal.processing_status === 'processing' ? 'hourglass' : 
@@ -1711,11 +1725,13 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   metaContainer: {
+    gap: Spacing.sm,
+  },
+  metaBadgesRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     flexWrap: 'wrap',
-    gap: Spacing.md,
+    gap: Spacing.sm,
   },
   mealTypeBadge: {
     paddingHorizontal: Spacing.base,
@@ -1744,11 +1760,12 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   caloriesHero: {
-    marginBottom: Spacing.xs,
+    marginBottom: 0,
   },
   caloriesCard: {
     width: '100%',
     padding: Spacing.base,
+    paddingBottom: Spacing.xs,
     minHeight: 140,
   },
   macrosGrid: {
@@ -1776,13 +1793,16 @@ const styles = StyleSheet.create({
   macroCard: {
     width: '100%',
     padding: Spacing.sm,
+    minWidth: 0,
   },
   educationCardButton: {
     width: '100%',
   },
   microsSection: {
-    marginTop: Spacing.xs,
-    padding: Spacing.sm,
+    marginTop: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.sm,
     // Panel container styling
     backgroundColor: 'rgba(255, 255, 255, 0.03)',
     borderRadius: 16,
@@ -2110,5 +2130,11 @@ const styles = StyleSheet.create({
   },
   androidPickerButton: {
     flex: 1,
+  },
+  aiDisclaimer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
   },
 }); 

@@ -20,10 +20,11 @@ import { File, Paths } from 'expo-file-system/next';
 import { useRouter } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import React, { useCallback, useRef, useState } from 'react';
-import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Animated, { Easing, FadeInDown } from 'react-native-reanimated';
 
-import { deleteAccount, deleteMeal, getAllUserMeals } from '@/lib/supabase';
+import { presentCodeRedemptionSheet } from '@/lib/revenueCat';
+import { deleteAccount, deleteMeal, getAllUserMealIds, getAllUserMeals } from '@/lib/supabase';
 
 interface MenuRowProps {
   icon: any;
@@ -222,7 +223,7 @@ export default function ProfileTabScreen() {
           onPress: async () => {
             if (!user) return;
             try {
-              const { data: meals } = await getAllUserMeals(user.id);
+              const { data: meals } = await getAllUserMealIds(user.id);
               if (meals && meals.length > 0) {
                 await Promise.all(meals.map(meal => deleteMeal(meal.id)));
               }
@@ -402,6 +403,14 @@ export default function ProfileTabScreen() {
                 title="Restore Purchases" 
                 onPress={handleRestorePurchases}
                 isLoading={isRestoring}
+                isLast={Platform.OS !== 'ios'}
+              />
+            )}
+            {!isPro && Platform.OS === 'ios' && (
+              <MenuRow
+                icon="giftcard"
+                title="Redeem Promo Code"
+                onPress={presentCodeRedemptionSheet}
                 isLast={true}
               />
             )}
@@ -467,6 +476,11 @@ export default function ProfileTabScreen() {
               icon="lock.doc" 
               title="Terms of Service" 
               onPress={() => router.push('/settings/terms-of-service')} 
+            />
+            <MenuRow 
+              icon="doc.text" 
+              title="Sources" 
+              onPress={() => router.push('/settings/sources' as any)} 
             />
             <MenuRow 
               icon="rectangle.portrait.and.arrow.right" 

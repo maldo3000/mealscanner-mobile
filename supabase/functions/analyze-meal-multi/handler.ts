@@ -1,10 +1,12 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { createUnauthorizedResponse, validateUserMatch, verifyAuth } from '../_shared/auth.ts'
 import { getSmartCorsHeaders, handleCorsPreflightRequest } from '../_shared/cors.ts'
+import { checkDailyUserLimit, createDailyLimitResponse } from '../_shared/dailyLimit.ts'
 import { ipBlocklistMiddleware } from '../_shared/ipBlocklist.ts'
 import { getLLMRouter } from '../_shared/llm/router.ts'
 import type { ChatMessage, LLMConfig, ModelQualityMetrics } from '../_shared/llm/types.ts'
 import { checkRateLimit, createRateLimitResponse, getRateLimitIdentifier, RateLimitPresets } from '../_shared/rateLimit.ts'
+import { logUsage } from '../_shared/usageLog.ts'
 import { AnalyzeMealMultiRequestSchema, createValidationErrorResponse, validateRequest } from '../_shared/validation.ts'
 
 export interface MealMultiItemInput {
@@ -661,25 +663,13 @@ export async function handleAnalyzeMealMulti(req: Request): Promise<Response> {
     console.log(`👤 TREATED AS PRO: ${isPro ? '✅ YES' : '❌ NO'}`);
     console.log('*****************************************');
 
-    // 2. Extra Security: Check daily scan limit for free users on the backend
-    if (!isPro) {
-      const hasAIItems = rawItems.some((item: any) => item.itemType === 'photo' || item.itemType === 'text');
-      if (hasAIItems) {
-        const today = new Date().toISOString().split('T')[0];
-        const { count, error: countError } = await supabase
-          .from('meals')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', userId)
-          .gte('created_at', today);
-
-        if (countError) {
-          console.error('❌ Error checking scan limit:', countError);
-        } else if (count !== null && count >= 3) {
-          return new Response(
-            JSON.stringify({ success: false, error: 'Daily scan limit reached. Upgrade to Pro for unlimited scans!' }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 }
-          );
-        }
+    // 2. Daily usage limit — applies to ALL users (free: 3/day, Pro: 100/day)
+    const hasAIItems = rawItems.some((item: any) => item.itemType === 'photo' || item.itemType === 'text');
+    if (hasAIItems) {
+      const dailyLimitResult = await checkDailyUserLimit(supabase as any, userId, isPro);
+      if (!dailyLimitResult.allowed) {
+        console.warn(`🚫 Daily limit reached for user ${userId} (${dailyLimitResult.count}/${dailyLimitResult.limit}, isPro=${isPro})`);
+        return createDailyLimitResponse(dailyLimitResult, corsHeaders);
       }
     }
 
@@ -910,6 +900,18 @@ export async function handleAnalyzeMealMulti(req: Request): Promise<Response> {
     if (routing) {
       console.log(`🎯 Routing info: model=${routing.model}, isCanary=${routing.isCanary}, usedFallback=${routing.usedFallback}, latency=${routing.latencyMs}ms`)
     }
+
+    logUsage({
+      userId,
+      mealId: finalMealId,
+      functionName: 'analyze-meal-multi',
+      action: mealId ? 'reanalyze' : 'initial_scan',
+      model: routing?.model ?? chatResponse.model,
+      promptTokens: chatResponse.usage?.prompt_tokens,
+      completionTokens: chatResponse.usage?.completion_tokens,
+      totalTokens: chatResponse.usage?.total_tokens,
+      isPro,
+    });
 
     const analysisTextRaw = chatResponse.content
     const analysisText = stripMarkdown(analysisTextRaw)

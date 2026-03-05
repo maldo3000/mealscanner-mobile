@@ -7,6 +7,11 @@ export type NutrientKey =
   | 'sodium'
   | 'cholesterol';
 
+export interface NutrientSource {
+  label: string;
+  url: string;
+}
+
 export interface NutrientEducation {
   title: string;
   summary: string;
@@ -14,6 +19,7 @@ export interface NutrientEducation {
   whyItMatters: string[];
   dailyGuidance: string;
   commonSources: string[];
+  sources: NutrientSource[];
 }
 
 export const NUTRIENT_EDUCATION_CONTENT: Record<NutrientKey, NutrientEducation> = {
@@ -30,6 +36,10 @@ export const NUTRIENT_EDUCATION_CONTENT: Record<NutrientKey, NutrientEducation> 
     dailyGuidance:
       'A general target is about 0.8 g per kg of body weight for minimum needs. Many active adults aim higher, often around 1.2-1.6 g per kg.',
     commonSources: ['Eggs and dairy', 'Fish and poultry', 'Tofu, tempeh, beans, and lentils'],
+    sources: [
+      { label: 'USDA Dietary Guidelines for Americans', url: 'https://www.dietaryguidelines.gov' },
+      { label: 'NIH Office of Dietary Supplements — Protein', url: 'https://ods.od.nih.gov/factsheets/Protein-Consumer/' },
+    ],
   },
   carbs: {
     title: 'Carbohydrates: What They Are and Why They Matter',
@@ -44,6 +54,10 @@ export const NUTRIENT_EDUCATION_CONTENT: Record<NutrientKey, NutrientEducation> 
     dailyGuidance:
       'General guidance is often 45-65% of daily calories from carbohydrates, with intake adjusted to activity level and goals.',
     commonSources: ['Fruit and potatoes', 'Oats, rice, and whole grains', 'Beans and lentils'],
+    sources: [
+      { label: 'USDA Dietary Guidelines for Americans', url: 'https://www.dietaryguidelines.gov' },
+      { label: 'FDA — Nutrition Facts Label', url: 'https://www.fda.gov/food/nutrition-facts-label/added-sugars-nutrition-facts-label' },
+    ],
   },
   fat: {
     title: 'Fat: What It Is and Why It Matters',
@@ -58,6 +72,10 @@ export const NUTRIENT_EDUCATION_CONTENT: Record<NutrientKey, NutrientEducation> 
     dailyGuidance:
       'A common guideline is 20-35% of daily calories from fat, with most intake coming from unsaturated fat sources.',
     commonSources: ['Olive oil and avocado', 'Nuts and seeds', 'Fatty fish like salmon and sardines'],
+    sources: [
+      { label: 'USDA Dietary Guidelines for Americans', url: 'https://www.dietaryguidelines.gov' },
+      { label: 'American Heart Association — Dietary Fats', url: 'https://www.heart.org/en/healthy-living/healthy-eating/eat-smart/fats/dietary-fats' },
+    ],
   },
   fiber: {
     title: 'Fiber: What It Is and Why It Matters',
@@ -72,6 +90,10 @@ export const NUTRIENT_EDUCATION_CONTENT: Record<NutrientKey, NutrientEducation> 
     dailyGuidance:
       'General guidance is about 25 g/day for most women and 38 g/day for most men, though needs vary by age and body size.',
     commonSources: ['Beans and lentils', 'Berries and fruit', 'Oats, chia, and vegetables'],
+    sources: [
+      { label: 'USDA Dietary Guidelines for Americans', url: 'https://www.dietaryguidelines.gov' },
+      { label: 'FDA — Dietary Fiber', url: 'https://www.fda.gov/food/nutrition-facts-label/nutrition-facts-label-dietary-fiber' },
+    ],
   },
   sugar: {
     title: 'Sugar: What It Is and Why It Matters',
@@ -86,6 +108,10 @@ export const NUTRIENT_EDUCATION_CONTENT: Record<NutrientKey, NutrientEducation> 
     dailyGuidance:
       'A common guideline is to keep added sugar below 10% of total daily calories. Lower intake may help with appetite and energy control.',
     commonSources: ['Fruit and dairy (natural sugars)', 'Sweetened drinks and desserts', 'Sauces and packaged snacks'],
+    sources: [
+      { label: 'WHO — Sugars Intake for Adults and Children', url: 'https://www.who.int/publications/i/item/9789241549028' },
+      { label: 'USDA Dietary Guidelines for Americans', url: 'https://www.dietaryguidelines.gov' },
+    ],
   },
   sodium: {
     title: 'Sodium: What It Is and Why It Matters',
@@ -100,6 +126,10 @@ export const NUTRIENT_EDUCATION_CONTENT: Record<NutrientKey, NutrientEducation> 
     dailyGuidance:
       'General guidance is to stay under about 2,300 mg/day unless your clinician recommends a different target.',
     commonSources: ['Table salt and seasoning blends', 'Restaurant and packaged foods', 'Processed meats, soups, and sauces'],
+    sources: [
+      { label: 'FDA — Sodium in Your Diet', url: 'https://www.fda.gov/food/nutrition-education-resources-materials/sodium-your-diet' },
+      { label: 'American Heart Association — Sodium', url: 'https://www.heart.org/en/healthy-living/healthy-eating/eat-smart/sodium/sodium-and-salt' },
+    ],
   },
   cholesterol: {
     title: 'Cholesterol: What It Is and Why It Matters',
@@ -114,5 +144,9 @@ export const NUTRIENT_EDUCATION_CONTENT: Record<NutrientKey, NutrientEducation> 
     dailyGuidance:
       'There is no single universal daily cholesterol target for all adults. In practice, heart-healthy patterns emphasize more fiber and unsaturated fats.',
     commonSources: ['Egg yolks and shellfish', 'Meat and full-fat dairy', 'Organ meats'],
+    sources: [
+      { label: 'USDA Dietary Guidelines for Americans', url: 'https://www.dietaryguidelines.gov' },
+      { label: 'American Heart Association — Cholesterol', url: 'https://www.heart.org/en/health-topics/cholesterol' },
+    ],
   },
 };

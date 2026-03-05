@@ -1,6 +1,7 @@
 import { BlurView } from 'expo-blur';
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+    Linking,
     Modal,
     Platform,
     Pressable,
@@ -44,6 +45,7 @@ export function NutrientEducationModal({ visible, nutrient, onClose }: NutrientE
   const { tokens, withAlpha } = useTheme();
   const { height: windowHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const [sourcesExpanded, setSourcesExpanded] = useState(false);
   
   // Animation state
   const scale = useSharedValue(0.9);
@@ -56,6 +58,7 @@ export function NutrientEducationModal({ visible, nutrient, onClose }: NutrientE
     } else {
       scale.value = 0.9;
       opacity.value = 0;
+      setSourcesExpanded(false);
     }
   }, [visible]);
 
@@ -165,6 +168,44 @@ export function NutrientEducationModal({ visible, nutrient, onClose }: NutrientE
                   ))}
                 </View>
               </View>
+
+              <View style={[styles.divider, { backgroundColor: tokens.borderSubtle }]} />
+              <Text style={[TextStyles.caption, styles.disclaimer, { color: tokens.textMuted }]}>
+                For informational purposes only. Not medical advice.
+              </Text>
+
+              {content.sources.length > 0 && (
+                <TouchableOpacity
+                  onPress={() => setSourcesExpanded(!sourcesExpanded)}
+                  style={styles.sourcesToggle}
+                  accessibilityRole="button"
+                  accessibilityLabel={sourcesExpanded ? 'Hide sources' : 'Show sources'}
+                >
+                  <IconSymbol name="doc.text" size={14} color={tokens.textMuted} />
+                  <Text style={[TextStyles.caption, { color: tokens.textMuted }]}>
+                    Sources (tap to view)
+                  </Text>
+                  <IconSymbol
+                    name={sourcesExpanded ? 'chevron.up' : 'chevron.down'}
+                    size={12}
+                    color={tokens.textMuted}
+                  />
+                </TouchableOpacity>
+              )}
+
+              {sourcesExpanded && content.sources.map((source) => (
+                <TouchableOpacity
+                  key={source.url}
+                  onPress={() => Linking.openURL(source.url)}
+                  accessibilityRole="link"
+                  accessibilityLabel={`Open source: ${source.label}`}
+                  style={styles.sourceLinkRow}
+                >
+                  <Text style={[styles.sourceLink, { color: tokens.accent }]}>
+                    {source.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </ScrollView>
           </View>
         </Animated.View>
@@ -272,5 +313,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
+  },
+  disclaimer: {
+    lineHeight: 16,
+    fontStyle: 'italic' as const,
+  },
+  sourcesToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: Spacing.sm,
+    paddingVertical: 4,
+  },
+  sourceLinkRow: {
+    marginTop: 4,
+    paddingLeft: 20,
+  },
+  sourceLink: {
+    ...TextStyles.caption,
+    textDecorationLine: 'underline' as const,
+    lineHeight: 18,
   },
 });

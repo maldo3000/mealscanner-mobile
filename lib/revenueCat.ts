@@ -187,6 +187,22 @@ export async function restorePurchases(): Promise<CustomerInfo> {
 }
 
 /**
+ * Present Apple's promo code redemption sheet (iOS only).
+ * On non-iOS platforms this is a no-op.
+ */
+export async function presentCodeRedemptionSheet(): Promise<void> {
+  if (Platform.OS !== 'ios') return;
+
+  try {
+    await Purchases.presentCodeRedemptionSheet();
+    console.log('🛒 Code redemption sheet presented');
+  } catch (error) {
+    console.error('🛒 Failed to present code redemption sheet:', error);
+    throw error;
+  }
+}
+
+/**
  * Add listener for customer info updates
  */
 export function addCustomerInfoUpdateListener(

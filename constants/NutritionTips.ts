@@ -5,12 +5,18 @@
  * Tips are intentionally practical, short, and skimmable.
  */
 
+export interface TipSource {
+  label: string;
+  url: string;
+}
+
 export interface NutritionTip {
   id: string;
   title: string;
   summary: string;
   markdown: string;
   tags: string[];
+  sources: readonly TipSource[];
 }
 
 export const NUTRITION_TIPS: readonly NutritionTip[] = [
@@ -34,6 +40,10 @@ Protein is made of amino acids — the building blocks your body uses for muscle
 ## Quick check (today)
 Add a palm-sized protein to one meal you usually don’t (breakfast is a great place to start).`,
     tags: ['macro', 'protein', 'satiety'],
+    sources: [
+      { label: 'USDA Dietary Guidelines for Americans', url: 'https://www.dietaryguidelines.gov' },
+      { label: 'NIH — Protein', url: 'https://ods.od.nih.gov/factsheets/Protein-Consumer/' },
+    ],
   },
   {
     id: 'carbs-quality',
@@ -54,6 +64,9 @@ Carbohydrates are your body’s quickest fuel source. They include sugars, starc
 ## Quick check (today)
 Pair carbs with protein and/or fat for steadier energy (e.g., fruit + yogurt, rice + chicken + veggies).`,
     tags: ['macro', 'carbs', 'energy'],
+    sources: [
+      { label: 'USDA Dietary Guidelines for Americans', url: 'https://www.dietaryguidelines.gov' },
+    ],
   },
   {
     id: 'fat-basics',
@@ -74,6 +87,10 @@ Fat is a concentrated energy source. It also helps absorb fat-soluble vitamins (
 ## Quick check (today)
 If a meal feels “not satisfying,” add a small fat source (1 tbsp olive oil, a handful of nuts, or avocado).`,
     tags: ['macro', 'fat', 'satiety'],
+    sources: [
+      { label: 'AHA — Dietary Fats', url: 'https://www.heart.org/en/healthy-living/healthy-eating/eat-smart/fats/dietary-fats' },
+      { label: 'USDA Dietary Guidelines for Americans', url: 'https://www.dietaryguidelines.gov' },
+    ],
   },
   {
     id: 'fiber-hero',
@@ -95,6 +112,10 @@ Fiber is the part of plants you don’t fully digest. It feeds beneficial gut ba
 ## Quick check (today)
 Add one “fiber anchor” to your next meal: a fruit, a big handful of veggies, or ½ cup beans/lentils.`,
     tags: ['macro', 'fiber', 'gut'],
+    sources: [
+      { label: 'FDA — Dietary Fiber', url: 'https://www.fda.gov/food/nutrition-facts-label/nutrition-facts-label-dietary-fiber' },
+      { label: 'USDA Dietary Guidelines for Americans', url: 'https://www.dietaryguidelines.gov' },
+    ],
   },
   {
     id: 'sodium-smart',
@@ -114,6 +135,10 @@ Sodium is a mineral (an electrolyte) found naturally in foods and added as salt.
 ## Quick check (today)
 If you’re cooking at home, use herbs/spices + a measured pinch of salt, and taste at the end. If you eat out, balance the day with potassium-rich foods (fruit, potatoes, beans).`,
     tags: ['micro', 'sodium', 'electrolytes'],
+    sources: [
+      { label: 'FDA — Sodium in Your Diet', url: 'https://www.fda.gov/food/nutrition-education-resources-materials/sodium-your-diet' },
+      { label: 'AHA — Sodium', url: 'https://www.heart.org/en/healthy-living/healthy-eating/eat-smart/sodium/sodium-and-salt' },
+    ],
   },
   {
     id: 'potassium-balance',
@@ -133,6 +158,9 @@ Potassium is an electrolyte found mostly in plant foods (and dairy).
 ## Quick check (today)
 Add one potassium-rich item to a salty day: a banana, a baked potato, or a cup of beans/lentils.`,
     tags: ['micro', 'potassium', 'electrolytes'],
+    sources: [
+      { label: 'NIH — Potassium', url: 'https://ods.od.nih.gov/factsheets/Potassium-Consumer/' },
+    ],
   },
   {
     id: 'magnesium-calm',
@@ -154,6 +182,9 @@ Magnesium is a mineral used in energy production, muscle relaxation, and nerve f
 ## Quick check (today)
 Try a magnesium snack: yogurt + pumpkin seeds, or a handful of nuts with fruit.`,
     tags: ['micro', 'magnesium', 'recovery'],
+    sources: [
+      { label: 'NIH — Magnesium', url: 'https://ods.od.nih.gov/factsheets/Magnesium-Consumer/' },
+    ],
   },
   {
     id: 'calcium-beyond-milk',
@@ -174,6 +205,9 @@ Calcium is a mineral stored mostly in your bones, but it’s also used constantl
 ## Quick check (today)
 Add one calcium source: yogurt at breakfast, fortified milk in coffee, or tofu in a stir-fry.`,
     tags: ['micro', 'calcium', 'bones'],
+    sources: [
+      { label: 'NIH — Calcium', url: 'https://ods.od.nih.gov/factsheets/Calcium-Consumer/' },
+    ],
   },
   {
     id: 'iron-energy',
@@ -196,6 +230,9 @@ Pair plant iron with vitamin C (citrus, bell pepper, strawberries) to improve ab
 ## Quick check (today)
 Add a vitamin C side to a plant-based meal (beans + salsa, lentils + lemon).`,
     tags: ['micro', 'iron', 'energy'],
+    sources: [
+      { label: 'NIH — Iron', url: 'https://ods.od.nih.gov/factsheets/Iron-Consumer/' },
+    ],
   },
   {
     id: 'vitamin-d',
@@ -215,6 +252,9 @@ Vitamin D helps your body absorb calcium and supports immune function.
 ## Quick check (today)
 If you rarely eat vitamin D foods, add one: eggs at breakfast or salmon at dinner. (Supplements can help, but talk with a clinician if unsure.)`,
     tags: ['micro', 'vitaminD', 'bones'],
+    sources: [
+      { label: 'NIH — Vitamin D', url: 'https://ods.od.nih.gov/factsheets/VitaminD-Consumer/' },
+    ],
   },
   {
     id: 'b12-basics',
@@ -234,6 +274,9 @@ Vitamin B12 supports nerve health and red blood cell production.
 ## Quick check (today)
 If you’re mostly plant-based, look for a reliable B12 source (fortified foods or a supplement plan with guidance).`,
     tags: ['micro', 'vitaminB12', 'plantBased'],
+    sources: [
+      { label: 'NIH — Vitamin B12', url: 'https://ods.od.nih.gov/factsheets/VitaminB12-Consumer/' },
+    ],
   },
   {
     id: 'folate',
@@ -253,6 +296,9 @@ Folate (vitamin B9) is used for DNA synthesis and cell division.
 ## Quick check (today)
 Add a legume: toss lentils into a salad or add black beans to a bowl.`,
     tags: ['micro', 'folate', 'recovery'],
+    sources: [
+      { label: 'NIH — Folate', url: 'https://ods.od.nih.gov/factsheets/Folate-Consumer/' },
+    ],
   },
   {
     id: 'vitamin-c',
@@ -273,6 +319,9 @@ Vitamin C is a water-soluble vitamin found in many fruits and vegetables.
 ## Quick check (today)
 Add a “C booster” to one meal: fruit after lunch, or peppers/tomatoes in a salad.`,
     tags: ['micro', 'vitaminC', 'ironAbsorption'],
+    sources: [
+      { label: 'NIH — Vitamin C', url: 'https://ods.od.nih.gov/factsheets/VitaminC-Consumer/' },
+    ],
   },
   {
     id: 'zinc',
@@ -293,6 +342,9 @@ Zinc is a mineral involved in immune function, skin health, and protein synthesi
 ## Quick check (today)
 Top a meal with pumpkin seeds or add a serving of beans to boost zinc (and fiber).`,
     tags: ['micro', 'zinc', 'immune'],
+    sources: [
+      { label: 'NIH — Zinc', url: 'https://ods.od.nih.gov/factsheets/Zinc-Consumer/' },
+    ],
   },
   {
     id: 'iodine-thyroid',
@@ -311,6 +363,9 @@ Iodine is a mineral used to make thyroid hormones.
 ## Quick check (today)
 If you use specialty salts (sea salt, Himalayan) most of the time, consider keeping iodized salt for some home cooking (a small amount goes a long way).`,
     tags: ['micro', 'iodine', 'thyroid'],
+    sources: [
+      { label: 'NIH — Iodine', url: 'https://ods.od.nih.gov/factsheets/Iodine-Consumer/' },
+    ],
   },
   {
     id: 'selenium',
@@ -326,6 +381,9 @@ Selenium is a mineral used in antioxidant enzymes and thyroid hormone metabolism
 ## Quick check (today)
 Add selenium simply: include eggs or fish, or 1 Brazil nut if you enjoy them (avoid overdoing it).`,
     tags: ['micro', 'selenium', 'thyroid'],
+    sources: [
+      { label: 'NIH — Selenium', url: 'https://ods.od.nih.gov/factsheets/Selenium-Consumer/' },
+    ],
   },
   {
     id: 'hydration',
@@ -342,6 +400,10 @@ Hydration supports energy, focus, digestion, and exercise performance.
 ## Quick check (today)
 Use a tiny habit: drink a full glass of water before your first coffee, and another with lunch.`,
     tags: ['habits', 'hydration'],
+    sources: [
+      { label: 'National Academies — Water Intake', url: 'https://nap.nationalacademies.org/read/10925/chapter/6' },
+      { label: 'CDC — Water and Healthier Drinks', url: 'https://www.cdc.gov/healthy-weight-growth/food-activity/water-healthier-drinks.html' },
+    ],
   },
   {
     id: 'balanced-plate',
@@ -354,6 +416,9 @@ When you’re unsure what to eat, build a plate with:\n\n- **Protein** (palm-siz
 ## Quick check (today)
 At your next meal, add the missing part. If it’s mostly carbs, add protein. If it’s mostly protein, add plants.`,
     tags: ['habits', 'balancedPlate'],
+    sources: [
+      { label: 'USDA Dietary Guidelines for Americans', url: 'https://www.dietaryguidelines.gov' },
+    ],
   },
   {
     id: 'label-reading',
@@ -365,6 +430,9 @@ When comparing two packaged foods, check:\n\n- **Protein** (more helps satiety)\
 ## Quick check (today)
 Pick one snack you buy often and find a higher-protein or higher-fiber version.`,
     tags: ['habits', 'labels'],
+    sources: [
+      { label: 'FDA — How to Understand and Use the Nutrition Facts Label', url: 'https://www.fda.gov/food/nutrition-facts-label/how-understand-and-use-nutrition-facts-label' },
+    ],
   },
   {
     id: 'added-sugar',
@@ -380,6 +448,10 @@ Added sugar is sugar added during processing/cooking (different from sugar natur
 ## Quick check (today)
 If you’re craving sweets, try the “pairing rule”: sweet + protein (fruit + yogurt, chocolate + nuts).`,
     tags: ['habits', 'sugar', 'satiety'],
+    sources: [
+      { label: 'WHO — Sugars Intake Guidelines', url: 'https://www.who.int/publications/i/item/9789241549028' },
+      { label: 'USDA Dietary Guidelines for Americans', url: 'https://www.dietaryguidelines.gov' },
+    ],
   },
   {
     id: 'ultra-processed',
@@ -389,6 +461,9 @@ If you’re craving sweets, try the “pairing rule”: sweet + protein (fruit +
 It’s not “good vs bad.” It’s that some foods are:\n\n- Fast to eat\n- Low in protein/fiber\n- Easy to keep snacking on\n\n## Quick check (today)
 If you eat an ultra-processed snack, add a “brake” food next to it: fruit, yogurt, or a handful of nuts.`,
     tags: ['habits', 'processedFoods'],
+    sources: [
+      { label: 'USDA Dietary Guidelines for Americans', url: 'https://www.dietaryguidelines.gov' },
+    ],
   },
   {
     id: 'protein-breakfast',
@@ -402,6 +477,9 @@ Starting the day with protein often improves satiety and steadier energy.
 ## Quick check (today)
 Add 20–30g protein to breakfast (or your first meal) and notice hunger timing.`,
     tags: ['habits', 'protein', 'breakfast'],
+    sources: [
+      { label: 'USDA Dietary Guidelines for Americans', url: 'https://www.dietaryguidelines.gov' },
+    ],
   },
   {
     id: 'post-workout',
@@ -413,6 +491,9 @@ After training, aim for:\n\n- **Protein** to support muscle repair\n- **Carbs** 
 ## Quick check (today)
 Within a couple hours after your workout, get a protein + carb combo you actually enjoy.`,
     tags: ['habits', 'recovery', 'training'],
+    sources: [
+      { label: 'ACSM — Nutrition and Athletic Performance', url: 'https://www.acsm.org/education-resources/trending-topics-resources/nutrition-physical-activity' },
+    ],
   },
   {
     id: 'snack-structure',
@@ -423,6 +504,9 @@ A satisfying snack usually includes:\n\n- **Protein** (yogurt, cheese, jerky, to
 ## Quick check (today)
 Upgrade one snack using the template (apple + peanut butter, yogurt + berries, hummus + veggies).`,
     tags: ['habits', 'snacks', 'satiety'],
+    sources: [
+      { label: 'USDA Dietary Guidelines for Americans', url: 'https://www.dietaryguidelines.gov' },
+    ],
   },
   {
     id: 'satiety-signals',
@@ -433,6 +517,9 @@ Upgrade one snack using the template (apple + peanut butter, yogurt + berries, h
 ## Quick check (today)
 If you’re often hungry after meals, add one driver: extra veggies, a side of fruit, or a bigger protein portion.`,
     tags: ['habits', 'satiety'],
+    sources: [
+      { label: 'USDA Dietary Guidelines for Americans', url: 'https://www.dietaryguidelines.gov' },
+    ],
   },
   {
     id: 'omega-3',
@@ -446,6 +533,9 @@ Omega-3s are a type of fat. Two common ones are EPA and DHA (mostly from seafood
 ## Quick check (today)
 If you like fish, plan one omega-3 meal this week. If not, add chia/flax to oats or yogurt.`,
     tags: ['macro', 'fat', 'omega3'],
+    sources: [
+      { label: 'NIH — Omega-3 Fatty Acids', url: 'https://ods.od.nih.gov/factsheets/Omega3FattyAcids-Consumer/' },
+    ],
   },
   {
     id: 'cholesterol-context',
@@ -456,6 +546,9 @@ For many people, overall eating pattern matters more than avoiding a single nutr
 ## Quick check (today)
 If you’re improving “heart-friendly” eating, add a fiber anchor (beans/oats/fruit) and swap one fat source to olive oil or nuts.`,
     tags: ['habits', 'heartHealth'],
+    sources: [
+      { label: 'AHA — Cholesterol', url: 'https://www.heart.org/en/health-topics/cholesterol' },
+    ],
   },
   {
     id: 'saturated-fat',
@@ -467,6 +560,9 @@ Common sources include butter, high-fat dairy, fatty cuts of meat, and some bake
 ## Quick check (today)
 Pick one swap: olive oil instead of butter, or add avocado/nuts to a meal and reduce a saturated-fat heavy side.`,
     tags: ['habits', 'fat'],
+    sources: [
+      { label: 'AHA — Saturated Fat', url: 'https://www.heart.org/en/healthy-living/healthy-eating/eat-smart/fats/saturated-fats' },
+    ],
   },
   {
     id: 'meal-timing',
@@ -478,6 +574,9 @@ Long gaps can lead to “hangry” choices. A simple rhythm helps.
 ## Quick check (today)
 If you often crash mid-afternoon, add a planned snack 2–3 hours after lunch (protein + fiber).`,
     tags: ['habits', 'mealTiming'],
+    sources: [
+      { label: 'USDA Dietary Guidelines for Americans', url: 'https://www.dietaryguidelines.gov' },
+    ],
   },
   {
     id: 'volume-eating',
@@ -491,6 +590,9 @@ Foods high in water and fiber that take up space in your stomach.
 ## Quick check (today)
 Add a “volume side” to dinner: soup, salad, or a pile of roasted veggies.`,
     tags: ['habits', 'satiety', 'volume'],
+    sources: [
+      { label: 'USDA Dietary Guidelines for Americans', url: 'https://www.dietaryguidelines.gov' },
+    ],
   },
   {
     id: 'micronutrient-diversity',
@@ -501,6 +603,9 @@ Try to rotate:\n- Protein sources (fish, poultry, beans, tofu)\n- Fruits/veggies
 ## Quick check (today)
 Add one new color to your plate (red peppers, purple cabbage, blueberries, spinach).`,
     tags: ['habits', 'micronutrients'],
+    sources: [
+      { label: 'USDA Dietary Guidelines for Americans', url: 'https://www.dietaryguidelines.gov' },
+    ],
   },
   {
     id: 'gut-friendly',
@@ -511,6 +616,9 @@ Add one new color to your plate (red peppers, purple cabbage, blueberries, spina
 ## Quick check (today)
 Add one “extra plant” today: berries, beans, leafy greens, or a side of vegetables.`,
     tags: ['habits', 'gut', 'fiber'],
+    sources: [
+      { label: 'USDA Dietary Guidelines for Americans', url: 'https://www.dietaryguidelines.gov' },
+    ],
   },
   {
     id: 'sleep-nutrition',
@@ -521,6 +629,9 @@ Add one “extra plant” today: berries, beans, leafy greens, or a side of vege
 ## Quick check (today)
 If you often snack late, try a planned evening snack: yogurt + fruit, or toast + eggs.`,
     tags: ['habits', 'sleep'],
+    sources: [
+      { label: 'NIH — Sleep Health', url: 'https://www.nhlbi.nih.gov/health/sleep' },
+    ],
   },
   {
     id: 'energy-drinks',
@@ -532,6 +643,9 @@ If sleep is a goal, keep caffeine earlier in the day.
 ## Quick check (today)
 Set a caffeine cutoff time (example: 2pm) and see how your sleep and cravings change.`,
     tags: ['habits', 'caffeine', 'sleep'],
+    sources: [
+      { label: 'FDA — Spilling the Beans on Caffeine', url: 'https://www.fda.gov/consumers/consumer-updates/spilling-beans-how-much-caffeine-too-much' },
+    ],
   },
   {
     id: 'restaurant-strategy',
@@ -542,6 +656,9 @@ Order:\n- A clear protein\n- A veggie side (or add a salad)\n- Enjoy carbs/desse
 ## Quick check (today)
 If you eat out, ask for an extra veggie side or swap fries for a salad (when you actually want it).`,
     tags: ['habits', 'restaurants', 'balance'],
+    sources: [
+      { label: 'USDA Dietary Guidelines for Americans', url: 'https://www.dietaryguidelines.gov' },
+    ],
   },
   {
     id: 'salt-sweat',
@@ -553,6 +670,9 @@ If you train hard, sweat heavily, or it’s hot, sodium needs can increase.
 ## Quick check (today)
 On a heavy-sweat day, include electrolytes: a salty meal, broth, or an electrolyte drink you tolerate. If you have blood pressure concerns, follow your clinician’s guidance.`,
     tags: ['micro', 'sodium', 'training'],
+    sources: [
+      { label: 'ACSM — Nutrition and Athletic Performance', url: 'https://www.acsm.org/education-resources/trending-topics-resources/nutrition-physical-activity' },
+    ],
   },
   {
     id: 'nutrition-mindset',
@@ -563,6 +683,20 @@ Pick one upgrade you can do most days:\n- Add a protein at breakfast\n- Add a fr
 ## Quick check (today)
 Choose one tiny upgrade and do it once. That’s the win.`,
     tags: ['habits', 'mindset'],
+    sources: [
+      { label: 'USDA Dietary Guidelines for Americans', url: 'https://www.dietaryguidelines.gov' },
+    ],
   },
+] as const;
+
+export const ALL_NUTRITION_SOURCES = [
+  { label: 'USDA Dietary Guidelines for Americans', url: 'https://www.dietaryguidelines.gov' },
+  { label: 'NIH Office of Dietary Supplements', url: 'https://ods.od.nih.gov' },
+  { label: 'FDA — Nutrition Facts Label', url: 'https://www.fda.gov/food/nutrition-facts-label' },
+  { label: 'WHO — Nutrition', url: 'https://www.who.int/health-topics/nutrition' },
+  { label: 'American Heart Association — Healthy Eating', url: 'https://www.heart.org/en/healthy-living/healthy-eating' },
+  { label: 'CDC — Water and Healthier Drinks', url: 'https://www.cdc.gov/healthy-weight-growth/food-activity/water-healthier-drinks.html' },
+  { label: 'National Academies — Dietary Reference Intakes', url: 'https://nap.nationalacademies.org/read/10925/chapter/6' },
+  { label: 'ACSM — Nutrition and Athletic Performance', url: 'https://www.acsm.org/education-resources/trending-topics-resources/nutrition-physical-activity' },
 ] as const;
 

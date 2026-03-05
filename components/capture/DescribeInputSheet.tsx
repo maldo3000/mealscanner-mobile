@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { LayoutChangeEvent, NativeSyntheticEvent, TextInputContentSizeChangeEventData } from 'react-native';
 import {
+    Alert,
     Keyboard,
     KeyboardAvoidingView,
     Platform,
@@ -24,7 +25,7 @@ import { Spacing } from '@/constants/Spacing';
 import { TextStyles } from '@/constants/Typography';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { useColorScheme } from '@/hooks/useColorScheme';
-import { transcribeAudioDirect } from '@/lib/supabase';
+import { isDailyLimitError, transcribeAudioDirect } from '@/lib/supabase';
 import { getCleanTranscript } from '@/lib/transcription';
 import { VoicePulseSkia } from './VoicePulseSkia';
 
@@ -114,8 +115,6 @@ export function DescribeInputSheet(props: DescribeInputSheetProps): React.ReactE
               const p = prev.trim();
               const newText = p ? `${p} ${transcript}` : transcript;
 
-              // After programmatic text update, scroll to reveal all content
-              // and move the cursor to the end so the user sees the new text
               setTimeout(() => {
                 scrollToEndSoon(true);
                 inputRef.current?.setNativeProps({
@@ -125,6 +124,12 @@ export function DescribeInputSheet(props: DescribeInputSheetProps): React.ReactE
 
               return newText;
             });
+          }
+        } catch (err) {
+          if (isDailyLimitError(err)) {
+            Alert.alert('Scan Limit Reached', err instanceof Error ? err.message : "You've hit today's scan limit. This resets at midnight UTC.");
+          } else {
+            Alert.alert('Transcription Error', 'Failed to transcribe audio. Please try again or type your description.');
           }
         } finally {
           setIsTranscribing(false);

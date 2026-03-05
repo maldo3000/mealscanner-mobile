@@ -27,10 +27,12 @@ import { useTheme } from '@/context/ThemeContext';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { useFeatureAccess } from '@/hooks/useFeatureAccess';
 import { useMealCaptureDraft } from '@/hooks/useMealCaptureDraft';
+import { useReviewPrompt } from '@/hooks/useReviewPrompt';
 import type { AnalyzeMealMultiItemInput, DatabaseFoodMealData } from '@/lib/supabase';
 import {
     analyzeMealMulti,
     analyzeRecipeFromImage,
+    isDailyLimitError,
     isRecipeFeatureUnavailableError,
     saveDatabaseMeal,
     uploadMealImage,
@@ -79,6 +81,7 @@ export function GlobalCaptureController({ activeAction, onClose, onActionProcess
   const [permission, requestPermission] = useCameraPermissions();
   const draft = useMealCaptureDraft();
   const { canScan, isPro, scanLimitState, incrementScan, ensureSubscriptionSynced } = useFeatureAccess();
+  const { trackSuccessfulScan } = useReviewPrompt();
 
   const [cameraMode, setCameraMode] = useState<'meal' | 'recipe' | null>(null);
   const [describeOpen, setDescribeOpen] = useState<boolean>(false);
@@ -355,6 +358,7 @@ export function GlobalCaptureController({ activeAction, onClose, onActionProcess
 
       if (hasAIItems) await incrementScan();
       setAnalysisStatus('success');
+      void trackSuccessfulScan();
       await new Promise(resolve => setTimeout(resolve, 1500));
       await draft.discardSession();
       onClose();
@@ -363,12 +367,19 @@ export function GlobalCaptureController({ activeAction, onClose, onActionProcess
       if (mealId) router.push(`/meal/${mealId}`);
       else router.push('/(tabs)/journal');
     } catch (error) {
-      Alert.alert('Error', 'Analysis failed');
+      if (isDailyLimitError(error)) {
+        Alert.alert(
+          'Scan Limit Reached',
+          error instanceof Error ? error.message : "You've hit today's scan limit. This resets at midnight UTC.",
+        );
+      } else {
+        Alert.alert('Error', 'Analysis failed');
+      }
     } finally {
       setAnalysisStatus('idle');
       isAnalyzeInFlightRef.current = false;
     }
-  }, [analysisStatus, draft, router, user, canScan, incrementScan, isPro, onClose, ensureSubscriptionSynced]);
+  }, [analysisStatus, draft, router, user, canScan, incrementScan, isPro, onClose, ensureSubscriptionSynced, trackSuccessfulScan]);
 
   // Recipe handlers
   const handleRecipePhotoCaptured = useCallback(

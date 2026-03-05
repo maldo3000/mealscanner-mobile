@@ -217,6 +217,13 @@ export function WeeklyReportDetailModal({ visible, onClose, report }: WeeklyRepo
               </Text>
             </View>
 
+            <View style={styles.disclaimerRow}>
+              <IconSymbol name="info.circle" size={14} color={tokens.textMuted} />
+              <Text style={[TextStyles.caption, { color: tokens.textMuted, flex: 1, lineHeight: 16, fontStyle: 'italic' }]}>
+                AI-generated report. For informational purposes only. Not medical advice.
+              </Text>
+            </View>
+
             <View style={{ height: 80 }} />
           </ScrollView>
         </View>
@@ -312,6 +319,12 @@ const styles = StyleSheet.create({
   verdictEmoji: {
     fontSize: 14,
     fontWeight: '700',
+  },
+  disclaimerRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.xs,
   },
 });
 

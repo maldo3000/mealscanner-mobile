@@ -441,6 +441,15 @@ export const getAllUserMeals = async (userId: string, daysLimit?: number) => {
   return { data, error }
 }
 
+export const getAllUserMealIds = async (userId: string) => {
+  const { data, error } = await supabase
+    .from('meals')
+    .select('id')
+    .eq('user_id', userId)
+
+  return { data, error }
+}
+
 const JOURNAL_LIST_COLUMNS = [
   'id', 'description', 'image_url', 'calories', 'macros',
   'created_at', 'meal_type', 'health_score', 'ingredients',
@@ -471,10 +480,14 @@ export const getJournalMeals = async (
 }
 
 export const getStreakMeals = async (userId: string) => {
+  const ninetyDaysAgo = new Date()
+  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
+
   const { data, error } = await supabase
     .from('meals')
     .select('id, created_at, health_score')
     .eq('user_id', userId)
+    .gte('created_at', ninetyDaysAgo.toISOString())
     .order('created_at', { ascending: false })
 
   return { data, error }
@@ -790,13 +803,18 @@ export const analyzeMealMulti = async (payload: AnalyzeMealMultiRequest) => {
         try {
           const responseClone = (error as any).context.clone();
           const body = await responseClone.json();
+          if (body.error === 'daily_limit_reached') {
+            const e = new Error(body.message || 'Daily scan limit reached');
+            (e as any).code = 'daily_limit_reached';
+            throw e;
+          }
           if (body.details || body.error) {
             const detailMsg = body.details || body.error;
             console.error('❌ Server details:', detailMsg);
             throw new Error(`Edge Function Error: ${detailMsg}`);
           }
         } catch (e) {
-          // If we couldn't parse the JSON, just log that we tried
+          if ((e as any)?.code === 'daily_limit_reached') throw e;
           console.error('❌ Could not parse error context body');
         }
       }
@@ -804,7 +822,6 @@ export const analyzeMealMulti = async (payload: AnalyzeMealMultiRequest) => {
       // Try to log context or detailed error info if available
       if ((error as any).context) {
         try {
-          // Note: context might already be read, so we rely on the clone above for detailed body extraction
           const context = typeof (error as any).context === 'string' 
             ? JSON.parse((error as any).context) 
             : (error as any).context;
@@ -1098,6 +1115,16 @@ export const getMealsWithAnalysis = async (userId: string, limit = 20) => {
   return { data, error }
 }
 
+/**
+ * Returns true if the error is a daily usage limit (429) from an edge function.
+ * The error's `.message` contains the user-facing text.
+ */
+export const isDailyLimitError = (error: unknown): boolean => {
+  if (error && typeof error === 'object' && (error as any).code === 'daily_limit_reached') return true;
+  if (error instanceof Error && error.message.toLowerCase().includes('daily scan limit')) return true;
+  return false;
+};
+
 // Recipe Analysis Functions
 const RECIPE_FEATURE_DISABLED_MESSAGE = 'Recipe generation is currently unavailable.'
 
@@ -1193,12 +1220,13 @@ export const analyzeRecipeFromText = async (description: string, userId: string,
 }
 
 // Recipe CRUD Functions
-export const getUserRecipes = async (userId: string) => {
+export const getUserRecipes = async (userId: string, limit = 100) => {
   const { data, error } = await supabase
     .from('recipes')
     .select('*')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
+    .limit(limit)
   
   return { data, error }
 }
@@ -1216,55 +1244,41 @@ export const getRecipeById = async (recipeId: string) => {
 export const getRecipeWithDetails = async (recipeId: string) => {
   console.log('🍳 Supabase: getRecipeWithDetails called with ID:', recipeId);
   
-  const { data: recipe, error: recipeError } = await supabase
+  const { data: recipeWithDetails, error: recipeError } = await supabase
     .from('recipes')
-    .select('*')
+    .select(`
+      *,
+      ingredients:recipe_ingredients(*),
+      instructions:recipe_instructions(*)
+    `)
     .eq('id', recipeId)
     .single()
 
-  console.log('🍳 Supabase: Recipe query result:', { recipe: !!recipe, error: recipeError });
+  console.log('🍳 Supabase: Recipe query result:', { recipe: !!recipeWithDetails, error: recipeError });
   
   if (recipeError) {
     console.error('🍳 Supabase: Recipe error details:', JSON.stringify(recipeError));
     return { data: null, error: recipeError }
   }
 
-  if (!recipe) {
+  if (!recipeWithDetails) {
     console.error('🍳 Supabase: No recipe found for ID:', recipeId);
     return { data: null, error: { message: 'Recipe not found' } }
   }
 
-  console.log('🍳 Supabase: Found recipe:', recipe.name, 'ID:', recipe.id);
+  console.log('🍳 Supabase: Found recipe:', recipeWithDetails.name, 'ID:', recipeWithDetails.id);
 
-  // Get ingredients
-  console.log('🍳 Supabase: Fetching ingredients for recipe ID:', recipeId);
-  const { data: ingredients, error: ingredientsError } = await supabase
-    .from('recipe_ingredients')
-    .select('*')
-    .eq('recipe_id', recipeId)
-    .order('order_index')
-
-  console.log('🍳 Supabase: Ingredients query result:', { count: ingredients?.length || 0, error: ingredientsError });
-
-  // Get instructions
-  console.log('🍳 Supabase: Fetching instructions for recipe ID:', recipeId);
-  const { data: instructions, error: instructionsError } = await supabase
-    .from('recipe_instructions')
-    .select('*')
-    .eq('recipe_id', recipeId)
-    .order('step_number')
-
-  console.log('🍳 Supabase: Instructions query result:', { count: instructions?.length || 0, error: instructionsError });
-
-  if (ingredientsError || instructionsError) {
-    console.error('🍳 Supabase: Error fetching ingredients/instructions:', { ingredientsError, instructionsError });
-    return { data: null, error: ingredientsError || instructionsError }
-  }
+  const ingredients = Array.isArray(recipeWithDetails.ingredients)
+    ? [...recipeWithDetails.ingredients].sort((a, b) => (a?.order_index ?? 0) - (b?.order_index ?? 0))
+    : []
+  const instructions = Array.isArray(recipeWithDetails.instructions)
+    ? [...recipeWithDetails.instructions].sort((a, b) => (a?.step_number ?? 0) - (b?.step_number ?? 0))
+    : []
 
   const result = {
-    ...recipe,
-    ingredients: ingredients || [],
-    instructions: instructions || []
+    ...recipeWithDetails,
+    ingredients,
+    instructions
   };
 
   console.log('🍳 Supabase: Returning recipe with details:', {
@@ -1444,10 +1458,14 @@ export const transcribeAudioDirect = async (audioUri: string, userId: string, la
       // When edge function returns non-2xx, Supabase puts error response in data field
       // Check data first for error messages (this happens when function returns 500 with JSON body)
       if (data && typeof data === 'object') {
+        if ((data as any).error === 'daily_limit_reached') {
+          const e = new Error((data as any).message || 'Daily scan limit reached');
+          (e as any).code = 'daily_limit_reached';
+          throw e;
+        }
         if ('error' in data) {
           const errorFromData = (data as any).error
           console.error('Edge function returned error in data:', errorFromData)
-          // Check if it's a deployment issue
           if (typeof errorFromData === 'string' && (errorFromData.includes('not found') || errorFromData.includes('404'))) {
             throw new Error('speech-to-text-direct edge function not deployed. Please run: supabase functions deploy speech-to-text-direct')
           }
@@ -1456,7 +1474,6 @@ export const transcribeAudioDirect = async (audioUri: string, userId: string, la
           }
           throw new Error(errorFromData)
         }
-        // Some functions return { success: false, error: ... }
         if ('success' in data && data.success === false && 'error' in data) {
           const errorFromData = (data as any).error
           console.error('Edge function returned failure in data:', errorFromData)

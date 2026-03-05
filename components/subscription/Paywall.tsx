@@ -226,7 +226,7 @@ export function Paywall({ visible, onClose, title, subtitle, feature }: PaywallP
     { icon: 'camera.fill', text: 'Unlimited meal scans' },
     { icon: 'sparkles', text: 'Unlock the entire recipe database' },
     { icon: 'chart.bar.fill', text: 'Full nutrition breakdown' },
-    { icon: 'arrow.clockwise', text: 'Unlimited re-analysis' },
+    { icon: 'doc.text.magnifyingglass', text: 'Weekly nutrition report' },
   ];
 
   return (

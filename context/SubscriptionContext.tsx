@@ -249,22 +249,40 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       };
     };
 
-    try {
-      console.log('🛒 Ensuring subscription synced to database (server-authoritative)');
-      
-      const { error } = await syncSubscriptionTier();
-      
-      if (error) {
-        console.error('🛒 Failed to sync subscription before operation:', formatSyncError(error));
-        return false;
+    const MAX_ATTEMPTS = 3;
+    const BASE_DELAY_MS = 800;
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      try {
+        console.log(`🛒 Ensuring subscription synced (attempt ${attempt}/${MAX_ATTEMPTS})`);
+
+        const { error } = await syncSubscriptionTier();
+
+        if (!error) {
+          console.log('🛒 ✅ Subscription tier confirmed in database');
+          return true;
+        }
+
+        console.warn(
+          `🛒 Sync attempt ${attempt}/${MAX_ATTEMPTS} failed:`,
+          formatSyncError(error),
+        );
+      } catch (error) {
+        console.warn(
+          `🛒 Sync attempt ${attempt}/${MAX_ATTEMPTS} threw:`,
+          formatSyncError(error),
+        );
       }
-      
-      console.log('🛒 ✅ Subscription tier confirmed in database');
-      return true;
-    } catch (error) {
-      console.error('🛒 Failed to sync subscription before operation:', formatSyncError(error));
-      return false;
+
+      if (attempt < MAX_ATTEMPTS) {
+        const delay = BASE_DELAY_MS * attempt;
+        console.log(`🛒 Retrying in ${delay}ms...`);
+        await new Promise<void>((resolve) => setTimeout(resolve, delay));
+      }
     }
+
+    console.error('🛒 All sync attempts exhausted — returning false');
+    return false;
   }, [user?.id, isPro, isBetaTester]);
 
   return (

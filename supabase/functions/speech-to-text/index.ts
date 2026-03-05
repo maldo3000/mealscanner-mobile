@@ -1,9 +1,13 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createUnauthorizedResponse, validateUserMatch, verifyAuth } from '../_shared/auth.ts'
 import { getSmartCorsHeaders, handleCorsPreflightRequest } from '../_shared/cors.ts'
+import { checkDailyUserLimit, createDailyLimitResponse } from '../_shared/dailyLimit.ts'
 import { getLLMRouter } from '../_shared/llm/router.ts'
 import type { LLMConfig } from '../_shared/llm/types.ts'
 import { checkRateLimit, createRateLimitResponse, getRateLimitIdentifier, RateLimitPresets } from '../_shared/rateLimit.ts'
+import { getProAccessForUser } from '../_shared/subscription.ts'
+import { logUsage } from '../_shared/usageLog.ts'
 
 interface SpeechToTextRequest {
   audio_url: string
@@ -125,6 +129,14 @@ serve(async (req) => {
       return createRateLimitResponse(rateLimitResult, corsHeaders)
     }
 
+    // Daily usage limit (free: 3/day, Pro: 100/day)
+    const supabase = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '')
+    const { isPro } = await getProAccessForUser(supabase as any, auth.userId)
+    const dailyLimitResult = await checkDailyUserLimit(supabase as any, auth.userId, isPro)
+    if (!dailyLimitResult.allowed) {
+      return createDailyLimitResponse(dailyLimitResult, corsHeaders)
+    }
+
     const { audio_url, user_id: payload_user_id, language = 'en', llm }: SpeechToTextRequest = await req.json()
     
     // Use authenticated user ID, validate if payload specifies one
@@ -170,6 +182,14 @@ serve(async (req) => {
 
     const rawTranscript = transcriptionResult.transcript.trim()
     console.log('Speech-to-text completed:', rawTranscript.substring(0, 50) + '...')
+
+    logUsage({
+      userId: user_id,
+      functionName: 'speech-to-text',
+      action: 'voice_input',
+      model: 'whisper-1',
+      isPro,
+    });
 
     // Filter out hallucinations
     if (isHallucination(rawTranscript)) {
