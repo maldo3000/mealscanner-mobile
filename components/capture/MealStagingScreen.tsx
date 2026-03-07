@@ -163,6 +163,7 @@ export function MealStagingScreen(props: MealStagingScreenProps): React.ReactEle
   const [showContextModal, setShowContextModal] = useState<boolean>(false);
   const [tempContext, setTempContext] = useState<string>(contextText);
   const [isTranscribing, setIsTranscribing] = useState<boolean>(false);
+  const [isTranscriptionSlow, setIsTranscriptionSlow] = useState<boolean>(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState<boolean>(false);
   const [isPreparingAnalyze, setIsPreparingAnalyze] = useState<boolean>(false);
   const [isAnalyzeInFlight, setIsAnalyzeInFlight] = useState<boolean>(false);
@@ -172,6 +173,7 @@ export function MealStagingScreen(props: MealStagingScreenProps): React.ReactEle
   const tempContextRef = useRef(tempContext);
   const isAnalyzeInFlightRef = useRef<boolean>(false);
   const transcriptionPromiseRef = useRef<Promise<void> | null>(null);
+  const transcriptionAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     isTranscribingRef.current = isTranscribing;
@@ -200,8 +202,16 @@ export function MealStagingScreen(props: MealStagingScreenProps): React.ReactEle
     if (!audioUri) return Promise.resolve();
     const task = (async () => {
       setIsTranscribing(true);
+      setIsTranscriptionSlow(false);
+      const controller = new AbortController();
+      transcriptionAbortRef.current = controller;
       try {
-        const { data, error } = await transcribeAudioDirect(audioUri, userId);
+        const { data, error } = await transcribeAudioDirect(audioUri, userId, {
+          signal: controller.signal,
+          timeoutMs: 120_000,
+          slowRequestMs: 30_000,
+          onSlowRequest: () => setIsTranscriptionSlow(true),
+        });
         if (error) throw error;
         const transcript = getCleanTranscript(data?.transcript);
         if (transcript) {
@@ -211,13 +221,21 @@ export function MealStagingScreen(props: MealStagingScreenProps): React.ReactEle
           });
         }
       } catch (err) {
-        if (isDailyLimitError(err)) {
+        if (err instanceof Error && err.message === 'Transcription cancelled') {
+          // User cancelled in-flight transcription; keep modal responsive without alert noise.
+        } else if (isDailyLimitError(err)) {
           Alert.alert('Scan Limit Reached', err instanceof Error ? err.message : "You've hit today's scan limit. This resets at midnight UTC.");
+        } else if (err instanceof Error && err.message.toLowerCase().includes('timed out')) {
+          Alert.alert('Transcription Timeout', 'This is taking longer than expected. Please try again or use a shorter recording.');
         } else {
           Alert.alert('Transcription Error', 'Failed to transcribe audio. Please try again or type your feedback.');
         }
       } finally {
         setIsTranscribing(false);
+        setIsTranscriptionSlow(false);
+        if (transcriptionAbortRef.current === controller) {
+          transcriptionAbortRef.current = null;
+        }
       }
     })();
 
@@ -228,6 +246,13 @@ export function MealStagingScreen(props: MealStagingScreenProps): React.ReactEle
       }
     });
   }, [userId]);
+
+  const cancelTranscription = useCallback((): void => {
+    transcriptionAbortRef.current?.abort();
+    transcriptionAbortRef.current = null;
+    setIsTranscribing(false);
+    setIsTranscriptionSlow(false);
+  }, []);
 
   const { isRecording, metering, startRecording, stopRecording } = useAudioRecorder({
     onRecordingComplete: handleAudioTranscription,
@@ -269,20 +294,25 @@ export function MealStagingScreen(props: MealStagingScreenProps): React.ReactEle
   }, [contextText]);
 
   const closeContext = useCallback(async (): Promise<void> => {
+    cancelTranscription();
     if (isRecording) {
       await stopRecording();
     }
     setShowContextModal(false);
     setTempContext('');
-  }, [isRecording, stopRecording]);
+  }, [cancelTranscription, isRecording, stopRecording]);
 
   const saveContext = useCallback(async (): Promise<void> => {
+    const shouldWaitForTranscription = isRecording || isTranscribing;
     if (isRecording) {
       await stopRecording();
     }
+    if (shouldWaitForTranscription) {
+      await waitForTranscription();
+    }
     await onSaveContext(tempContext);
     setShowContextModal(false);
-  }, [isRecording, onSaveContext, stopRecording, tempContext]);
+  }, [isRecording, isTranscribing, onSaveContext, stopRecording, tempContext, waitForTranscription]);
 
   const waitForTranscription = useCallback(async (): Promise<void> => {
     if (transcriptionPromiseRef.current) {
@@ -307,7 +337,7 @@ export function MealStagingScreen(props: MealStagingScreenProps): React.ReactEle
     setIsAnalyzeInFlight(true);
     setIsPreparingAnalyze(true);
     try {
-      // If recording is active, stop it first. stopRecording now awaits transcription callback.
+      // If recording is active, stop it first.
       if (isRecording) {
         await stopRecording();
       }
@@ -528,6 +558,16 @@ export function MealStagingScreen(props: MealStagingScreenProps): React.ReactEle
                     <SwirlingSpinner size="small" />
                     <Text style={[TextStyles.bodySmall, { color: colors.icon }]}>Transcribing…</Text>
                   </View>
+                )}
+                {isTranscribing && (
+                  <TouchableOpacity onPress={cancelTranscription} activeOpacity={0.8} style={styles.cancelTranscriptionButton}>
+                    <Text style={[TextStyles.bodySmall, { color: tokens.accent, fontWeight: '700' }]}>Cancel transcription</Text>
+                  </TouchableOpacity>
+                )}
+                {isTranscribing && isTranscriptionSlow && (
+                  <Text style={[TextStyles.caption, { color: colors.icon, marginBottom: Spacing.md }]}>
+                    Still transcribing... You can cancel and retry.
+                  </Text>
                 )}
 
                 <View style={styles.modalActions}>
@@ -835,6 +875,11 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     marginTop: -Spacing.md,
     marginBottom: Spacing.md,
+  },
+  cancelTranscriptionButton: {
+    marginTop: -Spacing.xs,
+    marginBottom: Spacing.md,
+    alignSelf: 'flex-start',
   },
 });
 

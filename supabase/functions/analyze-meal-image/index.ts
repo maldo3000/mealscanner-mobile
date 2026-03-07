@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { handleAnalyzeMealMulti } from '../analyze-meal-multi/handler.ts'
 import type { AnalyzeMealMultiRequest } from '../analyze-meal-multi/handler.ts'
+import { handleAnalyzeMealMulti } from '../analyze-meal-multi/handler.ts'
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {

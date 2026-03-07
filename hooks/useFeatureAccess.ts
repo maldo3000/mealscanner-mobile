@@ -45,7 +45,7 @@ interface UseFeatureAccessReturn {
   /** Increment scan count after successful scan */
   incrementScan: () => Promise<void>;
   /** Ensure subscription tier is synced to database before analysis */
-  ensureSubscriptionSynced: () => Promise<boolean>;
+  ensureSubscriptionSynced: (options?: { expectedIsPro?: boolean }) => Promise<boolean>;
 }
 
 /**

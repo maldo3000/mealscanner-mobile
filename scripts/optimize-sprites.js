@@ -8,9 +8,19 @@
  * Requires: npm install sharp --save-dev
  */
 
-const sharp = require('sharp');
 const fs = require('fs');
 const path = require('path');
+
+let sharp;
+
+try {
+  // Optional local dependency for asset optimization workflows.
+  sharp = require('sharp');
+} catch (error) {
+  console.error('This script requires the optional "sharp" package.');
+  console.error('Install it locally with: npm install --save-dev sharp');
+  process.exit(1);
+}
 
 const INPUT_DIR = path.join(__dirname, '../assets/images/loading-animation');
 const OUTPUT_DIR = path.join(__dirname, '../assets/images/loading-animation-optimized');

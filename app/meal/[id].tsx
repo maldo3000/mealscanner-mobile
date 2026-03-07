@@ -27,11 +27,11 @@ import { syncMealToHealthKit } from '@/lib/health/sync';
 import { getMealTag } from '@/lib/nutritionTags';
 import { queryClient } from '@/lib/queryClient';
 import { queryKeys } from '@/lib/queryKeys';
-import { analyzeMealMulti, deleteMeal, duplicateMealWithTimestamp, getMealById, getMealItems, setMealHeroItem, transcribeAudioDirect, updateMeal } from '@/lib/supabase';
+import { analyzeMealMulti, deleteMeal, duplicateMealWithTimestamp, getMealById, getMealItems, isDailyLimitError, setMealHeroItem, transcribeAudioDirect, updateMeal } from '@/lib/supabase';
 import { getCleanTranscript } from '@/lib/transcription';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     Alert,
     Dimensions,
@@ -91,7 +91,7 @@ export default function MealDetailScreen() {
   const insets = useSafeAreaInsets();
   const headerHeight = 44 + insets.top;
   const { activeGoal } = useNutritionGoals();
-  const { isPro, canScan, showPaywall, ensureSubscriptionSynced } = useFeatureAccess();
+  const { isPro, canReanalyze, showPaywall, ensureSubscriptionSynced } = useFeatureAccess();
   const actionBarHeight = 76;
   
   const [meal, setMeal] = useState<Meal | null>(null);
@@ -118,6 +118,7 @@ export default function MealDetailScreen() {
   const [tempContextText, setTempContextText] = useState('');
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>('idle');
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isTranscriptionSlow, setIsTranscriptionSlow] = useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [showEditMetaModal, setShowEditMetaModal] = useState(false);
   const [editedMealType, setEditedMealType] = useState('');
@@ -133,6 +134,9 @@ export default function MealDetailScreen() {
   // Share modal state
   const [showShareModal, setShowShareModal] = useState(false);
   const [selectedNutrient, setSelectedNutrient] = useState<NutrientKey | null>(null);
+  const transcriptionPromiseRef = useRef<Promise<void> | null>(null);
+  const transcriptionAbortRef = useRef<AbortController | null>(null);
+  const isTranscribingRef = useRef<boolean>(isTranscribing);
 
   const mealTag = getMealTag(meal ? {
     calories: meal.calories || 0,
@@ -153,6 +157,10 @@ export default function MealDetailScreen() {
   };
 
   useEffect(() => {
+    isTranscribingRef.current = isTranscribing;
+  }, [isTranscribing]);
+
+  useEffect(() => {
     const showSub = Keyboard.addListener(
       Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
       () => setIsKeyboardVisible(true)
@@ -167,25 +175,76 @@ export default function MealDetailScreen() {
     };
   }, []);
 
-  const handleAudioTranscription = async (audioUri: string) => {
-    if (!meal || !audioUri) return;
-    setIsTranscribing(true);
-    try {
-      const { data, error } = await transcribeAudioDirect(audioUri, meal.user_id);
-      if (error) throw error;
-      const transcript = getCleanTranscript(data?.transcript);
-      if (transcript) {
-        setTempContextText((prev) => {
-          const trimmed = prev.trim();
-          return trimmed ? `${trimmed} ${transcript}` : transcript;
+  const handleAudioTranscription = useCallback((audioUri: string): Promise<void> => {
+    if (!meal || !audioUri) return Promise.resolve();
+    const task = (async () => {
+      setIsTranscribing(true);
+      setIsTranscriptionSlow(false);
+      const controller = new AbortController();
+      transcriptionAbortRef.current = controller;
+      try {
+        const { data, error } = await transcribeAudioDirect(audioUri, meal.user_id, {
+          signal: controller.signal,
+          timeoutMs: 120_000,
+          slowRequestMs: 30_000,
+          onSlowRequest: () => setIsTranscriptionSlow(true),
         });
+        if (error) throw error;
+        const transcript = getCleanTranscript(data?.transcript);
+        if (transcript) {
+          setTempContextText((prev) => {
+            const trimmed = prev.trim();
+            return trimmed ? `${trimmed} ${transcript}` : transcript;
+          });
+        }
+      } catch (e) {
+        if (e instanceof Error && e.message === 'Transcription cancelled') {
+          // User cancellation should not surface as an error alert.
+        } else if (isDailyLimitError(e)) {
+          Alert.alert('Scan Limit Reached', e instanceof Error ? e.message : "You've hit today's scan limit. This resets at midnight UTC.");
+        } else if (e instanceof Error && e.message.toLowerCase().includes('timed out')) {
+          Alert.alert('Transcription Timeout', 'This is taking longer than expected. Please try again or use a shorter recording.');
+        } else {
+          Alert.alert('Transcription Error', 'Failed to transcribe audio. Please try again or type your feedback.');
+        }
+      } finally {
+        setIsTranscribing(false);
+        setIsTranscriptionSlow(false);
+        if (transcriptionAbortRef.current === controller) {
+          transcriptionAbortRef.current = null;
+        }
       }
-    } catch (e) {
-      Alert.alert('Transcription Error', 'Failed to transcribe audio. Please try again or type your feedback.');
-    } finally {
-      setIsTranscribing(false);
+    })();
+
+    transcriptionPromiseRef.current = task;
+    return task.finally(() => {
+      if (transcriptionPromiseRef.current === task) {
+        transcriptionPromiseRef.current = null;
+      }
+    });
+  }, [meal]);
+
+  const waitForTranscription = useCallback(async (): Promise<void> => {
+    if (transcriptionPromiseRef.current) {
+      await transcriptionPromiseRef.current;
+      return;
     }
-  };
+    if (isTranscribingRef.current) {
+      let attempts = 0;
+      const maxAttempts = 200;
+      while (isTranscribingRef.current && attempts < maxAttempts) {
+        await new Promise((r) => setTimeout(r, 100));
+        attempts += 1;
+      }
+    }
+  }, []);
+
+  const cancelTranscription = useCallback((): void => {
+    transcriptionAbortRef.current?.abort();
+    transcriptionAbortRef.current = null;
+    setIsTranscribing(false);
+    setIsTranscriptionSlow(false);
+  }, []);
 
   const { isRecording, metering, startRecording, stopRecording } = useAudioRecorder({
     onRecordingComplete: handleAudioTranscription,
@@ -373,16 +432,34 @@ export default function MealDetailScreen() {
 
   const handleReanalyze = async () => {
     if (!meal) return;
+
+    const reanalyzeAccess = canReanalyze();
+    if (!reanalyzeAccess.allowed) {
+      setShowReanalyzeModal(false);
+      const didUpgrade = await showPaywall();
+      if (!didUpgrade && reanalyzeAccess.reason) {
+        Alert.alert('Scan Limit Reached', reanalyzeAccess.reason);
+      }
+      return;
+    }
     
     // Close modal immediately and show high-quality loading overlay
     setShowReanalyzeModal(false);
     setAnalysisStatus('analyzing');
     
     try {
+      const shouldWaitForTranscription = isRecording || isTranscribing;
+      if (isRecording) {
+        await stopRecording();
+      }
+      if (shouldWaitForTranscription) {
+        await waitForTranscription();
+      }
+
       // CRITICAL: Ensure subscription tier is synced to database BEFORE re-analysis.
       // This fixes a race condition where the user upgrades to Pro but the backend
       // reads stale 'free' status, resulting in missing fiber/sugar/sodium/cholesterol.
-      const isSubscriptionSynced = await ensureSubscriptionSynced();
+      const isSubscriptionSynced = await ensureSubscriptionSynced({ expectedIsPro: isPro });
       if (isPro && !isSubscriptionSynced) {
         Alert.alert(
           'Unable to verify Pro access',
@@ -435,7 +512,19 @@ export default function MealDetailScreen() {
       }, 1500);
     } catch (e) {
       setAnalysisStatus('idle');
-      Alert.alert('Error', 'Failed to reanalyze meal. Please try again.');
+
+      if (isDailyLimitError(e)) {
+        Alert.alert(
+          'Scan Limit Reached',
+          e instanceof Error ? e.message : "You've hit today's scan limit. This resets at midnight UTC.",
+        );
+        return;
+      }
+
+      const rawMessage = e instanceof Error ? e.message : '';
+      const cleanedMessage = rawMessage.replace(/^Edge Function Error:\s*/i, '').trim();
+      const details = cleanedMessage.length > 0 ? cleanedMessage : 'Failed to reanalyze meal. Please try again.';
+      Alert.alert('Error', details);
     }
   };
 
@@ -1445,9 +1534,26 @@ export default function MealDetailScreen() {
                     <Text style={[TextStyles.bodySmall, { color: colors.icon }]}>Transcribing…</Text>
                   </View>
                 )}
+                {isTranscribing && (
+                  <TouchableOpacity onPress={cancelTranscription} activeOpacity={0.8} style={styles.cancelTranscriptionButton}>
+                    <Text style={[TextStyles.bodySmall, { color: neonGreen, fontWeight: '700' }]}>Cancel transcription</Text>
+                  </TouchableOpacity>
+                )}
+                {isTranscribing && isTranscriptionSlow && (
+                  <Text style={[TextStyles.caption, { color: colors.icon, marginBottom: Spacing.md }]}>
+                    Still transcribing... You can cancel and retry.
+                  </Text>
+                )}
 
                 <View style={styles.modalActions}>
-                  <Button variant="secondary" onPress={() => setShowReanalyzeModal(false)} style={styles.modalActionBtn}>
+                  <Button
+                    variant="secondary"
+                    onPress={() => {
+                      cancelTranscription();
+                      setShowReanalyzeModal(false);
+                    }}
+                    style={styles.modalActionBtn}
+                  >
                     Cancel
                   </Button>
                   <Button
@@ -2047,6 +2153,11 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     marginTop: -Spacing.md,
     marginBottom: Spacing.md,
+  },
+  cancelTranscriptionButton: {
+    marginTop: -Spacing.xs,
+    marginBottom: Spacing.md,
+    alignSelf: 'flex-start',
   },
   itemsBreakdown: {
     marginTop: Spacing.lg,

@@ -1,5 +1,11 @@
 # MealScanner – Mobile App v0.1
 
+## Start Here
+
+If you want a plain-English guide to how the app fits together, read:
+
+- `OPERATOR_MANUAL.md`
+
 Capture meals in seconds and return personalised, goal‑aligned nutrition insight with minimal friction.
 
 ## 📱 Project Overview

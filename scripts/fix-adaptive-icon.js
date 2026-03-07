@@ -14,7 +14,7 @@
  * Or:  npm run fix:adaptive-icon
  */
 
-const sharp = require('sharp');
+const { execFileSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
@@ -32,10 +32,15 @@ async function fixAdaptiveIcon() {
   console.log(`  Source: ${SOURCE_PATH}`);
   console.log(`  Output: ${OUTPUT_PATH} (${SIZE}x${SIZE})`);
 
-  await sharp(SOURCE_PATH)
-    .resize(SIZE, SIZE)
-    .png()
-    .toFile(OUTPUT_PATH);
+  if (process.platform !== 'darwin') {
+    console.error('This script currently supports macOS only.');
+    console.error('Use Preview or another image tool to resize the source icon to 1024x1024.');
+    process.exit(1);
+  }
+
+  execFileSync('sips', ['-z', String(SIZE), String(SIZE), SOURCE_PATH, '--out', OUTPUT_PATH], {
+    stdio: 'inherit',
+  });
 
   console.log('Done. Run: npx expo prebuild --clean');
 }

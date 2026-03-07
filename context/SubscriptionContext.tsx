@@ -41,7 +41,7 @@ interface SubscriptionContextType {
    * Call this before operations that depend on backend reading the subscription tier.
    * Returns true if sync succeeded.
    */
-  ensureSubscriptionSynced: () => Promise<boolean>;
+  ensureSubscriptionSynced: (options?: { expectedIsPro?: boolean }) => Promise<boolean>;
 }
 
 const SubscriptionContext = createContext<SubscriptionContextType | undefined>(undefined);
@@ -142,6 +142,76 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     syncProStatus();
   }, [user?.id, isPro, isBetaTester, isLoading]);
 
+  const formatSyncError = (error: unknown): Record<string, string | undefined> => {
+    if (!error || typeof error !== 'object') {
+      return { message: String(error) };
+    }
+
+    const candidate = error as {
+      message?: string;
+      code?: string;
+      details?: string;
+      hint?: string;
+    };
+
+    return {
+      message: candidate.message,
+      code: candidate.code,
+      details: candidate.details,
+      hint: candidate.hint,
+    };
+  };
+
+  const syncSubscriptionTierWithRetries = useCallback(async (options?: { expectedIsPro?: boolean }): Promise<boolean> => {
+    if (!user?.id) {
+      console.warn('🛒 Cannot sync subscription: no user');
+      return false;
+    }
+
+    const expectedIsPro = options?.expectedIsPro;
+    const MAX_ATTEMPTS = 3;
+    const BASE_DELAY_MS = 800;
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      try {
+        console.log(`🛒 Ensuring subscription synced (attempt ${attempt}/${MAX_ATTEMPTS})`);
+
+        const { data, error } = await syncSubscriptionTier();
+
+        if (!error) {
+          const syncedIsPro = (data as { is_pro?: boolean } | null)?.is_pro;
+          if (typeof expectedIsPro === 'boolean' && typeof syncedIsPro === 'boolean' && syncedIsPro !== expectedIsPro) {
+            console.warn(
+              `🛒 Sync attempt ${attempt}/${MAX_ATTEMPTS} mismatch: expected is_pro=${expectedIsPro}, got is_pro=${syncedIsPro}`,
+            );
+          } else {
+            console.log('🛒 ✅ Subscription tier confirmed in database');
+            return true;
+          }
+        } else {
+          console.warn(
+            `🛒 Sync attempt ${attempt}/${MAX_ATTEMPTS} failed:`,
+            formatSyncError(error),
+          );
+        }
+      } catch (error) {
+        console.warn(
+          `🛒 Sync attempt ${attempt}/${MAX_ATTEMPTS} threw:`,
+          formatSyncError(error),
+        );
+      }
+
+      if (attempt < MAX_ATTEMPTS) {
+        const delay = BASE_DELAY_MS * attempt;
+        console.log(`🛒 Retrying in ${delay}ms...`);
+        await new Promise<void>((resolve) => setTimeout(resolve, delay));
+      }
+    }
+
+    console.error('🛒 All sync attempts exhausted — returning false');
+    return false;
+  }, [user?.id]);
+
   const handlePurchasePackage = useCallback(async (pkg: PurchasesPackage): Promise<boolean> => {
     try {
       const info = await purchasePackage(pkg);
@@ -162,6 +232,15 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       setCustomerInfo(info);
       
       if (hasProEntitlement(info)) {
+        const synced = await syncSubscriptionTierWithRetries({ expectedIsPro: true });
+        if (!synced) {
+          Alert.alert(
+            'Restored with a delay',
+            'Your purchase was restored, but we could not confirm Pro on our server yet. Please wait a moment and try again.'
+          );
+          return false;
+        }
+
         Alert.alert('Restored!', 'Your Pro subscription has been restored.');
         return true;
       } else {
@@ -219,71 +298,16 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
    * Ensures the current subscription status is synced to the database.
    * This is critical before operations that depend on backend reading the subscription tier
    * (e.g., meal analysis, which checks isPro to determine extended nutrition data).
-   * 
+   *
    * Without this, there's a race condition where the user upgrades, but the backend
    * reads stale 'free' status from the database, resulting in missing fiber/sugar/sodium/cholesterol.
    */
-  const handleEnsureSubscriptionSynced = useCallback(async (): Promise<boolean> => {
-    if (!user?.id) {
-      console.warn('🛒 Cannot sync subscription: no user');
-      return false;
-    }
-
-    const formatSyncError = (error: unknown): Record<string, string | undefined> => {
-      if (!error || typeof error !== 'object') {
-        return { message: String(error) };
-      }
-
-      const candidate = error as {
-        message?: string;
-        code?: string;
-        details?: string;
-        hint?: string;
-      };
-
-      return {
-        message: candidate.message,
-        code: candidate.code,
-        details: candidate.details,
-        hint: candidate.hint,
-      };
-    };
-
-    const MAX_ATTEMPTS = 3;
-    const BASE_DELAY_MS = 800;
-
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      try {
-        console.log(`🛒 Ensuring subscription synced (attempt ${attempt}/${MAX_ATTEMPTS})`);
-
-        const { error } = await syncSubscriptionTier();
-
-        if (!error) {
-          console.log('🛒 ✅ Subscription tier confirmed in database');
-          return true;
-        }
-
-        console.warn(
-          `🛒 Sync attempt ${attempt}/${MAX_ATTEMPTS} failed:`,
-          formatSyncError(error),
-        );
-      } catch (error) {
-        console.warn(
-          `🛒 Sync attempt ${attempt}/${MAX_ATTEMPTS} threw:`,
-          formatSyncError(error),
-        );
-      }
-
-      if (attempt < MAX_ATTEMPTS) {
-        const delay = BASE_DELAY_MS * attempt;
-        console.log(`🛒 Retrying in ${delay}ms...`);
-        await new Promise<void>((resolve) => setTimeout(resolve, delay));
-      }
-    }
-
-    console.error('🛒 All sync attempts exhausted — returning false');
-    return false;
-  }, [user?.id, isPro, isBetaTester]);
+  const handleEnsureSubscriptionSynced = useCallback(
+    async (options?: { expectedIsPro?: boolean }): Promise<boolean> => {
+      return syncSubscriptionTierWithRetries(options);
+    },
+    [syncSubscriptionTierWithRetries]
+  );
 
   return (
     <SubscriptionContext.Provider

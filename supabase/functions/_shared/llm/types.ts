@@ -29,7 +29,12 @@ export interface ChatCompletionOptions {
   max_tokens?: number;
   temperature?: number;
   response_format?: {
-    type: 'json_object' | 'text';
+    type: 'json_object' | 'json_schema' | 'text';
+    json_schema?: {
+      name: string;
+      strict?: boolean;
+      schema: Record<string, unknown>;
+    };
   };
 }
 

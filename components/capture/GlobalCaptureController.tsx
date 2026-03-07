@@ -327,7 +327,7 @@ export function GlobalCaptureController({ activeAction, onClose, onActionProcess
       // CRITICAL: Ensure subscription tier is synced to database BEFORE analysis.
       // This fixes a race condition where the user upgrades to Pro but the backend
       // reads stale 'free' status, resulting in missing fiber/sugar/sodium/cholesterol.
-      const isSubscriptionSynced = await ensureSubscriptionSynced();
+      const isSubscriptionSynced = await ensureSubscriptionSynced({ expectedIsPro: isPro });
       if (isPro && !isSubscriptionSynced) {
         Alert.alert(
           'Unable to verify Pro access',

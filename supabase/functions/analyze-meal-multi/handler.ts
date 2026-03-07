@@ -75,6 +75,75 @@ interface AnalyzeMealMultiLLMResponse {
   }>
 }
 
+const MEAL_ANALYSIS_JSON_SCHEMA = {
+  name: 'meal_analysis',
+  strict: true,
+  schema: {
+    type: 'object',
+    required: ['meal', 'items'],
+    additionalProperties: false,
+    properties: {
+      meal: {
+        type: 'object',
+        required: ['name', 'description', 'serving_size', 'health_score', 'feedback', 'recommendations'],
+        additionalProperties: false,
+        properties: {
+          name: { type: 'string' },
+          description: { type: 'string' },
+          serving_size: { type: 'string' },
+          health_score: { type: 'number' },
+          feedback: { type: 'string' },
+          recommendations: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['type', 'content', 'priority'],
+              additionalProperties: false,
+              properties: {
+                type: { type: 'string' },
+                content: { type: 'string' },
+                priority: { type: 'number' },
+              },
+            },
+          },
+        },
+      },
+      items: {
+        type: 'array',
+        items: {
+          type: 'object',
+          required: ['index', 'name', 'visual_analysis', 'estimated_weight_g', 'nutrition_per_unit', 'confidence', 'needs_review'],
+          additionalProperties: false,
+          properties: {
+            index: { type: 'number' },
+            name: { type: 'string' },
+            visual_analysis: { type: 'string' },
+            estimated_weight_g: { type: 'number' },
+            nutrition_per_unit: {
+              type: 'object',
+              required: ['calories', 'protein', 'carbs', 'fat', 'fiber', 'sugar', 'sodium', 'cholesterol'],
+              additionalProperties: false,
+              properties: {
+                calories: { type: 'number' },
+                protein: { type: 'number' },
+                carbs: { type: 'number' },
+                fat: { type: 'number' },
+                fiber: { type: 'number' },
+                sugar: { type: 'number' },
+                sodium: { type: 'number' },
+                cholesterol: { type: 'number' },
+              },
+            },
+            ingredients: { type: 'array', items: { type: 'string' } },
+            confidence: { type: 'number' },
+            needs_review: { type: 'boolean' },
+          },
+        },
+      },
+    },
+  },
+} as const
+
 function toMealHealthCategory(score: number): 'very_healthy' | 'healthy' | 'needs_improvement' {
   if (score > 7) return 'very_healthy'
   if (score > 4) return 'healthy'
@@ -255,6 +324,161 @@ interface NutritionClaim {
   source: string
 }
 
+interface PortionClaim {
+  amount: number
+  unit: string
+  ingredient: string
+  source: string
+}
+
+function parseAmountToken(raw: string): number | null {
+  const normalized = raw.trim().toLowerCase()
+  if (!normalized) return null
+
+  const wordMap: Record<string, number> = {
+    half: 0.5,
+    quarter: 0.25,
+    one: 1,
+    two: 2,
+    three: 3,
+    four: 4,
+    five: 5,
+    six: 6,
+    seven: 7,
+    eight: 8,
+    nine: 9,
+    ten: 10,
+  }
+
+  if (wordMap[normalized] !== undefined) return wordMap[normalized]
+
+  const fractionMatch = normalized.match(/^(\d+)\s*\/\s*(\d+)$/)
+  if (fractionMatch) {
+    const numerator = parseInt(fractionMatch[1] ?? '', 10)
+    const denominator = parseInt(fractionMatch[2] ?? '', 10)
+    if (denominator > 0) {
+      const result = numerator / denominator
+      return Number.isFinite(result) ? result : null
+    }
+    return null
+  }
+
+  const parsed = Number.parseFloat(normalized)
+  if (Number.isFinite(parsed) && parsed > 0) return parsed
+  return null
+}
+
+function normalizePortionUnit(unit: string | undefined): string {
+  const raw = (unit ?? '').trim().toLowerCase()
+  if (!raw) return 'item'
+  const singularMap: Record<string, string> = {
+    cups: 'cup',
+    tablespoons: 'tbsp',
+    tablespoon: 'tbsp',
+    teaspoons: 'tsp',
+    teaspoon: 'tsp',
+    grams: 'g',
+    gram: 'g',
+    ounces: 'oz',
+    ounce: 'oz',
+    lbs: 'lb',
+    slices: 'slice',
+    pieces: 'piece',
+    servings: 'serving',
+    bananas: 'banana',
+    strawberries: 'strawberry',
+    eggs: 'egg',
+    apples: 'apple',
+    oranges: 'orange',
+    dates: 'date',
+  }
+  return singularMap[raw] ?? raw
+}
+
+function normalizeIngredient(raw: string): string {
+  return raw
+    .replace(/\s+/g, ' ')
+    .replace(/^of\s+/i, '')
+    .replace(/^[,.;:\-]+/, '')
+    .replace(/[,.;:]+$/, '')
+    .trim()
+}
+
+function shouldSkipPortionIngredient(ingredient: string): boolean {
+  const lowered = ingredient.toLowerCase()
+  return /^(cal|cals|calorie|calories|kcal|protein|carb|carbs|carbohydrate|carbohydrates|fat|fiber|sugar|sodium|cholesterol)\b/.test(lowered)
+}
+
+function extractPortionClaims(contextText?: string, textItems?: string[]): PortionClaim[] {
+  const claims: PortionClaim[] = []
+  const sources = [
+    ...(contextText ? [contextText] : []),
+    ...(textItems ?? []),
+  ]
+
+  const amountToken = '(?:\\d+(?:\\.\\d+)?|\\d+\\s*\\/\\s*\\d+|half|quarter|one|two|three|four|five|six|seven|eight|nine|ten)'
+  const measuredUnits = '(?:cup|cups|tbsp|tablespoon|tablespoons|tsp|teaspoon|teaspoons|g|gram|grams|kg|oz|ounce|ounces|ml|l|lb|lbs)'
+  const measuredPattern = new RegExp(`^(${amountToken})\\s*(${measuredUnits})\\s+(.{2,80})$`, 'i')
+  const countPattern = new RegExp(`^(${amountToken})\\s+(.{2,80})$`, 'i')
+
+  for (const source of sources) {
+    const segments = source
+      .split(/\n|,|;|\band\b/gi)
+      .map((segment) => segment.replace(/^[\s\-*•]+/, '').trim())
+      .filter((segment) => segment.length > 0)
+
+    for (const segment of segments) {
+      const measuredMatch = measuredPattern.exec(segment)
+      if (measuredMatch) {
+        const amount = parseAmountToken(measuredMatch[1] ?? '')
+        const unit = normalizePortionUnit(measuredMatch[2])
+        const ingredient = normalizeIngredient(measuredMatch[3] ?? '')
+        if (!amount || amount <= 0 || amount > 1000) continue
+        if (!ingredient || shouldSkipPortionIngredient(ingredient)) continue
+
+        const dedupeKey = `${amount}|${unit}|${ingredient.toLowerCase()}`
+        const exists = claims.some((claim) =>
+          `${claim.amount}|${claim.unit}|${claim.ingredient.toLowerCase()}` === dedupeKey)
+        if (!exists) {
+          claims.push({
+            amount,
+            unit,
+            ingredient,
+            source: measuredMatch[0]!.trim(),
+          })
+        }
+        continue
+      }
+
+      const countMatch = countPattern.exec(segment)
+      if (!countMatch) continue
+      const amount = parseAmountToken(countMatch[1] ?? '')
+      const rawIngredient = normalizeIngredient(countMatch[2] ?? '')
+      if (!amount || amount <= 0 || amount > 1000) continue
+      if (!rawIngredient || shouldSkipPortionIngredient(rawIngredient)) continue
+
+      // If this segment starts with an explicit measured unit, measuredPattern should own it.
+      if (/^(cup|cups|tbsp|tablespoon|tablespoons|tsp|teaspoon|teaspoons|g|gram|grams|kg|oz|ounce|ounces|ml|l|lb|lbs)\b/i.test(rawIngredient)) {
+        continue
+      }
+
+      const dedupeKey = `${amount}|item|${rawIngredient.toLowerCase()}`
+      const exists = claims.some((claim) =>
+        `${claim.amount}|${claim.unit}|${claim.ingredient.toLowerCase()}` === dedupeKey)
+      if (!exists) {
+        claims.push({
+          amount,
+          unit: 'item',
+          ingredient: rawIngredient,
+          source: countMatch[0]!.trim(),
+        })
+      }
+    }
+  }
+
+  return claims
+}
+
 function extractNutritionClaims(contextText?: string, textItems?: string[]): NutritionClaim[] {
   const claims: NutritionClaim[] = []
   const sources = [
@@ -263,15 +487,33 @@ function extractNutritionClaims(contextText?: string, textItems?: string[]): Nut
   ]
 
   const patterns: Array<{ regex: RegExp; nutrient: string; unit: string }> = [
-    { regex: /(\d+)\s*(?:g|gram|grams)\s+(?:of\s+)?protein/gi, nutrient: 'protein', unit: 'g' },
+    // Protein: "24g protein", "24 grams of protein", "protein: 24g", "~24g protein", "about 30g protein"
+    { regex: /(?:~|about|around|roughly|approximately)?\s*(\d+)\s*(?:g|gram|grams)\s+(?:of\s+)?protein/gi, nutrient: 'protein', unit: 'g' },
     { regex: /(\d+)\s*(?:g|gram|grams)\s+(?:scoop|serving)\s+(?:of\s+)?protein/gi, nutrient: 'protein', unit: 'g' },
-    { regex: /protein[:\s]+(\d+)\s*g/gi, nutrient: 'protein', unit: 'g' },
-    { regex: /(\d+)\s*(?:cal|cals|calories|kcal)/gi, nutrient: 'calories', unit: 'kcal' },
-    { regex: /(\d+)\s*(?:g|gram|grams)\s+(?:of\s+)?(?:carb|carbs|carbohydrates)/gi, nutrient: 'carbs', unit: 'g' },
-    { regex: /(\d+)\s*(?:g|gram|grams)\s+(?:of\s+)?fat/gi, nutrient: 'fat', unit: 'g' },
-    { regex: /(\d+)\s*(?:g|gram|grams)\s+(?:of\s+)?fiber/gi, nutrient: 'fiber', unit: 'g' },
-    { regex: /(\d+)\s*(?:g|gram|grams)\s+(?:of\s+)?sugar/gi, nutrient: 'sugar', unit: 'g' },
-    { regex: /(\d+)\s*(?:mg)\s+(?:of\s+)?sodium/gi, nutrient: 'sodium', unit: 'mg' },
+    { regex: /protein[:\s]+(?:~|about|around|roughly|approximately)?\s*(\d+)\s*g/gi, nutrient: 'protein', unit: 'g' },
+    { regex: /(?:has|contains|with)\s+(?:~|about|around|roughly|approximately)?\s*(\d+)\s*(?:g|gram|grams)\s+(?:of\s+)?protein/gi, nutrient: 'protein', unit: 'g' },
+    // Calories: "300 calories", "~500 kcal", "has about 400 calories", "calories: 600"
+    { regex: /(?:~|about|around|roughly|approximately)?\s*(\d+)\s*(?:cal|cals|calories|kcal)/gi, nutrient: 'calories', unit: 'kcal' },
+    { regex: /(?:has|contains|is)\s+(?:~|about|around|roughly|approximately)?\s*(\d+)\s*(?:cal|cals|calories|kcal)/gi, nutrient: 'calories', unit: 'kcal' },
+    { regex: /calories?[:\s]+(?:~|about|around|roughly|approximately)?\s*(\d+)/gi, nutrient: 'calories', unit: 'kcal' },
+    // Carbs: "45g carbs", "carbs: 30g", "about 50g carbohydrates"
+    { regex: /(?:~|about|around|roughly|approximately)?\s*(\d+)\s*(?:g|gram|grams)\s+(?:of\s+)?(?:carb|carbs|carbohydrates)/gi, nutrient: 'carbs', unit: 'g' },
+    { regex: /(?:carb|carbs|carbohydrates)[:\s]+(?:~|about|around|roughly|approximately)?\s*(\d+)\s*g/gi, nutrient: 'carbs', unit: 'g' },
+    // Fat: "15g fat", "fat: 20g", "about 10g of fat"
+    { regex: /(?:~|about|around|roughly|approximately)?\s*(\d+)\s*(?:g|gram|grams)\s+(?:of\s+)?fat/gi, nutrient: 'fat', unit: 'g' },
+    { regex: /fat[:\s]+(?:~|about|around|roughly|approximately)?\s*(\d+)\s*g/gi, nutrient: 'fat', unit: 'g' },
+    // Fiber: "8g fiber", "fiber: 5g"
+    { regex: /(?:~|about|around|roughly|approximately)?\s*(\d+)\s*(?:g|gram|grams)\s+(?:of\s+)?fiber/gi, nutrient: 'fiber', unit: 'g' },
+    { regex: /fiber[:\s]+(?:~|about|around|roughly|approximately)?\s*(\d+)\s*g/gi, nutrient: 'fiber', unit: 'g' },
+    // Sugar: "12g sugar", "sugar: 15g"
+    { regex: /(?:~|about|around|roughly|approximately)?\s*(\d+)\s*(?:g|gram|grams)\s+(?:of\s+)?sugar/gi, nutrient: 'sugar', unit: 'g' },
+    { regex: /sugar[:\s]+(?:~|about|around|roughly|approximately)?\s*(\d+)\s*g/gi, nutrient: 'sugar', unit: 'g' },
+    // Sodium: "500mg sodium", "sodium: 300mg"
+    { regex: /(?:~|about|around|roughly|approximately)?\s*(\d+)\s*(?:mg)\s+(?:of\s+)?sodium/gi, nutrient: 'sodium', unit: 'mg' },
+    { regex: /sodium[:\s]+(?:~|about|around|roughly|approximately)?\s*(\d+)\s*mg/gi, nutrient: 'sodium', unit: 'mg' },
+    // Cholesterol: "200mg cholesterol", "cholesterol: 150mg"
+    { regex: /(?:~|about|around|roughly|approximately)?\s*(\d+)\s*(?:mg)\s+(?:of\s+)?cholesterol/gi, nutrient: 'cholesterol', unit: 'mg' },
+    { regex: /cholesterol[:\s]+(?:~|about|around|roughly|approximately)?\s*(\d+)\s*mg/gi, nutrient: 'cholesterol', unit: 'mg' },
   ]
 
   for (const source of sources) {
@@ -300,6 +542,317 @@ function buildLockedValuesBlock(claims: NutritionClaim[]): string {
 USER-STATED NUTRITION VALUES (treat as exact, do NOT adjust):
 ${lines.join('\n')}
 `
+}
+
+function buildLockedPortionsBlock(claims: PortionClaim[]): string {
+  if (claims.length === 0) return ''
+  const lines = claims.map((c) => `- ${c.amount} ${c.unit} ${c.ingredient} (from user input: "${c.source}")`)
+  return `
+USER-STATED PORTIONS (treat as exact, do NOT inflate or re-estimate):
+${lines.join('\n')}
+`
+}
+
+function toSingularWord(word: string): string {
+  const lower = word.toLowerCase()
+  if (lower.endsWith('ies') && lower.length > 3) return `${lower.slice(0, -3)}y`
+  if (lower.endsWith('s') && !lower.endsWith('ss') && lower.length > 2) return lower.slice(0, -1)
+  return lower
+}
+
+function ingredientMatches(ingredient: string, ...candidates: string[]): boolean {
+  const words = ingredient
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .map((w) => toSingularWord(w))
+    .filter(Boolean)
+  return candidates.some((candidate) => words.includes(toSingularWord(candidate)))
+}
+
+function estimateClaimWeightGrams(claim: PortionClaim): number | null {
+  const { amount, ingredient } = claim
+  const unit = normalizePortionUnit(claim.unit)
+  if (!Number.isFinite(amount) || amount <= 0) return null
+
+  if (unit === 'g') return amount
+  if (unit === 'kg') return amount * 1000
+  if (unit === 'oz') return amount * 28.35
+  if (unit === 'lb') return amount * 453.6
+  if (unit === 'ml') return amount
+  if (unit === 'l') return amount * 1000
+
+  const ingredientIsPeanutButter = ingredientMatches(ingredient, 'peanut', 'butter')
+  const ingredientIsHemp = ingredientMatches(ingredient, 'hemp', 'seed')
+  const ingredientIsYogurt = ingredientMatches(ingredient, 'yogurt', 'yoghurt')
+
+  if (unit === 'tbsp') {
+    if (ingredientIsPeanutButter) return amount * 16
+    if (ingredientIsHemp) return amount * 10
+    if (ingredientIsYogurt) return amount * 15
+    return amount * 15
+  }
+
+  if (unit === 'tsp') {
+    if (ingredientIsPeanutButter) return amount * 5.3
+    if (ingredientIsHemp) return amount * 3.3
+    if (ingredientIsYogurt) return amount * 5
+    return amount * 5
+  }
+
+  if (unit === 'cup') {
+    if (ingredientIsYogurt) return amount * 227
+    if (ingredientIsHemp) return amount * 160
+    return amount * 240
+  }
+
+  if (unit === 'item') {
+    if (ingredientMatches(ingredient, 'banana')) return amount * 118
+    if (ingredientMatches(ingredient, 'strawberry')) return amount * 12
+    if (ingredientMatches(ingredient, 'egg')) return amount * 50
+    if (ingredientMatches(ingredient, 'apple')) return amount * 182
+    if (ingredientMatches(ingredient, 'orange')) return amount * 131
+    if (ingredientMatches(ingredient, 'date')) return amount * 7
+  }
+
+  return null
+}
+
+function enforcePortionClaims(
+  normalized: AnalyzeMealMultiLLMResponse,
+  sourceItems: MealMultiItemInput[],
+): void {
+  if (normalized.items.length === 0 || sourceItems.length === 0) return
+
+  sourceItems.forEach((sourceItem, sourceIndex) => {
+    if (sourceItem.itemType !== 'text') return
+    const text = sourceItem.text?.trim()
+    if (!text) return
+
+    const claims = extractPortionClaims(undefined, [text])
+    if (claims.length === 0) return
+
+    const estimatedClaimWeights = claims
+      .map((claim) => estimateClaimWeightGrams(claim))
+      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0)
+
+    const parsedCoverage = estimatedClaimWeights.length / claims.length
+    if (estimatedClaimWeights.length === 0 || parsedCoverage < 0.6) {
+      console.log(`⚠️ Skipping portion enforcement for text item ${sourceIndex}: low confidence (${estimatedClaimWeights.length}/${claims.length} claims converted to grams).`)
+      return
+    }
+
+    const expectedWeightG = estimatedClaimWeights.reduce((sum, w) => sum + w, 0)
+    if (!Number.isFinite(expectedWeightG) || expectedWeightG < 5 || expectedWeightG > 2500) {
+      console.log(`⚠️ Skipping portion enforcement for text item ${sourceIndex}: expected weight ${expectedWeightG}g out of range.`)
+      return
+    }
+
+    const normalizedItem = normalized.items.find((item) => Number(item.index) === sourceIndex)
+    if (!normalizedItem) return
+
+    const currentWeight = normalizedItem.estimated_weight_g
+    const safeCurrentWeight = Number.isFinite(currentWeight) && currentWeight > 0 ? currentWeight : expectedWeightG
+    const scale = expectedWeightG / safeCurrentWeight
+
+    normalizedItem.estimated_weight_g = Math.round(expectedWeightG)
+    normalizedItem.nutrition_per_unit.calories = clampNumber(Math.round(normalizedItem.nutrition_per_unit.calories * scale), 0, 10000)
+    normalizedItem.nutrition_per_unit.protein = clampNumber(Number((normalizedItem.nutrition_per_unit.protein * scale).toFixed(1)), 0, 1000)
+    normalizedItem.nutrition_per_unit.carbs = clampNumber(Number((normalizedItem.nutrition_per_unit.carbs * scale).toFixed(1)), 0, 2000)
+    normalizedItem.nutrition_per_unit.fat = clampNumber(Number((normalizedItem.nutrition_per_unit.fat * scale).toFixed(1)), 0, 1000)
+    normalizedItem.nutrition_per_unit.fiber = clampNumber(Number((normalizedItem.nutrition_per_unit.fiber * scale).toFixed(1)), 0, 500)
+
+    if (typeof normalizedItem.nutrition_per_unit.sugar === 'number') {
+      normalizedItem.nutrition_per_unit.sugar = clampNumber(Number((normalizedItem.nutrition_per_unit.sugar * scale).toFixed(1)), 0, 1000)
+    }
+    if (typeof normalizedItem.nutrition_per_unit.sodium === 'number') {
+      normalizedItem.nutrition_per_unit.sodium = clampNumber(Math.round(normalizedItem.nutrition_per_unit.sodium * scale), 0, 20000)
+    }
+    if (typeof normalizedItem.nutrition_per_unit.cholesterol === 'number') {
+      normalizedItem.nutrition_per_unit.cholesterol = clampNumber(Math.round(normalizedItem.nutrition_per_unit.cholesterol * scale), 0, 5000)
+    }
+
+    console.log(
+      `🔒 Enforced portion-derived weight for text item ${sourceIndex}: ` +
+      `${Math.round(safeCurrentWeight)}g -> ${Math.round(expectedWeightG)}g (scale ${scale.toFixed(2)}).`,
+    )
+  })
+}
+
+function applyPostLLMSanityChecks(
+  normalized: AnalyzeMealMultiLLMResponse,
+  sourceItems: MealMultiItemInput[],
+  lockedClaims: NutritionClaim[],
+): void {
+  if (!Array.isArray(normalized.items) || normalized.items.length === 0) return
+  const hasLockedCalories = lockedClaims.some((claim) => claim.nutrient === 'calories')
+
+  normalized.items.forEach((item) => {
+    const nutrition = item.nutrition_per_unit
+    const calories = Number(nutrition.calories ?? 0)
+    const protein = Number(nutrition.protein ?? 0)
+    const carbs = Number(nutrition.carbs ?? 0)
+    const fat = Number(nutrition.fat ?? 0)
+    const weightG = Number(item.estimated_weight_g ?? 0)
+
+    const macroCalories = protein * 4 + carbs * 4 + fat * 9
+    const maxRef = Math.max(calories, macroCalories, 1)
+    const macroDeltaRatio = Math.abs(calories - macroCalories) / maxRef
+    const severeMacroMismatch = calories > 0 && macroCalories > 0 && macroDeltaRatio > 0.4
+    const moderateMacroMismatch = calories > 0 && macroCalories > 0 && macroDeltaRatio > 0.2
+
+    if (severeMacroMismatch && !hasLockedCalories) {
+      // Soft reconcile calories toward macro-implied energy while preserving user hard-lock behavior
+      // (explicit nutrition claims are enforced in a separate dedicated step).
+      const reconciledCalories = Math.round((calories + macroCalories) / 2)
+      nutrition.calories = clampNumber(reconciledCalories, 0, 10000)
+      item.needs_review = true
+      console.log(
+        `⚖️ Reconciled calories for item ${item.index} "${item.name}": ` +
+        `${calories} -> ${nutrition.calories} (macro implied ${Math.round(macroCalories)}).`,
+      )
+    } else if (moderateMacroMismatch || (severeMacroMismatch && hasLockedCalories)) {
+      item.needs_review = true
+      console.log(
+        `⚠️ Macro/calorie mismatch for item ${item.index} "${item.name}": ` +
+        `cal=${calories}, macroCal=${Math.round(macroCalories)}.`,
+      )
+    }
+
+    if (weightG > 0 && calories > 0) {
+      const kcalPerGram = calories / weightG
+      if (kcalPerGram > 9.5 || (weightG >= 20 && kcalPerGram < 0.2)) {
+        item.needs_review = true
+        console.log(
+          `⚠️ Implausible kcal/g for item ${item.index} "${item.name}": ` +
+          `${kcalPerGram.toFixed(2)} kcal/g at ${Math.round(weightG)}g.`,
+        )
+      }
+    }
+
+    const sourceItem = sourceItems[Number(item.index)]
+    if (sourceItem?.itemType === 'text' && sourceItem.text?.trim()) {
+      const claims = extractPortionClaims(undefined, [sourceItem.text.trim()])
+      const baselineWeights = claims
+        .map((claim) => estimateClaimWeightGrams(claim))
+        .filter((value): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0)
+      if (baselineWeights.length > 0 && weightG > 0) {
+        const baselineWeight = baselineWeights.reduce((sum, w) => sum + w, 0)
+        const ratio = weightG / baselineWeight
+        if (ratio > 1.8 || ratio < 0.55) {
+          item.needs_review = true
+          console.log(
+            `⚠️ Portion baseline mismatch for item ${item.index} "${item.name}": ` +
+            `${Math.round(weightG)}g vs baseline ${Math.round(baselineWeight)}g.`,
+          )
+        }
+      }
+    }
+  })
+}
+
+function applyQuantityConsistencyChecks(
+  normalized: AnalyzeMealMultiLLMResponse,
+  sourceItems: MealMultiItemInput[],
+): void {
+  if (!Array.isArray(normalized.items) || normalized.items.length === 0) return
+
+  normalized.items.forEach((item) => {
+    const sourceItem = sourceItems[Number(item.index)]
+    if (!sourceItem) return
+
+    const quantity = normalizeQuantity(sourceItem.quantity)
+    if (quantity <= 1) return
+
+    const n = item.nutrition_per_unit
+    const projectedTotal = {
+      calories: Math.round((n.calories ?? 0) * quantity),
+      protein: Number(((n.protein ?? 0) * quantity).toFixed(1)),
+      carbs: Number(((n.carbs ?? 0) * quantity).toFixed(1)),
+      fat: Number(((n.fat ?? 0) * quantity).toFixed(1)),
+    }
+
+    // Guardrail only: if text already repeats the same count signal, there is a risk the model
+    // may have already baked quantity into per-unit estimates. We flag review, but never block.
+    if (sourceItem.itemType === 'text' && sourceItem.text?.trim()) {
+      const text = sourceItem.text.toLowerCase()
+      const quantityRegex = new RegExp(`\\b(?:x\\s*)?${quantity}\\b|\\b${quantity}\\s*x\\b`, 'i')
+      if (quantityRegex.test(text)) {
+        item.needs_review = true
+        console.log(
+          `⚠️ Quantity double-count risk on item ${item.index} "${item.name}": ` +
+          `payload quantity=${quantity}, text="${sourceItem.text}".`,
+        )
+      }
+    }
+
+    console.log(
+      `📦 Quantity check item ${item.index} "${item.name}": quantity=${quantity}, ` +
+      `projectedTotals=${JSON.stringify(projectedTotal)}.`,
+    )
+  })
+}
+
+/**
+ * Hard-override LLM output with user-stated nutrition values.
+ * Distributes total claims proportionally across items based on calorie share,
+ * or evenly if all items have 0 calories.
+ */
+function enforceNutritionClaims(
+  normalized: AnalyzeMealMultiLLMResponse,
+  claims: NutritionClaim[],
+): void {
+  if (claims.length === 0 || normalized.items.length === 0) return
+
+  const nutrientToField: Record<string, keyof NutritionPerUnit> = {
+    calories: 'calories',
+    protein: 'protein',
+    carbs: 'carbs',
+    fat: 'fat',
+    fiber: 'fiber',
+    sugar: 'sugar',
+    sodium: 'sodium',
+    cholesterol: 'cholesterol',
+  }
+
+  for (const claim of claims) {
+    const field = nutrientToField[claim.nutrient]
+    if (!field) continue
+
+    const items = normalized.items
+    const totalFromLLM = items.reduce((sum, it) => sum + (it.nutrition_per_unit[field] ?? 0), 0)
+
+    if (items.length === 1) {
+      items[0]!.nutrition_per_unit[field] = claim.value
+      console.log(`🔒 Enforced ${field}=${claim.value} on single item "${items[0]!.name}"`)
+      continue
+    }
+
+    // Distribute proportionally by the LLM's own calorie share (best proxy for item size)
+    const calShares = items.map((it) => it.nutrition_per_unit.calories || 0)
+    const totalCals = calShares.reduce((a, b) => a + b, 0)
+
+    if (totalCals > 0 && field !== 'calories') {
+      let distributed = 0
+      items.forEach((it, idx) => {
+        const share = calShares[idx]! / totalCals
+        const portion = idx === items.length - 1
+          ? claim.value - distributed
+          : Math.round(share * claim.value * 10) / 10
+        it.nutrition_per_unit[field] = portion
+        distributed += portion
+      })
+    } else {
+      // Even split fallback
+      const portion = Math.round((claim.value / items.length) * 10) / 10
+      items.forEach((it, idx) => {
+        it.nutrition_per_unit[field] = idx === items.length - 1
+          ? claim.value - portion * (items.length - 1)
+          : portion
+      })
+    }
+
+    console.log(`🔒 Enforced ${field}=${claim.value} (distributed across ${items.length} items, LLM had ${totalFromLLM})`)
+  }
 }
 
 function buildUserPrompt(params: {
@@ -342,7 +895,9 @@ function buildUserPrompt(params: {
     .join('\n')
 
   const nutritionClaims = extractNutritionClaims(contextText, textItemTexts)
+  const portionClaims = extractPortionClaims(contextText, textItemTexts)
   const lockedValuesBlock = buildLockedValuesBlock(nutritionClaims)
+  const lockedPortionsBlock = buildLockedPortionsBlock(portionClaims)
 
   const tierRules = isPro 
     ? `- ANALYSIS DEPTH: Provide Basic Macros + Micronutrients (Calories, Protein, Carbs, Fat, Fiber, Sugar, Sodium, Cholesterol).
@@ -355,12 +910,14 @@ function buildUserPrompt(params: {
 - RECOMMENDATIONS: Return an empty array [].`
 
   return `
-You are a professional nutritionist. Analyze a meal that is composed of multiple items (photos, text, or verified items).
+Analyze a meal that is composed of multiple items (photos, text, or verified items).
 
 Important rules:
 - INDEXING: Use the provided "Photo item X" or "Text item X" index for each item. 
 - MULTIPLE ITEMS IN ONE PHOTO: If a single photo contains multiple distinct food components (e.g., a plate with chicken, rice, and broccoli), you should list them as separate objects in the "items" array, but ALL of them must use the SAME "index" provided for that photo.
 - For 'verified' items, use them ONLY for context; do NOT include them in your "items" array response.
+- SOURCE PRIORITY (highest -> lowest): 1) Verified nutrition data, 2) User-stated portions/quantities, 3) Visual estimation from photos.
+- If user text and photo evidence conflict, trust the user-stated quantity/portion and only use vision for details the user did not specify.
 - USER CONTEXT AUTHORITY: The "Overall meal context" and text item descriptions are provided directly by the user. If the user states specific quantities, portions, or nutritional values (e.g. "24g protein", "2 tablespoons of olive oil", "300 calories"), treat those as EXACT ground-truth values. Do NOT adjust or second-guess them based on visual estimation.
 - SUPPLEMENT CONVENTION: When a user says "X gram scoop of protein powder" or "X gram protein", interpret X as the protein CONTENT (grams of protein), not the powder weight. This matches how supplements are labeled (e.g. "24g scoop" = 24g of protein).
 - PHOTO ITEMS — follow this Chain of Thought (Volume First) process:
@@ -372,9 +929,10 @@ Important rules:
 - TEXT ITEMS — the user has already described the food. Use their stated quantities and portions as exact values. Only estimate nutrition for details the user did NOT specify. Do NOT re-estimate portions the user already provided.
 ${tierRules}
 - Quantity is an integer multiplier for the entire item.
+- IMPORTANT: "nutrition_per_unit" MUST always represent ONE unit only. Do NOT multiply "nutrition_per_unit" by quantity.
 - If an item seems to have 0 calories but is clearly food, set "needs_review": true.
 - Return strict JSON only.
-${lockedValuesBlock}
+
 Overall meal context:
 ${contextText ? `"${contextText}"` : 'None provided'}
 
@@ -385,7 +943,8 @@ Items:
 ${textItemsDescription || '(no text items)'}
 ${photosDescription || '(no photo items)'}
 ${verifiedDescription || '(no verified items)'}
-
+${lockedValuesBlock}
+${lockedPortionsBlock}
 Return JSON with this schema:
 {
   "meal": {
@@ -679,6 +1238,7 @@ export async function handleAnalyzeMealMulti(req: Request): Promise<Response> {
         itemType: item.itemType,
         imageUrl: item.imageUrl,
         text: item.text,
+        verifiedNutrition: item.verifiedNutrition,
         quantity: normalizeQuantity(item.quantity),
         orderIndex: Number.isFinite(item.orderIndex) ? Math.max(0, Math.floor(item.orderIndex)) : 0,
         isHero: Boolean(item.isHero),
@@ -876,9 +1436,9 @@ export async function handleAnalyzeMealMulti(req: Request): Promise<Response> {
             { role: 'system', content: systemPrompt },
             { role: 'user', content },
           ],
-          max_tokens: 2000,
+          max_tokens: 3500,
           temperature: 0.3,
-          response_format: { type: 'json_object' },
+          response_format: { type: 'json_schema', json_schema: MEAL_ANALYSIS_JSON_SCHEMA },
         },
         llm
       )
@@ -957,6 +1517,24 @@ export async function handleAnalyzeMealMulti(req: Request): Promise<Response> {
     })
     
     const normalized = normalizeLLMResponse(analysis, normalizedItemsWithHero.length, isPro)
+
+    // Deterministically anchor text-item nutrition to user-stated portions (high-confidence cases only).
+    // This runs before explicit nutrition claim enforcement so hard nutrition locks still win.
+    enforcePortionClaims(normalized, normalizedItemsWithHero)
+
+    // Hard-override LLM values with any user-stated nutrition claims
+    const textItemTextsForEnforcement = normalizedItemsWithHero
+      .filter((item) => item.itemType === 'text' && item.text?.trim())
+      .map((item) => item.text!.trim())
+    const claimsToEnforce = extractNutritionClaims(contextText, textItemTextsForEnforcement)
+    if (claimsToEnforce.length > 0) {
+      console.log(`🔒 Enforcing ${claimsToEnforce.length} user-stated nutrition claim(s):`, claimsToEnforce.map(c => `${c.nutrient}=${c.value}${c.unit}`))
+      enforceNutritionClaims(normalized, claimsToEnforce)
+    }
+
+    // Sanity/reconciliation pass to catch implausible outputs before persistence.
+    applyPostLLMSanityChecks(normalized, normalizedItemsWithHero, claimsToEnforce)
+    applyQuantityConsistencyChecks(normalized, normalizedItemsWithHero)
 
     // Log model quality metrics for canary comparison
     const needsReviewCount = normalized.items.filter((it) => it.needs_review).length
@@ -1075,12 +1653,14 @@ export async function handleAnalyzeMealMulti(req: Request): Promise<Response> {
     // Compute health category string for storage
     const healthCategory = toMealHealthCategory(normalized.meal.health_score)
 
-    // Compute new descriptive nutrition tag
+    // Compute new descriptive nutrition tag from quantity-adjusted totals.
     const totalMacros = normalized.items.reduce((acc, it) => {
-      acc.calories += it.nutrition_per_unit.calories;
-      acc.protein += it.nutrition_per_unit.protein;
-      acc.carbs += it.nutrition_per_unit.carbs;
-      acc.fat += it.nutrition_per_unit.fat;
+      const sourceItem = normalizedItemsWithHero[Number(it.index)]
+      const quantity = sourceItem ? normalizeQuantity(sourceItem.quantity) : 1
+      acc.calories += (it.nutrition_per_unit.calories * quantity);
+      acc.protein += (it.nutrition_per_unit.protein * quantity);
+      acc.carbs += (it.nutrition_per_unit.carbs * quantity);
+      acc.fat += (it.nutrition_per_unit.fat * quantity);
       return acc;
     }, { calories: 0, protein: 0, carbs: 0, fat: 0 });
 
@@ -1122,7 +1702,7 @@ export async function handleAnalyzeMealMulti(req: Request): Promise<Response> {
           health_category: healthCategory,
           nutrition_tag: nutritionTag,
         },
-        analysis_version: 'multi-1.2',
+        analysis_version: 'multi-1.3',
         processing_status: 'completed',
       })
       .eq('id', finalMealId)

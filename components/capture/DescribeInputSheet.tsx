@@ -50,6 +50,7 @@ export function DescribeInputSheet(props: DescribeInputSheetProps): React.ReactE
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [isPreparingSubmit, setIsPreparingSubmit] = useState<boolean>(false);
   const [isTranscribing, setIsTranscribing] = useState<boolean>(false);
+  const [isTranscriptionSlow, setIsTranscriptionSlow] = useState<boolean>(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState<boolean>(false);
 
   // Refs for UI elements
@@ -67,6 +68,7 @@ export function DescribeInputSheet(props: DescribeInputSheetProps): React.ReactE
   const isTranscribingRef = useRef<boolean>(isTranscribing);
   const textRef = useRef<string>(text);
   const transcriptionPromiseRef = useRef<Promise<void> | null>(null);
+  const transcriptionAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     isTranscribingRef.current = isTranscribing;
@@ -106,8 +108,16 @@ export function DescribeInputSheet(props: DescribeInputSheetProps): React.ReactE
       if (!audioUri) return Promise.resolve();
       const task = (async () => {
         setIsTranscribing(true);
+        setIsTranscriptionSlow(false);
+        const controller = new AbortController();
+        transcriptionAbortRef.current = controller;
         try {
-          const { data, error } = await transcribeAudioDirect(audioUri, userId);
+          const { data, error } = await transcribeAudioDirect(audioUri, userId, {
+            signal: controller.signal,
+            timeoutMs: 120_000,
+            slowRequestMs: 30_000,
+            onSlowRequest: () => setIsTranscriptionSlow(true),
+          });
           if (error) throw error;
           const transcript = getCleanTranscript(data?.transcript);
           if (transcript) {
@@ -126,13 +136,21 @@ export function DescribeInputSheet(props: DescribeInputSheetProps): React.ReactE
             });
           }
         } catch (err) {
-          if (isDailyLimitError(err)) {
+          if (err instanceof Error && err.message === 'Transcription cancelled') {
+            // User-initiated cancellation; no alert needed.
+          } else if (isDailyLimitError(err)) {
             Alert.alert('Scan Limit Reached', err instanceof Error ? err.message : "You've hit today's scan limit. This resets at midnight UTC.");
+          } else if (err instanceof Error && err.message.toLowerCase().includes('timed out')) {
+            Alert.alert('Transcription Timeout', 'This is taking longer than expected. Please try again or use a shorter recording.');
           } else {
             Alert.alert('Transcription Error', 'Failed to transcribe audio. Please try again or type your description.');
           }
         } finally {
           setIsTranscribing(false);
+          setIsTranscriptionSlow(false);
+          if (transcriptionAbortRef.current === controller) {
+            transcriptionAbortRef.current = null;
+          }
         }
       })();
 
@@ -145,6 +163,14 @@ export function DescribeInputSheet(props: DescribeInputSheetProps): React.ReactE
     },
     [scrollToEndSoon, userId]
   );
+
+  const cancelTranscription = useCallback((): void => {
+    transcriptionAbortRef.current?.abort();
+    transcriptionAbortRef.current = null;
+    setIsTranscribing(false);
+    setIsPreparingSubmit(false);
+    setIsTranscriptionSlow(false);
+  }, []);
 
   const { isRecording, metering, startRecording, stopRecording } = useAudioRecorder({
     onRecordingComplete: handleTranscription,
@@ -223,6 +249,7 @@ export function DescribeInputSheet(props: DescribeInputSheetProps): React.ReactE
   }, [isRecording, isTranscribing, onSubmit, stopRecording, waitForTranscription]);
 
   const close = useCallback(async (): Promise<void> => {
+    cancelTranscription();
     try {
       if (isRecording) {
         await stopRecording();
@@ -234,10 +261,11 @@ export function DescribeInputSheet(props: DescribeInputSheetProps): React.ReactE
     setIsSubmitting(false);
     setIsPreparingSubmit(false);
     setIsTranscribing(false);
+    setIsTranscriptionSlow(false);
     isSubmittingRef.current = false;
     setText('');
     onCancel();
-  }, [isRecording, onCancel, stopRecording]);
+  }, [cancelTranscription, isRecording, onCancel, stopRecording]);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -329,6 +357,16 @@ export function DescribeInputSheet(props: DescribeInputSheetProps): React.ReactE
                 <Text style={[TextStyles.bodySmall, { color: colors.icon, marginBottom: Spacing.lg }]}>
                   {isRecording ? 'Listening... tap to stop' : 'Tap to speak'}
                 </Text>
+                {isTranscribing && (
+                  <TouchableOpacity onPress={cancelTranscription} activeOpacity={0.8} style={{ marginBottom: Spacing.md }}>
+                    <Text style={[TextStyles.bodySmall, { color: neonGreen, fontWeight: '700' }]}>Cancel transcription</Text>
+                  </TouchableOpacity>
+                )}
+                {isTranscribing && isTranscriptionSlow && (
+                  <Text style={[TextStyles.caption, { color: colors.icon, marginBottom: Spacing.md, textAlign: 'center' }]}>
+                    Still transcribing... You can cancel and try again.
+                  </Text>
+                )}
               </>
             )}
 

@@ -7,6 +7,13 @@ import { Viewfinder } from './Viewfinder';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { neonGreen } from '@/constants/Colors';
 
+type ZoomLevel = 1 | 2;
+
+const ZOOM_VALUES: Record<ZoomLevel, number> = {
+  1: 0,
+  2: 0.5,
+};
+
 export interface CaptureCameraOverlayProps {
   initialFacing?: CameraType;
   onCancel: () => void;
@@ -19,10 +26,15 @@ export function CaptureCameraOverlay(props: CaptureCameraOverlayProps): React.Re
 
   const [facing, setFacing] = useState<CameraType>(initialFacing);
   const [isCapturing, setIsCapturing] = useState<boolean>(false);
+  const [zoomLevel, setZoomLevel] = useState<ZoomLevel>(1);
   const cameraRef = useRef<CameraView>(null);
 
   const toggleCameraFacing = useCallback((): void => {
     setFacing((current) => (current === 'back' ? 'front' : 'back'));
+  }, []);
+
+  const toggleZoom = useCallback((): void => {
+    setZoomLevel((current) => (current === 1 ? 2 : 1));
   }, []);
 
   const takePicture = useCallback(async (): Promise<void> => {
@@ -40,7 +52,7 @@ export function CaptureCameraOverlay(props: CaptureCameraOverlayProps): React.Re
 
   return (
     <SafeAreaView style={styles.container}>
-      <CameraView style={styles.camera} facing={facing} ref={cameraRef}>
+      <CameraView style={styles.camera} facing={facing} ref={cameraRef} zoom={ZOOM_VALUES[zoomLevel]}>
         <View style={styles.overlay}>
           <View style={styles.topControls}>
             <TouchableOpacity style={styles.exitButton} onPress={onCancel} activeOpacity={0.8}>
@@ -57,6 +69,21 @@ export function CaptureCameraOverlay(props: CaptureCameraOverlayProps): React.Re
           </View>
 
           <View style={styles.bottomControls}>
+            <View style={styles.zoomRow}>
+              {([1, 2] as ZoomLevel[]).map((level) => (
+                <TouchableOpacity
+                  key={level}
+                  style={[styles.zoomPill, zoomLevel === level && styles.zoomPillActive]}
+                  onPress={toggleZoom}
+                  activeOpacity={0.75}
+                >
+                  <Text style={[styles.zoomPillText, zoomLevel === level && styles.zoomPillTextActive]}>
+                    {level}×
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
             <View style={styles.shutterRow}>
               <TouchableOpacity
                 style={[styles.galleryButton, { borderColor: `${neonGreen}40`, borderWidth: 1 }]}
@@ -135,6 +162,34 @@ const styles = StyleSheet.create({
     paddingBottom: 36,
     paddingHorizontal: 30,
     alignItems: 'center',
+    gap: 20,
+  },
+  zoomRow: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  zoomPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    minWidth: 44,
+    alignItems: 'center',
+  },
+  zoomPillActive: {
+    backgroundColor: neonGreen,
+    borderColor: neonGreen,
+  },
+  zoomPillText: {
+    color: 'rgba(255,255,255,0.75)',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  zoomPillTextActive: {
+    color: '#000',
   },
   shutterRow: {
     flexDirection: 'row',

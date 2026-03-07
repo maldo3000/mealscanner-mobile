@@ -124,8 +124,10 @@ export default function ProfileTabScreen() {
   const handleRestorePurchases = async () => {
     setIsRestoring(true);
     try {
-      await restorePurchases();
-      Alert.alert('Success', 'Purchases restored successfully.');
+      const restored = await restorePurchases();
+      if (restored) {
+        Alert.alert('Success', 'Purchases restored successfully.');
+      }
     } catch (error) {
       console.error('🛒 Restore error:', error);
       Alert.alert('Error', 'Failed to restore purchases.');
