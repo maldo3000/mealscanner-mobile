@@ -264,7 +264,7 @@ export const ClosingScene: React.FC = () => {
             letterSpacing: "-0.01em",
           }}
         >
-          More than an app
+          Nutrition made easy
         </div>
       </div>
 
@@ -272,7 +272,7 @@ export const ClosingScene: React.FC = () => {
       <Sequence from={Math.round(fps * 1.0)} layout="none">
         <div style={{ textAlign: "center", marginBottom: 60 }}>
           <ExplodeText
-            text="IT'S A SYSTEM"
+            text="MealScanner"
             startFrame={0}
             staggerFrames={3}
             fontSize={80}

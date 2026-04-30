@@ -12,6 +12,8 @@ export default function SettingsLayout() {
       <Stack.Screen name="nutrition-goals" />
       <Stack.Screen name="how-it-works" />
       <Stack.Screen name="contact-support" />
+      <Stack.Screen name="report-bug" />
+      <Stack.Screen name="dev-chat" />
     </Stack>
   );
 }

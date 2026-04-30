@@ -26,6 +26,7 @@ import { PageSpacing, Spacing } from '@/constants/Spacing';
 import { FontFamilies, TextStyles } from '@/constants/Typography';
 import { useTheme } from '@/context/ThemeContext';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
+import { useCaptureHint } from '@/hooks/useCaptureHint';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { isDailyLimitError, transcribeAudioDirect } from '@/lib/supabase';
 import { getCleanTranscript } from '@/lib/transcription';
@@ -159,6 +160,7 @@ export function MealStagingScreen(props: MealStagingScreenProps): React.ReactEle
   const { tokens } = useTheme();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
+  const { shouldShowHint, dismissHint } = useCaptureHint(userId);
 
   const [showContextModal, setShowContextModal] = useState<boolean>(false);
   const [tempContext, setTempContext] = useState<string>(contextText);
@@ -410,6 +412,29 @@ export function MealStagingScreen(props: MealStagingScreenProps): React.ReactEle
             </View>
           )}
         </View>
+
+        {shouldShowHint && (
+          <GlassCard
+            intensity={15}
+            padding={14}
+            style={{ marginBottom: Spacing.lg, borderColor: tokens.glassBorder }}
+          >
+            <View style={styles.hintRow}>
+              <IconSymbol name="info.circle" size={20} color={tokens.accent} style={{ marginTop: 1 }} />
+              <View style={styles.hintTextBlock}>
+                <Text style={[TextStyles.bodySmall, { color: tokens.textPrimary, fontWeight: '700', marginBottom: 3 }]}>
+                  Photo analysis is an estimate
+                </Text>
+                <Text style={[TextStyles.caption, { color: tokens.textMuted, lineHeight: 17 }]}>
+                  Calorie counts from photos aren't always precise. Use "Add context" to describe portions, cooking methods, or anything the camera missed — it makes a real difference.
+                </Text>
+              </View>
+              <TouchableOpacity onPress={dismissHint} style={styles.hintDismiss} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <IconSymbol name="xmark" size={14} color={tokens.textMuted} />
+              </TouchableOpacity>
+            </View>
+          </GlassCard>
+        )}
 
         <TouchableOpacity
           onPress={openContext}
@@ -669,6 +694,17 @@ const styles = StyleSheet.create({
     padding: 14,
     minHeight: 66,
     marginBottom: Spacing.lg,
+  },
+  hintRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  hintTextBlock: {
+    flex: 1,
+  },
+  hintDismiss: {
+    paddingTop: 2,
   },
   contextRow: {
     flexDirection: 'row',

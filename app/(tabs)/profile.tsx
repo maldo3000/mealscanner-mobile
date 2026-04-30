@@ -13,6 +13,7 @@ import { TextStyles } from '@/constants/Typography';
 import { useAuth } from '@/context/AuthContext';
 import { useSubscription } from '@/context/SubscriptionContext';
 import { useTheme } from '@/context/ThemeContext';
+import { resetCaptureHint } from '@/hooks/useCaptureHint';
 import { useNutritionGoals } from '@/hooks/useNutritionGoals';
 import BottomSheet from '@gorhom/bottom-sheet';
 import { useFocusEffect } from '@react-navigation/native';
@@ -20,11 +21,18 @@ import { File, Paths } from 'expo-file-system/next';
 import { useRouter } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import React, { useCallback, useRef, useState } from 'react';
-import { Alert, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Platform, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import Animated, { Easing, FadeInDown } from 'react-native-reanimated';
 
 import { presentCodeRedemptionSheet } from '@/lib/revenueCat';
-import { deleteAccount, deleteMeal, getAllUserMealIds, getAllUserMeals } from '@/lib/supabase';
+import {
+  deleteAccount,
+  deleteMeal,
+  getAllUserMealIds,
+  getAllUserMeals,
+  getInternalAccessSettings,
+  updateInternalDevMode,
+} from '@/lib/supabase';
 
 interface MenuRowProps {
   icon: any;
@@ -91,6 +99,10 @@ export default function ProfileTabScreen() {
   const [isRestoring, setIsRestoring] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isInternalAccessLoading, setIsInternalAccessLoading] = useState(false);
+  const [hasInternalAccess, setHasInternalAccess] = useState(false);
+  const [devModeEnabled, setDevModeEnabled] = useState(false);
+  const [isUpdatingDevMode, setIsUpdatingDevMode] = useState(false);
   const [paywallVisible, setPaywallVisible] = useState(false);
   const router = useRouter();
   const { tokens, accentAlpha } = useTheme();
@@ -105,6 +117,40 @@ export default function ProfileTabScreen() {
   const { signOut, user } = useAuth();
   const { isPro, isBetaTester, restorePurchases, showCustomerCenter, isLoading: isSubscriptionLoading } = useSubscription();
   const weeklyReportSheetRef = useRef<BottomSheet>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      let isMounted = true;
+
+      const loadInternalAccess = async () => {
+        if (!user?.id) {
+          if (isMounted) {
+            setHasInternalAccess(false);
+            setDevModeEnabled(false);
+          }
+          return;
+        }
+
+        setIsInternalAccessLoading(true);
+        const { data, error } = await getInternalAccessSettings(user.id);
+        if (!isMounted) return;
+
+        if (error || !data) {
+          setHasInternalAccess(false);
+          setDevModeEnabled(false);
+        } else {
+          setHasInternalAccess(true);
+          setDevModeEnabled(Boolean(data.dev_mode_enabled));
+        }
+        setIsInternalAccessLoading(false);
+      };
+
+      void loadInternalAccess();
+      return () => {
+        isMounted = false;
+      };
+    }, [user?.id]),
+  );
 
   const formatMacro = (val: number | undefined | null) => {
     if (val === undefined || val === null) return '0';
@@ -308,7 +354,7 @@ export default function ProfileTabScreen() {
             setIsSigningOut(true);
             try {
               await signOut();
-            } catch (error) {
+            } catch {
               Alert.alert('Error', 'Failed to sign out. Please try again.');
             } finally {
               setIsSigningOut(false);
@@ -317,6 +363,21 @@ export default function ProfileTabScreen() {
         },
       ]
     );
+  };
+
+  const handleToggleDevMode = async (nextEnabled: boolean) => {
+    if (!user?.id || !hasInternalAccess || isUpdatingDevMode) return;
+
+    setIsUpdatingDevMode(true);
+    const { data, error } = await updateInternalDevMode(user.id, nextEnabled);
+    setIsUpdatingDevMode(false);
+
+    if (error || !data) {
+      Alert.alert('Update Failed', 'Could not update developer mode right now.');
+      return;
+    }
+
+    setDevModeEnabled(Boolean(data.dev_mode_enabled));
   };
 
   return (
@@ -464,6 +525,56 @@ export default function ProfileTabScreen() {
               title="Contact Support" 
               onPress={() => router.push('/settings/contact-support' as any)} 
             />
+            {hasInternalAccess && (
+              <MenuRow
+                icon="hammer.fill"
+                title="Developer Mode"
+                subtitle={isInternalAccessLoading ? 'Checking access...' : 'Private features for internal testing'}
+                onPress={() => {
+                  void handleToggleDevMode(!devModeEnabled);
+                }}
+                showChevron={false}
+                rightAction={
+                  <Switch
+                    value={devModeEnabled}
+                    disabled={isUpdatingDevMode || isInternalAccessLoading}
+                    onValueChange={(value) => {
+                      void handleToggleDevMode(value);
+                    }}
+                    trackColor={{ false: tokens.borderSubtle, true: tokens.accent }}
+                    thumbColor={devModeEnabled ? tokens.textOnAccent : tokens.textMuted}
+                  />
+                }
+              />
+            )}
+            {hasInternalAccess && devModeEnabled && (
+              <MenuRow
+                icon="ladybug.fill"
+                title="Report Test Bug"
+                subtitle="Save bug report for triage and automation"
+                onPress={() => router.push('/settings/report-bug' as any)}
+              />
+            )}
+            {hasInternalAccess && devModeEnabled && (
+              <MenuRow
+                icon="bubble.left.fill"
+                title="Dev Chat"
+                subtitle="Chat with your meal data (read-only)"
+                onPress={() => router.push('/settings/dev-chat' as any)}
+              />
+            )}
+            {hasInternalAccess && devModeEnabled && (
+              <MenuRow
+                icon="arrow.counterclockwise"
+                title="Reset Capture Hint"
+                subtitle="Re-show the first-capture accuracy tip"
+                onPress={async () => {
+                  if (!user) return;
+                  await resetCaptureHint(user.id);
+                  Alert.alert('Reset', 'Capture hint will show again on your next session.');
+                }}
+              />
+            )}
             <MenuRow 
               icon="info.circle" 
               title="About MealScanner" 

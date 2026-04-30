@@ -33,6 +33,8 @@ import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/dat
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+    AppState,
+    AppStateStatus,
     Alert,
     Dimensions,
     FlatList,
@@ -137,6 +139,7 @@ export default function MealDetailScreen() {
   const transcriptionPromiseRef = useRef<Promise<void> | null>(null);
   const transcriptionAbortRef = useRef<AbortController | null>(null);
   const isTranscribingRef = useRef<boolean>(isTranscribing);
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
 
   const mealTag = getMealTag(meal ? {
     calories: meal.calories || 0,
@@ -274,14 +277,14 @@ export default function MealDetailScreen() {
     }, [id, analysisStatus])
   );
 
-  const loadMealDetail = async () => {
+  const loadMealDetail = useCallback(async (): Promise<Meal | null> => {
     try {
       const { data, error } = await getMealById(id);
       if (error) {
         console.error('Error loading meal:', error);
         Alert.alert('Error', 'Failed to load meal details');
         router.back();
-        return;
+        return null;
       }
       setMeal(data);
       
@@ -308,14 +311,58 @@ export default function MealDetailScreen() {
           ai_ingredients: it.ai_ingredients,
         }))
       );
+      return data;
     } catch (error) {
       console.error('Error loading meal:', error);
       Alert.alert('Error', 'Failed to load meal details');
       router.back();
+      return null;
     } finally {
       setLoading(false);
     }
-  };
+  }, [id, router]);
+
+  const isTransientReanalyzeError = useCallback((error: unknown): boolean => {
+    const message = error instanceof Error ? error.message.toLowerCase() : '';
+    const name = error instanceof Error ? error.name.toLowerCase() : '';
+    const transientSignals = [
+      'network request failed',
+      'failed to fetch',
+      'fetch failed',
+      'load failed',
+      'internet connection appears to be offline',
+      'request failed',
+      'request cancelled',
+      'request canceled',
+      'aborted',
+      'aborterror',
+      'failed to send a request to the edge function',
+    ];
+    return transientSignals.some((signal) => message.includes(signal) || name.includes(signal));
+  }, []);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      const wasBackgrounded = /inactive|background/.test(appStateRef.current) && nextAppState === 'active';
+      appStateRef.current = nextAppState;
+      if (!wasBackgrounded || analysisStatus !== 'analyzing') {
+        return;
+      }
+
+      void (async () => {
+        const latestMeal = await loadMealDetail();
+        if (latestMeal?.processing_status === 'completed') {
+          setAnalysisStatus('success');
+          void queryClient.invalidateQueries({ queryKey: queryKeys.meals.all(latestMeal.user_id) });
+          setTimeout(() => setAnalysisStatus('idle'), 1200);
+        }
+      })();
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [analysisStatus, loadMealDetail]);
 
   const handleSetHero = async (mealItemId: string, imageUrl: string | null) => {
     if (!meal) return;
@@ -519,6 +566,21 @@ export default function MealDetailScreen() {
           e instanceof Error ? e.message : "You've hit today's scan limit. This resets at midnight UTC.",
         );
         return;
+      }
+
+      if (isTransientReanalyzeError(e)) {
+        const latestMeal = await loadMealDetail();
+        if (latestMeal?.processing_status === 'completed') {
+          setAnalysisStatus('success');
+          void queryClient.invalidateQueries({ queryKey: queryKeys.meals.all(latestMeal.user_id) });
+          setTimeout(() => setAnalysisStatus('idle'), 1200);
+          Alert.alert('Reanalysis completed', 'Your update finished while the app was in the background.');
+          return;
+        }
+        if (latestMeal?.processing_status === 'processing') {
+          Alert.alert('Reanalysis still running', 'We are still finalizing your meal analysis. It should update shortly.');
+          return;
+        }
       }
 
       const rawMessage = e instanceof Error ? e.message : '';

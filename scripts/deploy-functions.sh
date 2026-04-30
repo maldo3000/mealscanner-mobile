@@ -73,6 +73,24 @@ else
     exit 1
 fi
 
+# Deploy create-bug-report function
+echo "🐞 Deploying create-bug-report function..."
+if supabase functions deploy create-bug-report; then
+    echo "✅ create-bug-report deployed successfully"
+else
+    echo "❌ Failed to deploy create-bug-report function"
+    exit 1
+fi
+
+# Deploy dev-chat-assistant function
+echo "💬 Deploying dev-chat-assistant function..."
+if supabase functions deploy dev-chat-assistant; then
+    echo "✅ dev-chat-assistant deployed successfully"
+else
+    echo "❌ Failed to deploy dev-chat-assistant function"
+    exit 1
+fi
+
 # List deployed functions
 echo "📋 Listing deployed functions..."
 supabase functions list

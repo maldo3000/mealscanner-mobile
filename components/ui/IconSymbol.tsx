@@ -101,6 +101,11 @@ const MAPPING = {
   'candybar.fill': 'cookie',
   'shaker.fill': 'grain',
   
+  // Developer Tools
+  'hammer.fill': 'build',
+  'ladybug.fill': 'bug-report',
+  'bubble.left.fill': 'chat',
+  
   // Legacy
   'paperplane.fill': 'send',
   'chevron.left.forwardslash.chevron.right': 'code',

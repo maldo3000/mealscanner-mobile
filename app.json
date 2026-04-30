@@ -49,12 +49,6 @@
           "backgroundColor": "#143c23"
         }
       ],
-      [
-        "expo-audio",
-        {
-          "microphonePermission": "Allow $(PRODUCT_NAME) to access your microphone for voice input."
-        }
-      ],
       "expo-secure-store",
       "expo-notifications",
       "expo-font",

@@ -372,7 +372,7 @@ export const HomeShowcaseScene: React.FC = () => {
       <div
         style={{
           position: "absolute",
-          top: 100,
+          top: 500,
           textAlign: "center",
           opacity: titleOpacity,
           transform: `translateY(${titleY}px)`,

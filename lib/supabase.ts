@@ -248,6 +248,140 @@ export const updateUserProfile = async (userId: string, updates: {
   return { data, error }
 }
 
+export interface InternalAccessSettings {
+  user_id: string
+  dev_mode_enabled: boolean
+  updated_at: string
+}
+
+export const getInternalAccessSettings = async (userId: string) => {
+  const { data, error } = await supabase
+    .from('internal_access')
+    .select('user_id, dev_mode_enabled, updated_at')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  return { data: (data as InternalAccessSettings | null) ?? null, error }
+}
+
+export const updateInternalDevMode = async (userId: string, enabled: boolean) => {
+  const { data, error } = await supabase
+    .from('internal_access')
+    .update({ dev_mode_enabled: enabled })
+    .eq('user_id', userId)
+    .select('user_id, dev_mode_enabled, updated_at')
+    .maybeSingle()
+
+  return { data: (data as InternalAccessSettings | null) ?? null, error }
+}
+
+export interface CreateBugReportPayload {
+  title: string
+  description: string
+  stepsToReproduce?: string
+  expectedBehavior?: string
+  actualBehavior?: string
+  severity?: 'low' | 'medium' | 'high' | 'critical'
+  appVersion?: string
+  platform?: string
+  metadata?: Record<string, unknown>
+}
+
+interface CreateBugReportResponse {
+  success: boolean
+  bug_report_id?: string
+  created_at?: string
+  error?: string
+}
+
+export const createBugReport = async (
+  payload: CreateBugReportPayload,
+): Promise<{ data: CreateBugReportResponse | null; error: unknown }> => {
+  try {
+    const { data, error } = await supabase.functions.invoke('create-bug-report', {
+      method: 'POST',
+      body: {
+        title: payload.title,
+        description: payload.description,
+        steps_to_reproduce: payload.stepsToReproduce,
+        expected_behavior: payload.expectedBehavior,
+        actual_behavior: payload.actualBehavior,
+        severity: payload.severity,
+        app_version: payload.appVersion,
+        platform: payload.platform,
+        metadata: payload.metadata,
+      },
+    })
+
+    if (error) {
+      return { data: null, error }
+    }
+
+    return { data: (data as CreateBugReportResponse) ?? null, error: null }
+  } catch (error) {
+    return { data: null, error }
+  }
+}
+
+// Dev Chat Assistant types and helpers
+
+export type DevChatIntent =
+  | 'weekly_summary'
+  | 'grocery_list'
+  | 'analysis_explainer'
+  | 'nutrition_insights'
+  | 'general'
+
+export interface DevChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+export interface DevChatRequestPayload {
+  messages: DevChatMessage[]
+  intentHint?: DevChatIntent
+  focusedMealId?: string
+  daysWindow?: number
+}
+
+export interface DevChatResponse {
+  success: boolean
+  answer?: string
+  model?: string
+  context_summary?: {
+    meals_count: number
+    has_goals: boolean
+    has_focused_meal: boolean
+    days_window: number
+  }
+  usage?: {
+    prompt_tokens?: number
+    completion_tokens?: number
+    total_tokens?: number
+  }
+  latency_ms?: number
+  error?: string
+}
+
+export const invokeDevChatAssistant = async (
+  payload: DevChatRequestPayload,
+): Promise<{ data: DevChatResponse | null; error: unknown }> => {
+  try {
+    const { data, error } = await supabase.functions.invoke('dev-chat-assistant', {
+      method: 'POST',
+      body: payload,
+    })
+
+    if (error) {
+      return { data: null, error }
+    }
+
+    return { data: (data as DevChatResponse) ?? null, error: null }
+  } catch (error) {
+    return { data: null, error }
+  }
+}
+
 /**
  * Server-authoritative subscription sync.
  *

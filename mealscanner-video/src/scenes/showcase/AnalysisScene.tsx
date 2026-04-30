@@ -430,7 +430,7 @@ export const AnalysisScene: React.FC = () => {
       <div
         style={{
           position: "absolute",
-          top: 100,
+          top: 500,
           textAlign: "center",
           opacity: interpolate(titleEnter, [0, 0.5], [0, 1], { extrapolateRight: "clamp" }),
           transform: `translateY(${interpolate(titleEnter, [0, 1], [30, 0])}px)`,

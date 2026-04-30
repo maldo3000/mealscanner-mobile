@@ -160,7 +160,7 @@ export const IntroTextScene: React.FC = () => {
       {/* Kinetic typography - larger for vertical */}
       <div style={{ textAlign: "center", marginBottom: 24 }}>
         <ExplodeText
-          text="TRACK SMARTER"
+          text="Track Smarter"
           startFrame={Math.round(fps * 0.4)}
           staggerFrames={2}
           fontSize={72}
@@ -171,7 +171,7 @@ export const IntroTextScene: React.FC = () => {
       <div style={{ textAlign: "center", marginBottom: 40 }}>
         <Sequence from={Math.round(fps * 0.8)} layout="none">
           <KineticSlide
-            text="EAT BETTER"
+            text="Eat Better"
             direction="right"
             fontSize={88}
             color={brand.matcha}
