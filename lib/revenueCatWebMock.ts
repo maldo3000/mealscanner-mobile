@@ -1,9 +1,13 @@
 // RevenueCat mock implementation for web mode testing
-import type { CustomerInfo, PurchasesOffering, PurchasesPackage } from 'react-native-purchases';
+// Legacy preview fixtures model only the fields consumed by this unused web preview.
+// They deliberately do not claim to satisfy the native SDK or grant production access.
+type CustomerInfo = typeof mockCustomerInfo;
+type PurchasesOffering = typeof mockOfferings;
+type PurchasesPackage = (typeof mockPackages)[number];
 import { mockSubscriptionData, mockUser } from './webMocks';
 
 // Mock CustomerInfo for web testing
-export const mockCustomerInfo: CustomerInfo = {
+export const mockCustomerInfo = {
   entitlements: {
     active: {
       'MealScanner Pro': {
@@ -36,7 +40,7 @@ export const mockCustomerInfo: CustomerInfo = {
 };
 
 // Mock packages for web testing
-export const mockPackages: PurchasesPackage[] = [
+export const mockPackages = [
   {
     identifier: '$rc_monthly',
     packageType: 'MONTHLY',
@@ -82,7 +86,7 @@ export const mockPackages: PurchasesPackage[] = [
 ];
 
 // Mock offerings for web testing
-export const mockOfferings: PurchasesOffering = {
+export const mockOfferings = {
   identifier: 'default',
   serverDescription: 'Default offering',
   availablePackages: mockPackages,

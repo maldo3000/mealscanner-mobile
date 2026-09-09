@@ -417,7 +417,7 @@ export default function RecipeDetailScreen() {
   };
 
   // Helper functions to get ingredients and instructions from either separate tables or ai_analysis
-  const getIngredients = () => {
+  const getIngredients = (): { name: string; amount?: string | number; unit?: string }[] => {
     if (!recipe) return [];
     // First try separate ingredients table
     if (recipe.ingredients && Array.isArray(recipe.ingredients) && recipe.ingredients.length > 0) {
@@ -430,11 +430,11 @@ export default function RecipeDetailScreen() {
     return [];
   };
 
-  const getInstructions = () => {
+  const getInstructions = (): (string | { instruction: string })[] => {
     if (!recipe) return [];
     // First try separate instructions table
     if (recipe.instructions && Array.isArray(recipe.instructions) && recipe.instructions.length > 0) {
-      return recipe.instructions.map(inst => inst.instruction || inst);
+      return recipe.instructions.map((inst: string | { instruction: string }) => typeof inst === 'string' ? inst : inst.instruction);
     }
     // Fallback to ai_analysis
     if (recipe.ai_analysis?.instructions) {
@@ -741,7 +741,7 @@ export default function RecipeDetailScreen() {
               </Text>
             </View>
             <View style={styles.tagsRow}>
-              {recipe.tags.map((tag, index) => (
+              {recipe.tags.map((tag: string, index: number) => (
                 <View key={index} style={[styles.tag, { backgroundColor: colors.surface }]}>
                   <Text style={[TextStyles.caption, { color: colors.text }]}>{tag}</Text>
                 </View>
@@ -989,4 +989,4 @@ const styles = StyleSheet.create({
   logRecipeButtonDisabled: {
     opacity: 0.7,
   },
-}); 
+});

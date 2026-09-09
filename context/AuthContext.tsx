@@ -1,4 +1,4 @@
-import { resetUser } from '@/lib/revenueCat';
+import { queryClient } from '@/lib/queryClient';
 import { supabase } from '@/lib/supabase';
 import { Session, User } from '@supabase/supabase-js';
 import React, { createContext, useContext, useEffect, useState } from 'react';
@@ -58,8 +58,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     try {
-      await supabase.auth.signOut();
-      await resetUser();
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      queryClient.clear();
     } catch (error) {
       console.error('Error signing out:', error);
       throw error;
@@ -80,7 +81,6 @@ export function useAuth() {
   }
   return context;
 }
-
 
 
 

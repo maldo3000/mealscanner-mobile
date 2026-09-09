@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { localGoalsRepository } from '@/lib/goals/LocalGoalsRepository';
 import { calculateGoalTargets } from '@/lib/goals/goalEngine';
 import { useAuth } from '@/context/AuthContext';
-import { saveUserGoals, getUserGoals } from '@/lib/supabase';
+import { saveUserGoals, getUserGoals, deleteUserGoals } from '@/lib/supabase';
 import type {
   ActivityLevel,
   GoalCalculationParams,
@@ -318,16 +318,22 @@ export const useNutritionGoals = (): UseNutritionGoalsValue => {
     try {
       setLoading(true);
       setError(null);
+      if (user?.id) {
+        const { error: deleteError } = await deleteUserGoals(user.id);
+        if (deleteError) throw deleteError;
+      }
       await localGoalsRepository.clearGoals(user?.id);
-      await load();
+      setActiveGoal(null);
+      setAllGoals([]);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : 'Failed to reset nutrition goals';
       setError(message);
+      throw err;
     } finally {
       setLoading(false);
     }
-  }, [load, user?.id]);
+  }, [user?.id]);
 
   return {
     activeGoal,
@@ -341,7 +347,6 @@ export const useNutritionGoals = (): UseNutritionGoalsValue => {
     resetGoals,
   };
 };
-
 
 
 

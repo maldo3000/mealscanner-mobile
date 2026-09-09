@@ -15,7 +15,7 @@ module.exports = function (api) {
     };
   }
 
-  const plugins = ['react-native-reanimated/plugin'];
+  const plugins = [];
 
   // Strip console.log/warn/debug/info in production builds.
   // console.error is intentionally kept so real errors are still reported.
@@ -26,8 +26,10 @@ module.exports = function (api) {
     ]);
   }
 
+  plugins.push('react-native-reanimated/plugin');
+
   return {
     presets: ['babel-preset-expo', nativewindWithoutReanimatedPreset],
     plugins,
   };
-}; 
+};

@@ -2,7 +2,7 @@ import { ComponentSpacing } from '@/constants/Spacing';
 import { TextStyles } from '@/constants/Typography';
 import { useTheme } from '@/context/ThemeContext';
 import React from 'react';
-import { Platform, StyleSheet, Text, TouchableOpacity, TouchableOpacityProps, View } from 'react-native';
+import { Platform, StyleSheet, Text, TouchableOpacity, TouchableOpacityProps, View, type StyleProp, type ViewStyle, type TextStyle } from 'react-native';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'glass' | 'ghost';
 export type ButtonSize = 'small' | 'medium' | 'large';
@@ -14,7 +14,7 @@ interface ButtonProps extends TouchableOpacityProps {
   icon?: React.ReactNode;
   fullWidth?: boolean;
   noShadow?: boolean;
-  textStyle?: any;
+  textStyle?: StyleProp<TextStyle>;
 }
 
 export function Button({ 
@@ -34,7 +34,7 @@ export function Button({
   const fullWidthGlowInset = fullWidth ? 12 : 0;
 
   const getContainerStyle = () => {
-    const base = [styles.button];
+    const base: ViewStyle[] = [styles.button];
     
     switch (variant) {
       case 'primary':
@@ -101,7 +101,7 @@ export function Button({
     }
   };
 
-  const buttonStyle = [
+  const buttonStyle: StyleProp<ViewStyle> = [
     ...getContainerStyle(),
     {
       height: getHeight(),

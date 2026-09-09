@@ -62,23 +62,12 @@ function PackageCard({ pkg, isSelected, onSelect, isBestValue }: PackageCardProp
       case 'MONTHLY':
         return 'Billed monthly';
       case 'ANNUAL':
-        return 'Billed annually • Save 50%';
+        return 'Billed annually';
       case 'LIFETIME':
         return 'One-time payment';
       default:
         return '';
     }
-  };
-
-  const getTrialText = (): string | null => {
-    const intro = pkg.product.introPrice;
-    if (intro && intro.price === 0) {
-      // This is a free trial
-      const period = intro.periodUnit; // 'DAY', 'WEEK', 'MONTH', 'YEAR'
-      const count = intro.periodNumberOfUnits;
-      return `${count} ${period.toLowerCase()}${count > 1 ? 's' : ''} FREE`;
-    }
-    return null;
   };
 
   return (
@@ -108,11 +97,6 @@ function PackageCard({ pkg, isSelected, onSelect, isBestValue }: PackageCardProp
             <View>
               <Text style={[TextStyles.h4, { color: colors.text }]}>{getPackageTitle()}</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                {getTrialText() && (
-                  <Text style={[TextStyles.caption, { color: neonGreen, fontWeight: '700' }]}>
-                    {getTrialText()} • 
-                  </Text>
-                )}
                 <Text style={[TextStyles.caption, { color: colors.icon }]}>{getPackageSubtitle()}</Text>
               </View>
             </View>
@@ -131,22 +115,38 @@ export function Paywall({ visible, onClose, title, subtitle, feature }: PaywallP
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
   const insets = useSafeAreaInsets();
-  const { purchasePackage, restorePurchases, isPro } = useSubscription();
+  const { purchasePackage, restorePurchases, isPro, isLoading: isInitializing, initializationError, retryInitialization, activationStatus, ensureSubscriptionSynced } = useSubscription();
 
   const [offerings, setOfferings] = useState<PurchasesOffering | null>(null);
   const [selectedPackage, setSelectedPackage] = useState<PurchasesPackage | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isPurchasing, setIsPurchasing] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
+  const [offeringError, setOfferingError] = useState<string | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
   // Load offerings
   useEffect(() => {
+    let cancelled = false;
     async function loadOfferings() {
-      if (!visible) return;
+      if (!visible || isInitializing || initializationError) return;
+      if (isPro) {
+        setOfferingError(null);
+        setIsLoading(false);
+        return;
+      }
       
       setIsLoading(true);
+      setOfferingError(null);
+      setOfferings(null);
+      setSelectedPackage(null);
       try {
         const currentOfferings = await getOfferings();
+        if (cancelled) return;
+        if (!currentOfferings?.availablePackages.length) {
+          setOfferingError('No subscription options are available right now. Please retry shortly.');
+          return;
+        }
         setOfferings(currentOfferings);
         
         // Default select the annual package (best value)
@@ -154,22 +154,31 @@ export function Paywall({ visible, onClose, title, subtitle, feature }: PaywallP
         setSelectedPackage(annual || currentOfferings?.availablePackages[0] || null);
       } catch (error) {
         console.error('Failed to load offerings:', error);
+        if (!cancelled) setOfferingError('Subscription options could not be loaded. Check your connection and retry.');
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     }
 
     loadOfferings();
-  }, [visible]);
+    return () => { cancelled = true; };
+  }, [visible, loadAttempt, isInitializing, initializationError, isPro]);
 
   // Close if user became Pro
   useEffect(() => {
-    if (isPro && visible) {
+    if (isPro && activationStatus === 'active' && visible) {
       onClose();
     }
-  }, [isPro, visible, onClose]);
+  }, [isPro, activationStatus, visible, onClose]);
 
   const handlePurchase = async () => {
+    if (isPro) {
+      setIsPurchasing(true);
+      try {
+        if (await ensureSubscriptionSynced({ expectedIsPro: true })) onClose();
+      } finally { setIsPurchasing(false); }
+      return;
+    }
     const packageToPurchase = selectedPackage ?? offerings?.availablePackages[0];
     if (!packageToPurchase) return;
 
@@ -276,7 +285,20 @@ export function Paywall({ visible, onClose, title, subtitle, feature }: PaywallP
           </View>
 
           {/* Packages */}
-          {isLoading ? (
+          {initializationError || offeringError ? (
+            <View style={styles.packages}>
+              <Text accessibilityRole="alert" style={{ color: colors.text, textAlign: 'center' }}>
+                {initializationError || offeringError}
+              </Text>
+              <Button onPress={() => initializationError ? retryInitialization() : setLoadAttempt(value => value + 1)}>
+                Retry
+              </Button>
+            </View>
+          ) : isPro ? (
+            <Text accessibilityRole="alert" style={{ color: colors.text, textAlign: 'center' }}>
+              Your purchase is recorded. Confirming Pro access may take a moment. You can retry activation without purchasing again.
+            </Text>
+          ) : isLoading || isInitializing ? (
             <SwirlingSpinner size="large" color={neonGreen} />
           ) : (
             <View style={styles.packages}>
@@ -305,17 +327,17 @@ export function Paywall({ visible, onClose, title, subtitle, feature }: PaywallP
           <Button
             variant="primary"
             onPress={handlePurchase}
-            disabled={isPurchasing || isRestoring}
+            disabled={isPurchasing || isRestoring || isInitializing || !!initializationError || activationStatus === 'syncing' || (!isPro && (isLoading || !selectedPackage || !!offeringError))}
             fullWidth
             style={styles.subscribeButton}
             textStyle={styles.subscribeButtonText}
           >
-            {isPurchasing ? 'Processing...' : 'Subscribe Now'}
+            {isPurchasing || activationStatus === 'syncing' ? 'Confirming...' : isPro ? 'Retry Activation' : 'Subscribe Now'}
           </Button>
           
           <TouchableOpacity 
             onPress={handleRestore} 
-            disabled={isRestoring || isPurchasing}
+            disabled={isRestoring || isPurchasing || isInitializing || !!initializationError}
             style={styles.restoreButton}
           >
             <Text style={[TextStyles.bodySmall, { color: colors.icon }]}>
@@ -340,7 +362,7 @@ export function Paywall({ visible, onClose, title, subtitle, feature }: PaywallP
           </View>
           
           <Text style={[TextStyles.caption, { color: colors.icon, textAlign: 'center', marginTop: Spacing.xs }]}>
-            Cancel anytime. Subscription renews automatically.
+            {selectedPackage?.packageType === 'LIFETIME' ? 'One-time purchase. No automatic renewal.' : 'Cancel anytime. Subscription renews automatically.'}
           </Text>
         </BlurView>
       </View>
@@ -499,4 +521,3 @@ const styles = StyleSheet.create({
     marginHorizontal: Spacing.xs,
   },
 });
-

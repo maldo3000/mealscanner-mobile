@@ -9,6 +9,7 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 
 interface SectionProps extends ViewProps {
   title?: string;
+  description?: string;
   children: React.ReactNode;
   gap?: number;
 }
@@ -19,6 +20,7 @@ interface SectionProps extends ViewProps {
  */
 export function Section({
   title,
+  description,
   children,
   gap = PageSpacing.sectionGap,
   style,
@@ -47,6 +49,7 @@ export function Section({
           {title}
         </Text>
       )}
+      {description && <Text style={[TextStyles.bodySmall, { color: colors.icon, marginBottom: Spacing.md }]}>{description}</Text>}
       {children}
     </Animated.View>
   );
@@ -58,4 +61,3 @@ const styles = StyleSheet.create({
     overflow: 'visible',
   },
 });
-

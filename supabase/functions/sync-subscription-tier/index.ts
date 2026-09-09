@@ -64,6 +64,7 @@ Deno.serve(async (req: Request) => {
     const encodedUserId = encodeURIComponent(auth.userId);
     const revenueCatResponse = await fetch(`https://api.revenuecat.com/v1/subscribers/${encodedUserId}`, {
       method: "GET",
+      signal: AbortSignal.timeout(15000),
       headers: {
         Authorization: `Bearer ${revenueCatSecretKey}`,
         "Content-Type": "application/json",
@@ -92,12 +93,14 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
 
-    const { error: updateError } = await supabaseAdmin
+    const { data: updatedProfile, error: updateError } = await supabaseAdmin
       .from("profiles")
       .update({ subscription_tier: nextTier })
-      .eq("id", auth.userId);
+      .eq("id", auth.userId)
+      .select("id")
+      .single();
 
-    if (updateError) {
+    if (updateError || !updatedProfile) {
       console.error("Failed to update subscription tier:", updateError);
       return new Response(
         JSON.stringify({ success: false, error: "Failed to sync subscription tier" }),

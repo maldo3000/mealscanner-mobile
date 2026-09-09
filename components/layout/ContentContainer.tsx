@@ -11,7 +11,7 @@ interface ContentContainerProps extends ViewProps {
   keyboardBehavior?: 'padding' | 'height' | 'position';
   keyboardVerticalOffset?: number;
   contentPadding?: boolean;
-  refreshControl?: React.ReactElement<typeof RefreshControl>;
+  refreshControl?: ScrollViewProps['refreshControl'];
   /**
    * When true, the ScrollView automatically adjusts its insets to keep the
    * focused input visible above the keyboard. Preferred over keyboardAvoiding
@@ -110,4 +110,3 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
 });
-

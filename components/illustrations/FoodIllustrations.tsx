@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import { borderBlack, textBlack } from '@/constants/Colors';
+const borderBlack = '#000000';
+const textBlack = '#000000';
 
 export type FoodType = 'burger' | 'pizza' | 'sushi' | 'salad' | 'cake' | 'coffee' | 'apple' | 'taco';
 
@@ -325,7 +326,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
   },
 });
-
 
 
 

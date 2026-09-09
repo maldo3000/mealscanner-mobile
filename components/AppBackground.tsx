@@ -208,23 +208,9 @@ export function AppBackground({
 }: AppBackgroundProps) {
   const { width, height } = useWindowDimensions();
 
-  // On Android, skip the expensive GPU shader entirely and use a plain solid
-  // background. The Skia shader with procedural noise + vignette causes
-  // significant frame drops on most Android devices.
-  if (IS_ANDROID) {
-    return (
-      <View
-        style={[
-          styles.container,
-          { backgroundColor: `rgb(${baseColor.r}, ${baseColor.g}, ${baseColor.b})` },
-        ]}
-        pointerEvents="none"
-      />
-    );
-  }
-
   // Compile shader once (memoized) — iOS / web only
   const runtimeEffect = useMemo(() => {
+    if (IS_ANDROID) return null;
     try {
       const effect = Skia.RuntimeEffect.Make(SHADER_SOURCE);
       if (!effect) {

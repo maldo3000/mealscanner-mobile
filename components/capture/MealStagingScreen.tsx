@@ -304,18 +304,6 @@ export function MealStagingScreen(props: MealStagingScreenProps): React.ReactEle
     setTempContext('');
   }, [cancelTranscription, isRecording, stopRecording]);
 
-  const saveContext = useCallback(async (): Promise<void> => {
-    const shouldWaitForTranscription = isRecording || isTranscribing;
-    if (isRecording) {
-      await stopRecording();
-    }
-    if (shouldWaitForTranscription) {
-      await waitForTranscription();
-    }
-    await onSaveContext(tempContext);
-    setShowContextModal(false);
-  }, [isRecording, isTranscribing, onSaveContext, stopRecording, tempContext, waitForTranscription]);
-
   const waitForTranscription = useCallback(async (): Promise<void> => {
     if (transcriptionPromiseRef.current) {
       await transcriptionPromiseRef.current;
@@ -331,6 +319,18 @@ export function MealStagingScreen(props: MealStagingScreenProps): React.ReactEle
       }
     }
   }, []);
+
+  const saveContext = useCallback(async (): Promise<void> => {
+    const shouldWaitForTranscription = isRecording || isTranscribing;
+    if (isRecording) {
+      await stopRecording();
+    }
+    if (shouldWaitForTranscription) {
+      await waitForTranscription();
+    }
+    await onSaveContext(tempContext);
+    setShowContextModal(false);
+  }, [isRecording, isTranscribing, onSaveContext, stopRecording, tempContext, waitForTranscription]);
 
   const handleAnalyze = useCallback(async (): Promise<void> => {
     if (isAnalyzeInFlightRef.current || analysisStatus !== 'idle') return;
@@ -426,7 +426,7 @@ export function MealStagingScreen(props: MealStagingScreenProps): React.ReactEle
                   Photo analysis is an estimate
                 </Text>
                 <Text style={[TextStyles.caption, { color: tokens.textMuted, lineHeight: 17 }]}>
-                  Calorie counts from photos aren't always precise. Use "Add context" to describe portions, cooking methods, or anything the camera missed — it makes a real difference.
+                  Calorie counts from photos aren&apos;t always precise. Use &quot;Add context&quot; to describe portions, cooking methods, or anything the camera missed — it makes a real difference.
                 </Text>
               </View>
               <TouchableOpacity onPress={dismissHint} style={styles.hintDismiss} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -918,5 +918,3 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
 });
-
-

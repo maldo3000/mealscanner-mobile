@@ -66,7 +66,7 @@ export const ProfileUpdateSchema = z.object({
 
 export const NutritionGoalsSchema = z.object({
   goal_type: z.enum(['weight_loss', 'muscle_gain', 'maintenance', 'health'], {
-    errorMap: () => ({ message: 'Please select a valid goal type' })
+    error: 'Please select a valid goal type'
   }),
   target_calories: z.number().min(500, 'Calories must be at least 500').max(10000, 'Calories cannot exceed 10,000').optional(),
   target_protein: z.number().min(0, 'Protein cannot be negative').max(500, 'Protein cannot exceed 500g').optional(),
@@ -129,10 +129,10 @@ export interface ValidationResult<T> {
  * Validates data against a Zod schema and returns a typed result
  */
 export function validate<T>(
-  schema: z.ZodSchema<T>,
+  schema: z.core.$ZodType<T>,
   data: unknown
 ): ValidationResult<T> {
-  const result = schema.safeParse(data)
+  const result = z.safeParse(schema, data)
   
   if (result.success) {
     return { success: true, data: result.data }
@@ -162,10 +162,10 @@ export function validate<T>(
  * Validates a single field value
  */
 export function validateField<T>(
-  schema: z.ZodSchema<T>,
+  schema: z.core.$ZodType<T>,
   value: unknown
 ): { valid: boolean; error?: string } {
-  const result = schema.safeParse(value)
+  const result = z.safeParse(schema, value)
   
   if (result.success) {
     return { valid: true }
@@ -192,7 +192,7 @@ export function createFormValidator<T extends z.ZodRawShape>(
       if (!fieldSchema) {
         return { valid: true }
       }
-      return validateField(fieldSchema as z.ZodSchema, value)
+      return validateField(fieldSchema, value)
     },
   }
 }

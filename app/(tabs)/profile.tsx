@@ -17,7 +17,7 @@ import { resetCaptureHint } from '@/hooks/useCaptureHint';
 import { useNutritionGoals } from '@/hooks/useNutritionGoals';
 import BottomSheet from '@gorhom/bottom-sheet';
 import { useFocusEffect } from '@react-navigation/native';
-import { File, Paths } from 'expo-file-system/next';
+import { File, Paths } from 'expo-file-system';
 import { useRouter } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import React, { useCallback, useRef, useState } from 'react';
@@ -25,10 +25,10 @@ import { Alert, Platform, StyleSheet, Switch, Text, TouchableOpacity, View } fro
 import Animated, { Easing, FadeInDown } from 'react-native-reanimated';
 
 import { presentCodeRedemptionSheet } from '@/lib/revenueCat';
+import { queryClient } from '@/lib/queryClient';
 import {
   deleteAccount,
-  deleteMeal,
-  getAllUserMealIds,
+  clearUserMealHistory,
   getAllUserMeals,
   getInternalAccessSettings,
   updateInternalDevMode,
@@ -170,10 +170,7 @@ export default function ProfileTabScreen() {
   const handleRestorePurchases = async () => {
     setIsRestoring(true);
     try {
-      const restored = await restorePurchases();
-      if (restored) {
-        Alert.alert('Success', 'Purchases restored successfully.');
-      }
+      await restorePurchases();
     } catch (error) {
       console.error('🛒 Restore error:', error);
       Alert.alert('Error', 'Failed to restore purchases.');
@@ -271,10 +268,9 @@ export default function ProfileTabScreen() {
           onPress: async () => {
             if (!user) return;
             try {
-              const { data: meals } = await getAllUserMealIds(user.id);
-              if (meals && meals.length > 0) {
-                await Promise.all(meals.map(meal => deleteMeal(meal.id)));
-              }
+              const { error } = await clearUserMealHistory(user.id);
+              if (error) throw error;
+              await queryClient.invalidateQueries();
               await resetGoals();
               Alert.alert('Success', 'Your history and goals have been cleared.');
             } catch (error) {

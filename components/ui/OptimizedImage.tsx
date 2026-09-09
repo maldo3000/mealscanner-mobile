@@ -1,12 +1,12 @@
 import { getHeroUrl, getThumbnailUrl } from '@/lib/imageUtils';
 import { Image } from 'expo-image';
 import React from 'react';
-import { ImageStyle, StyleSheet, View, ViewStyle } from 'react-native';
+import { ImageStyle, type StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 import { IconSymbol } from './IconSymbol';
 
 interface OptimizedImageProps {
   source: { uri: string } | string | number; // number for require() local images
-  style?: ImageStyle;
+  style?: StyleProp<ImageStyle>;
   containerStyle?: ViewStyle;
   placeholder?: React.ReactNode;
   contentFit?: 'cover' | 'contain' | 'fill' | 'none' | 'scale-down';
@@ -50,7 +50,7 @@ export function OptimizedImage({
       <Image
         source={imageSource}
         style={style}
-        placeholder={placeholder || blurhash}
+        placeholder={blurhash}
         contentFit={contentFit}
         placeholderContentFit={placeholderContentFit}
         priority={priority}
@@ -131,4 +131,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#F3F4F6',
   },
-}); 
+});

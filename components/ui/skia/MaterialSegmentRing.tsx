@@ -16,6 +16,7 @@ import { Platform, StyleSheet, View } from 'react-native';
 const IS_ANDROID = Platform.OS === 'android';
 import {
     Easing,
+    type SharedValue,
     useDerivedValue,
     useSharedValue,
     withSequence,
@@ -92,10 +93,11 @@ export function MaterialSegmentRing({
   const gapDegrees = 8; // Gap between segments
   const totalGapDegrees = gapDegrees * segmentCount;
   const availableDegrees = 360 - totalGapDegrees;
-  const segmentSweep = availableDegrees / segmentCount;
+  const segmentSweep = segmentCount > 0 ? Math.max(0, availableDegrees / segmentCount) : 0;
 
   // Animate on mount
   useEffect(() => {
+    let flickerTimer: ReturnType<typeof setTimeout> | undefined;
     const timer = setTimeout(() => {
       animatedProgress.value = withTiming(1, {
         duration: animationDuration,
@@ -103,7 +105,7 @@ export function MaterialSegmentRing({
       });
 
       // Glow flicker at end of animation
-      setTimeout(() => {
+      flickerTimer = setTimeout(() => {
         glowFlicker.value = withSequence(
           withTiming(1, { duration: 80 }),
           withTiming(0, { duration: 150, easing: Easing.out(Easing.quad) })
@@ -111,8 +113,8 @@ export function MaterialSegmentRing({
       }, animationDuration - 100);
     }, animationDelay);
 
-    return () => clearTimeout(timer);
-  }, [animationDelay, animationDuration]);
+    return () => { clearTimeout(timer); clearTimeout(flickerTimer); };
+  }, [animationDelay, animationDuration, animatedProgress, glowFlicker]);
 
   // Create segment paths and derived values
   const segmentConfigs = useMemo(() => {
@@ -137,8 +139,55 @@ export function MaterialSegmentRing({
     });
   }, [segments, segmentSweep, gapDegrees, tokens.textPrimary, withAlpha]);
 
-  // Derived animated paths for each segment
-  const animatedSegments = segmentConfigs.map((config, index) => {
+  // Static track path (full circle, slightly dimmer)
+  const trackPath = useMemo(() => {
+    const path = Skia.Path.Make();
+    path.addCircle(canvasCenter, canvasCenter, radius);
+    return path;
+  }, [canvasCenter, radius]);
+
+  return (
+    <View style={[styles.container, { width: size, height: size }]}>
+      <Canvas
+        style={[
+          styles.canvas,
+          {
+            width: canvasSize,
+            height: canvasSize,
+            left: -glowPadding,
+            top: -glowPadding,
+          },
+        ]}
+      >
+        {/* Background track circle */}
+        <Path
+          path={trackPath}
+          color={trackColor}
+          style="stroke"
+          strokeWidth={strokeWidth}
+        />
+
+        {/* Render each segment with layered effects */}
+        {segmentConfigs.map(config => (
+          <AnimatedRingSegment key={config.label} config={config} animatedProgress={animatedProgress}
+            glowFlicker={glowFlicker} canvasCenter={canvasCenter} radius={radius}
+            highlightRadius={highlightRadius} hotSpotRadius={hotSpotRadius} strokeWidth={strokeWidth} />
+        ))}      </Canvas>
+    </View>
+  );
+}
+
+
+interface SegmentConfig extends SegmentData {
+  startAngle: number; sweep: number; gradientTop: string; gradientBottom: string;
+  hotSpotColor: string; highlightColor: string; shadowColor: string;
+}
+interface AnimatedRingSegmentProps {
+  config: SegmentConfig;
+  animatedProgress: SharedValue<number>; glowFlicker: SharedValue<number>;
+  canvasCenter: number; radius: number; highlightRadius: number; hotSpotRadius: number; strokeWidth: number;
+}
+function AnimatedRingSegment({ config, animatedProgress, glowFlicker, canvasCenter, radius, highlightRadius, hotSpotRadius, strokeWidth }: AnimatedRingSegmentProps) {
     const animatedSweep = useDerivedValue(() => {
       return config.sweep * animatedProgress.value;
     });
@@ -188,47 +237,11 @@ export function MaterialSegmentRing({
       return animatedSweep.value > 0 ? 0.85 + glowFlicker.value * 0.15 : 0;
     });
 
-    return {
-      config,
-      arcPath,
-      highlightPath,
-      hotSpotPoint,
-      glowOpacity,
-      hotSpotOpacity,
-    };
-  });
 
-  // Static track path (full circle, slightly dimmer)
-  const trackPath = useMemo(() => {
-    const path = Skia.Path.Make();
-    path.addCircle(canvasCenter, canvasCenter, radius);
-    return path;
-  }, [canvasCenter, radius]);
-
-  return (
-    <View style={[styles.container, { width: size, height: size }]}>
-      <Canvas
-        style={[
-          styles.canvas,
-          {
-            width: canvasSize,
-            height: canvasSize,
-            left: -glowPadding,
-            top: -glowPadding,
-          },
-        ]}
-      >
-        {/* Background track circle */}
-        <Path
-          path={trackPath}
-          color={trackColor}
-          style="stroke"
-          strokeWidth={strokeWidth}
-        />
-
-        {/* Render each segment with layered effects */}
-        {animatedSegments.map(({ config, arcPath, highlightPath, hotSpotPoint, glowOpacity, hotSpotOpacity }, index) => (
-          <React.Fragment key={config.label}>
+    const hotSpotX = useDerivedValue(() => hotSpotPoint.value.x);
+    const hotSpotY = useDerivedValue(() => hotSpotPoint.value.y);
+    return (
+          <>
             {/* Inner shadow (offset darker arc with blur) */}
             <Path
               path={arcPath}
@@ -278,19 +291,16 @@ export function MaterialSegmentRing({
 
             {/* End-cap hot spot glow */}
             <Circle
-              cx={hotSpotPoint.value.x}
-              cy={hotSpotPoint.value.y}
+              cx={hotSpotX}
+              cy={hotSpotY}
               r={hotSpotRadius}
               color={config.hotSpotColor}
               opacity={hotSpotOpacity}
             >
               {!IS_ANDROID && <BlurMask blur={3} style="normal" />}
             </Circle>
-          </React.Fragment>
-        ))}
-      </Canvas>
-    </View>
-  );
+          </>
+    );
 }
 
 const styles = StyleSheet.create({

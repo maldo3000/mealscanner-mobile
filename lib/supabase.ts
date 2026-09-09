@@ -1,6 +1,7 @@
 import type { WeeklyNutritionReport, WeeklyReportGenerationResult } from '@/types/weeklyReport'
 import { createClient } from '@supabase/supabase-js'
 import { Platform } from 'react-native'
+import { collectPages } from './pagination'
 
 // Only import AsyncStorage on native platforms
 type AsyncStorageLike = {
@@ -563,6 +564,7 @@ export const getAllUserMeals = async (userId: string, daysLimit?: number) => {
     .select('*')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
 
   if (daysLimit) {
     const date = new Date()
@@ -570,18 +572,22 @@ export const getAllUserMeals = async (userId: string, daysLimit?: number) => {
     query = query.gte('created_at', date.toISOString())
   }
   
-  const { data, error } = await query
-  
-  return { data, error }
+  return collectPages((from, to) => query.range(from, to))
 }
 
 export const getAllUserMealIds = async (userId: string) => {
-  const { data, error } = await supabase
-    .from('meals')
-    .select('id')
-    .eq('user_id', userId)
+  return collectPages((from, to) => supabase.from('meals').select('id')
+    .eq('user_id', userId).order('id').range(from, to))
+}
 
-  return { data, error }
+// A single filtered delete avoids per-meal requests and the API's read-row limit.
+// RLS still enforces the signed-in user's ownership.
+export const clearUserMealHistory = async (userId: string) => {
+  return supabase.from('meals').delete().eq('user_id', userId)
+}
+
+export const deleteUserGoals = async (userId: string) => {
+  return supabase.from('user_goals').delete().eq('user_id', userId)
 }
 
 const JOURNAL_LIST_COLUMNS = [

@@ -49,7 +49,7 @@ const adjustHexColor = (hex: string, amount: number): string => {
   return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
 };
 
-const CircularProgress = React.memo(({ size, strokeWidth, progress, color, children, showGlow }: CircularProgressProps) => {
+const CircularProgress = React.memo(function NutritionHeroComponent({ size, strokeWidth, progress, color, children, showGlow }: CircularProgressProps) {
   const { tokens, withAlpha } = useTheme();
   const clampedProgress = clampProgress(progress);
   const radius = (size - strokeWidth) / 2;
@@ -240,7 +240,12 @@ export const NutritionHero = React.memo(function NutritionHero({ stats, weeklyCa
     }, [refresh])
   );
   
-  const targets = activeGoal?.dailyTargets || {
+  const targets = activeGoal ? {
+    calories: activeGoal.dailyTargets.calories,
+    protein: activeGoal.dailyTargets.proteinGrams,
+    carbs: activeGoal.dailyTargets.carbGrams,
+    fat: activeGoal.dailyTargets.fatGrams,
+  } : {
     calories: 2000,
     protein: 150,
     carbs: 200,
@@ -383,7 +388,7 @@ export const NutritionHero = React.memo(function NutritionHero({ stats, weeklyCa
   const isWinState = calProgress >= 1;
 
   return (
-    <GlassCard variant="glass" style={[styles.container, themeOverrides && { backgroundColor: themeOverrides.cardBackground, borderColor: themeOverrides.cardBorder, borderWidth: 1 }]} onLayout={onContainerLayout}>
+    <GlassCard style={[styles.container, themeOverrides && { backgroundColor: themeOverrides.cardBackground, borderColor: themeOverrides.cardBorder, borderWidth: 1 }]} onLayout={onContainerLayout}>
       {/* Background Arc Gradient */}
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
         <Svg width="100%" height="100%" viewBox="0 0 400 400">

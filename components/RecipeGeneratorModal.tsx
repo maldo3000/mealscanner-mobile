@@ -92,7 +92,7 @@ export function RecipeGeneratorModal({
       );
 
       if (genError || !data?.suggestions) {
-        throw new Error(genError?.message || 'Failed to generate suggestions');
+        throw new Error((genError instanceof Error ? genError.message : '') || 'Failed to generate suggestions');
       }
 
       setSuggestions(data.suggestions);
@@ -130,7 +130,7 @@ export function RecipeGeneratorModal({
       );
 
       if (genError || !data?.recipe_id) {
-        throw new Error(genError?.message || 'Failed to generate recipe');
+        throw new Error((genError instanceof Error ? genError.message : '') || 'Failed to generate recipe');
       }
 
       // Reset state and close modal
@@ -204,10 +204,10 @@ export function RecipeGeneratorModal({
               {!suggestions.length && !loadingSuggestions && !generatingRecipe && (
                 <View style={styles.introSection}>
                   <Text style={[TextStyles.h1, { color: '#FFF', marginBottom: Spacing.sm }]}>
-                    What's on your mind?
+                    What&apos;s on your mind?
                   </Text>
                   <Text style={[TextStyles.body, { color: 'rgba(255,255,255,0.6)', marginBottom: Spacing.xl }]}>
-                    Describe what you feel like eating or what's in your fridge. We'll handle the rest.
+                    Describe what you feel like eating or what&apos;s in your fridge. We&apos;ll handle the rest.
                   </Text>
 
                   <View style={styles.inputStudio}>
@@ -218,7 +218,6 @@ export function RecipeGeneratorModal({
                       multiline
                       numberOfLines={4}
                       textAlignVertical="top"
-                      variant="filled"
                       style={styles.studioInput}
                       containerStyle={styles.studioInputContainer}
                     />
@@ -476,9 +475,6 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline',
   },
 });
-
-
-
 
 
 

@@ -87,7 +87,7 @@ function GlowIcon({ icon, glowColor, size = 56, isActive = true }: GlowIconProps
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
       <Canvas style={{ position: 'absolute', width: size, height: size }}>
         <Circle cx={center} cy={center} r={animatedRadius}>
-          <RadialGradient c={vec(center, center)} r={animatedRadius} colors={colors} />
+          <RadialGradient c={vec(center, center)} r={animatedRadius} colors={[...colors]} />
           {!IS_ANDROID && <BlurMask blur={animatedBlur} style="normal" />}
         </Circle>
       </Canvas>

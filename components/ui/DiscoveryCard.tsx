@@ -65,7 +65,7 @@ export function DiscoveryCard({ type, title, subtitle, imageUrl, recipeId, mealI
   const badgeLabel = type === 'recipe' ? 'Suggested for Lunch' : type === 'meal' ? 'Latest Entry' : 'Daily Tip';
 
   return (
-    <GlassCard variant="glass" style={[styles.container, style]} padding="none">
+    <GlassCard style={[styles.container, style]} padding={0}>
       <TouchableOpacity 
         style={styles.touchable}
         onPress={handlePress}
@@ -223,4 +223,3 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
-

@@ -14,8 +14,8 @@ interface WeeklyReportDetailModalProps {
   report: WeeklyNutritionReport | null;
 }
 
-function getNestedRecord(source: Record<string, unknown>, key: string): Record<string, unknown> {
-  const value = source[key];
+function getNestedRecord(source: object, key: string): Record<string, unknown> {
+  const value: unknown = Reflect.get(source, key);
   if (value && typeof value === 'object' && !Array.isArray(value)) {
     return value as Record<string, unknown>;
   }
@@ -52,11 +52,11 @@ export function WeeklyReportDetailModal({ visible, onClose, report }: WeeklyRepo
 
   const narrative = report.narrative_json;
   const metrics = report.metrics_json;
-  const calories = getNestedRecord(metrics as Record<string, unknown>, 'calories');
-  const protein = getNestedRecord(metrics as Record<string, unknown>, 'protein');
-  const fiber = getNestedRecord(metrics as Record<string, unknown>, 'fiber');
-  const addedSugarDays = getNestedRecord(metrics as Record<string, unknown>, 'added_sugar_days');
-  const sodiumDays = getNestedRecord(metrics as Record<string, unknown>, 'sodium_days');
+  const calories = getNestedRecord(metrics, 'calories');
+  const protein = getNestedRecord(metrics, 'protein');
+  const fiber = getNestedRecord(metrics, 'fiber');
+  const addedSugarDays = getNestedRecord(metrics, 'added_sugar_days');
+  const sodiumDays = getNestedRecord(metrics, 'sodium_days');
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -327,4 +327,3 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.xs,
   },
 });
-

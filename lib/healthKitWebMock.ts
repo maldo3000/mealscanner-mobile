@@ -1,5 +1,5 @@
 // HealthKit mock implementation for web mode testing
-import { mockHealthData } from '../webMocks';
+import { mockHealthData } from './webMocks';
 
 // Mock HealthKit types and constants
 const UNIT_COUNT = 'count' as const;

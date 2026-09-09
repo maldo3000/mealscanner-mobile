@@ -47,14 +47,14 @@ export default function VerifyScreen() {
             </View>
             <Text style={styles.title}>Check Your Email</Text>
             <Text style={styles.subtitle}>
-              We've sent a verification link to{'\n'}
+              We&apos;ve sent a verification link to{'\n'}
               <Text style={styles.emailText}>{email || 'your email'}</Text>
             </Text>
           </View>
 
           <View style={styles.infoBox}>
             <Text style={styles.infoText}>
-              Please click the link in the email to verify your account. Once verified, you'll be automatically signed in.
+              Please click the link in the email to verify your account. Once verified, you&apos;ll be automatically signed in.
             </Text>
           </View>
 
@@ -168,7 +168,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
 });
-
 
 
 

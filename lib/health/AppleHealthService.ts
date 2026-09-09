@@ -195,6 +195,8 @@ export const AppleHealthService = {
 
   // --- NUTRITION WRITE ---
   syncMealToHealth: async (meal: {
+    id: string;
+    revision: number;
     calories: number;
     protein?: number;
     carbs?: number;
@@ -204,123 +206,33 @@ export const AppleHealthService = {
     sodium?: number;
     timestamp: string | Date;
   }): Promise<void> => {
-    if (!(await AppleHealthService.isAvailable())) return;
-
-    // Helper to validate a number is positive and finite
-    const isValidQuantity = (value: number | undefined): value is number =>
-      typeof value === 'number' && Number.isFinite(value) && value > 0;
-
-    // Skip sync if no valid calories
-    if (!isValidQuantity(meal.calories)) {
-      console.warn('Skipping Apple Health sync: invalid or zero calories', meal.calories);
-      return;
-    }
-
+    if (!(await AppleHealthService.isAvailable())) throw new Error('HealthKit is unavailable');
     const startDate = new Date(meal.timestamp);
-    
-    // Validate timestamp
-    if (isNaN(startDate.getTime())) {
-      console.warn('Skipping Apple Health sync: invalid timestamp', meal.timestamp);
-      return;
+    if (!Number.isFinite(meal.calories) || meal.calories < 0 || !Number.isFinite(startDate.getTime())) {
+      throw new Error('Invalid meal nutrition or timestamp');
     }
-    
-    const endDate = new Date(startDate.getTime() + 1000); // 1 second duration
-
-    try {
-      const syncTasks: Array<Promise<unknown>> = [];
-
-      // Energy (already validated above)
-      syncTasks.push(
-        saveQuantitySample(
-          DIETARY_ENERGY_CONSUMED,
-          UNIT_KCAL,
-          meal.calories,
-          startDate,
-          endDate
-        )
-      );
-
-      // Protein
-      if (isValidQuantity(meal.protein)) {
-        syncTasks.push(
-          saveQuantitySample(
-            DIETARY_PROTEIN,
-            UNIT_GRAM,
-            meal.protein,
-            startDate,
-            endDate
-          )
-        );
-      }
-
-      // Carbs
-      if (isValidQuantity(meal.carbs)) {
-        syncTasks.push(
-          saveQuantitySample(
-            DIETARY_CARBOHYDRATES,
-            UNIT_GRAM,
-            meal.carbs,
-            startDate,
-            endDate
-          )
-        );
-      }
-
-      // Fat
-      if (isValidQuantity(meal.fat)) {
-        syncTasks.push(
-          saveQuantitySample(
-            DIETARY_FAT_TOTAL,
-            UNIT_GRAM,
-            meal.fat,
-            startDate,
-            endDate
-          )
-        );
-      }
-
-      // Fiber
-      if (isValidQuantity(meal.fiber)) {
-        syncTasks.push(
-          saveQuantitySample(
-            DIETARY_FIBER,
-            UNIT_GRAM,
-            meal.fiber,
-            startDate,
-            endDate
-          )
-        );
-      }
-
-      // Sugar
-      if (isValidQuantity(meal.sugar)) {
-        syncTasks.push(
-          saveQuantitySample(
-            DIETARY_SUGAR,
-            UNIT_GRAM,
-            meal.sugar,
-            startDate,
-            endDate
-          )
-        );
-      }
-
-      // Sodium (mg)
-      if (isValidQuantity(meal.sodium)) {
-        syncTasks.push(
-          saveQuantitySample(
-            DIETARY_SODIUM,
-            UNIT_MILLIGRAM,
-            meal.sodium,
-            startDate,
-            endDate
-          )
-        );
-      }
-
-      await Promise.all(syncTasks);
-    } catch (error) {
-      console.error('Failed to sync meal to Apple Health:', error);
+    const endDate = new Date(startDate.getTime() + 1000);
+    const samples: [Parameters<typeof saveQuantitySample>[0], Unit, number | undefined][] = [
+      [DIETARY_ENERGY_CONSUMED, UNIT_KCAL, meal.calories],
+      [DIETARY_PROTEIN, UNIT_GRAM, meal.protein],
+      [DIETARY_CARBOHYDRATES, UNIT_GRAM, meal.carbs],
+      [DIETARY_FAT_TOTAL, UNIT_GRAM, meal.fat],
+      [DIETARY_FIBER, UNIT_GRAM, meal.fiber],
+      [DIETARY_SUGAR, UNIT_GRAM, meal.sugar],
+      [DIETARY_SODIUM, UNIT_MILLIGRAM, meal.sodium],
+    ];
+    // Stable identifiers make retries after partial writes safe. Higher versions
+    // replace prior samples instead of adding duplicate nutrition.
+    const results = await Promise.allSettled(samples.flatMap(([type, unit, value]) =>
+      typeof value === 'number' && Number.isFinite(value) && value >= 0
+        ? [saveQuantitySample(type, unit, value, startDate, endDate, {
+            HKSyncIdentifier: 'mealscanner:' + meal.id + ':' + type,
+            HKSyncVersion: meal.revision,
+          })]
+        : []
+    ));
+    if (results.some(result => result.status === 'rejected' || !result.value)) {
+      throw new Error('Some nutrition samples could not be saved to Apple Health. Sync will retry.');
     }
   },
 

@@ -65,9 +65,6 @@ export function CustomTabBar({ state, descriptors, navigation, onCapturePress }:
     tabBarStyle?.height === 0 || 
     tabBarStyle?.opacity === 0;
   
-  if (shouldHide) {
-    return null;
-  }
 
   const handleTabPress = (routeKey: string, routeName: string, routeParams: object | undefined, isFocused: boolean) => {
     // Provide haptic feedback
@@ -126,6 +123,8 @@ export function CustomTabBar({ state, descriptors, navigation, onCapturePress }:
       ['rgba(255, 255, 255, 0.12)', tokens.accent]
     ),
   }));
+
+  if (shouldHide) return null;
 
   const onTouchStart = () => {
     barScale.value = withSpring(0.95);

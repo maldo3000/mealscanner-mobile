@@ -136,10 +136,10 @@ export const GoalCalculationSheet = forwardRef<BottomSheet, GoalCalculationSheet
           <View style={[styles.infoBox, { backgroundColor: tokens.backgroundAlt, borderColor: tokens.borderSubtle }]}>
             <View style={styles.infoBoxHeader}>
               <IconSymbol name="flame.fill" size={20} color={tokens.textPrimary} />
-              <Text style={[TextStyles.h3, { color: tokens.textPrimary, fontSize: 16 }]}>Not a "net" goal</Text>
+              <Text style={[TextStyles.h3, { color: tokens.textPrimary, fontSize: 16 }]}>Not a &quot;net&quot; goal</Text>
             </View>
             <Text style={[TextStyles.bodySmall, { color: tokens.textMuted, lineHeight: 20 }]}>
-              This is a total daily intake target, not a "net calories" target. Workouts won't automatically raise your goal, because your activity level already represents your usual day-to-day energy burn.
+              This is a total daily intake target, not a &quot;net calories&quot; target. Workouts won&apos;t automatically raise your goal, because your activity level already represents your usual day-to-day energy burn.
             </Text>
           </View>
 

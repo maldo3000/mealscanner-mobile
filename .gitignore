@@ -34,6 +34,7 @@ yarn-error.*
 .env
 .env.*
 .env*.local
+!.env.example
 
 # release keystore (never commit signing keys)
 *.keystore

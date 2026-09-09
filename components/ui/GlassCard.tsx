@@ -78,7 +78,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
   },
   webCard: {
-    backdropFilter: 'blur(20px)',
+    ...{ backdropFilter: 'blur(20px)' },
     borderRadius: 24,
     overflow: 'hidden',
     borderWidth: 1,

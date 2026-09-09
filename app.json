@@ -19,7 +19,7 @@
         "NSHealthShareUsageDescription": "MealScanner reads your active energy and steps to adjust your daily nutrition targets.",
         "NSHealthUpdateUsageDescription": "MealScanner logs your meal calories and macros to your Apple Health history."
       },
-      "runtimeVersion": "1.0.1"
+      "runtimeVersion": "1.0.2"
     },
     "android": {
       "adaptiveIcon": {
@@ -30,7 +30,7 @@
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS"
       ],
-      "runtimeVersion": "1.0.1",
+      "runtimeVersion": "1.0.2",
       "package": "app.mealscanner"
     },
     "web": {
@@ -71,7 +71,8 @@
       "@react-native-community/datetimepicker",
       "expo-image",
       "expo-sharing",
-      "expo-asset"
+      "expo-asset",
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true

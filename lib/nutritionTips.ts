@@ -37,6 +37,7 @@ export function getDailyNutritionTip(date: Date = new Date()): NutritionTip {
       summary: 'Small nutrition upgrades add up over time.',
       markdown: `## A tiny win\nPick one small upgrade you can repeat this week.`,
       tags: ['fallback'],
+      sources: [],
     };
   }
 
@@ -44,4 +45,3 @@ export function getDailyNutritionTip(date: Date = new Date()): NutritionTip {
   const idx = ((ordinal % tips.length) + tips.length) % tips.length;
   return tips[idx];
 }
-

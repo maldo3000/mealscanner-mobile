@@ -338,7 +338,7 @@ export default function OnboardingScreen() {
       
       if (error) throw error;
 
-      if (data.user) {
+      if ('user' in data && data.user) {
         await saveOnboardingGoalsForUser(data.user.id);
 
         await supabase.from('profiles').update({
@@ -372,7 +372,7 @@ export default function OnboardingScreen() {
       
       if (!data) return;
 
-      if (data.user) {
+      if ('user' in data && data.user) {
         await saveOnboardingGoalsForUser(data.user.id);
 
         await supabase.from('profiles').update({
@@ -1333,7 +1333,7 @@ function MagicMoment({ onComplete, data, onUpdateData }: MagicMomentProps) {
         </View>
       )}
 
-      <Text style={[styles.magicTitle, { marginBottom: 32 }]}>Here's your starting target</Text>
+      <Text style={[styles.magicTitle, { marginBottom: 32 }]}>Here&apos;s your starting target</Text>
       
       <Reanimated.View style={[styles.planCard, cardStyle]}>
         <View style={styles.macroGrid}>
@@ -1965,4 +1965,3 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline',
   },
 });
-

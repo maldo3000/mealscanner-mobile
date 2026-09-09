@@ -24,10 +24,8 @@ import { queryClient } from '@/lib/queryClient';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { useFirstLaunch } from '@/hooks/useFirstLaunch';
 import { getNotificationRouteFromData, initializeNotifications } from '@/lib/notifications';
-import {
-    SourceSans3_400Regular,
-    SourceSans3_600SemiBold,
-} from '@expo-google-fonts/source-sans-3';
+import { SourceSans3_400Regular } from '@expo-google-fonts/source-sans-3/400Regular';
+import { SourceSans3_600SemiBold } from '@expo-google-fonts/source-sans-3/600SemiBold';
 
 // Feature flag to easily disable loading screen
 // Set to false to disable the loading screen

@@ -96,8 +96,8 @@ export async function resetUser(): Promise<void> {
     await Purchases.logOut();
     console.log('🛒 RevenueCat user reset to anonymous');
   } catch (error) {
-    // logOut throws if user is already anonymous, which is fine
-    console.log('🛒 User already anonymous or error:', error);
+    console.error('Failed to reset RevenueCat identity:', error);
+    throw error;
   }
 }
 
@@ -208,14 +208,11 @@ export async function presentCodeRedemptionSheet(): Promise<void> {
 export function addCustomerInfoUpdateListener(
   listener: (info: CustomerInfo) => void
 ): () => void {
-  const subscription = Purchases.addCustomerInfoUpdateListener(listener);
+  Purchases.addCustomerInfoUpdateListener(listener);
   return () => {
-    if (subscription?.remove) {
-      subscription.remove();
-    }
+    Purchases.removeCustomerInfoUpdateListener(listener);
   };
 }
 
 // Re-export types for convenience
 export type { CustomerInfo, PurchasesOffering, PurchasesPackage };
-
